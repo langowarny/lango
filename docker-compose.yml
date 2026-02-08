@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  lango:
+    build: .
+    image: lango:latest
+    container_name: lango
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - lango-data:/data
+      - ./lango.json:/app/lango.json:ro
+    environment:
+      - ANTHROPIC_API_KEY
+      - DISCORD_BOT_TOKEN
+      - TELEGRAM_BOT_TOKEN
+      - SLACK_BOT_TOKEN
+      - SLACK_APP_TOKEN
+
+volumes:
+  lango-data:

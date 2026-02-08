@@ -1,0 +1,184 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/spf13/viper"
+)
+
+var envVarRegex = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+// DefaultConfig returns a Config with sensible defaults
+func DefaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Host:             "localhost",
+			Port:             18789,
+			HTTPEnabled:      true,
+			WebSocketEnabled: true,
+		},
+		Agent: AgentConfig{
+			Provider:    "anthropic",
+			Model:       "claude-sonnet-4-20250514",
+			MaxTokens:   4096,
+			Temperature: 0.7,
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "console",
+		},
+		Session: SessionConfig{
+			DatabasePath:    "~/.lango/sessions.db",
+			TTL:             24 * time.Hour,
+			MaxHistoryTurns: 50,
+		},
+		Tools: ToolsConfig{
+			Exec: ExecToolConfig{
+				DefaultTimeout:  30 * time.Second,
+				AllowBackground: true,
+			},
+			Filesystem: FilesystemToolConfig{
+				MaxReadSize: 10 * 1024 * 1024, // 10MB
+			},
+			Browser: BrowserToolConfig{
+				Headless:       true,
+				SessionTimeout: 5 * time.Minute,
+			},
+		},
+	}
+}
+
+// Load reads configuration from file and environment
+func Load(configPath string) (*Config, error) {
+	v := viper.New()
+
+	// Set defaults from DefaultConfig
+	defaults := DefaultConfig()
+	v.SetDefault("server.host", defaults.Server.Host)
+	v.SetDefault("server.port", defaults.Server.Port)
+	v.SetDefault("server.httpEnabled", defaults.Server.HTTPEnabled)
+	v.SetDefault("server.wsEnabled", defaults.Server.WebSocketEnabled)
+	v.SetDefault("agent.provider", defaults.Agent.Provider)
+	v.SetDefault("agent.model", defaults.Agent.Model)
+	v.SetDefault("agent.maxTokens", defaults.Agent.MaxTokens)
+	v.SetDefault("agent.temperature", defaults.Agent.Temperature)
+	v.SetDefault("logging.level", defaults.Logging.Level)
+	v.SetDefault("logging.format", defaults.Logging.Format)
+	v.SetDefault("session.databasePath", defaults.Session.DatabasePath)
+	v.SetDefault("session.ttl", defaults.Session.TTL)
+	v.SetDefault("session.maxHistoryTurns", defaults.Session.MaxHistoryTurns)
+	v.SetDefault("tools.exec.defaultTimeout", defaults.Tools.Exec.DefaultTimeout)
+	v.SetDefault("tools.exec.allowBackground", defaults.Tools.Exec.AllowBackground)
+	v.SetDefault("tools.filesystem.maxReadSize", defaults.Tools.Filesystem.MaxReadSize)
+	v.SetDefault("tools.browser.headless", defaults.Tools.Browser.Headless)
+	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
+
+	// Configure viper
+	v.SetConfigType("json")
+	v.AddConfigPath(".")
+	v.AddConfigPath("$HOME/.lango")
+	v.AddConfigPath("/etc/lango")
+
+	if configPath != "" {
+		v.SetConfigFile(configPath)
+	} else {
+		v.SetConfigName("lango")
+	}
+
+	// Read config file
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config: %w", err)
+		}
+		// Config file not found, use defaults
+	}
+
+	// Unmarshal into struct
+	cfg := &Config{}
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Apply environment variable substitution
+	substituteEnvVars(cfg)
+
+	// Validate configuration
+	if err := Validate(cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+// substituteEnvVars replaces ${VAR} patterns with environment variable values
+func substituteEnvVars(cfg *Config) {
+	cfg.Agent.APIKey = expandEnvVars(cfg.Agent.APIKey)
+	cfg.Channels.Telegram.BotToken = expandEnvVars(cfg.Channels.Telegram.BotToken)
+	cfg.Channels.Discord.BotToken = expandEnvVars(cfg.Channels.Discord.BotToken)
+	cfg.Channels.Slack.BotToken = expandEnvVars(cfg.Channels.Slack.BotToken)
+	cfg.Channels.Slack.AppToken = expandEnvVars(cfg.Channels.Slack.AppToken)
+	cfg.Channels.Slack.SigningSecret = expandEnvVars(cfg.Channels.Slack.SigningSecret)
+	cfg.Session.DatabasePath = expandEnvVars(cfg.Session.DatabasePath)
+}
+
+func expandEnvVars(s string) string {
+	return envVarRegex.ReplaceAllStringFunc(s, func(match string) string {
+		varName := strings.TrimSuffix(strings.TrimPrefix(match, "${"), "}")
+		if val := os.Getenv(varName); val != "" {
+			return val
+		}
+		return match // Keep original if not found
+	})
+}
+
+// Validate checks if the configuration is valid
+func Validate(cfg *Config) error {
+	var errs []string
+
+	// Validate server config
+	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+		errs = append(errs, fmt.Sprintf("invalid port: %d (must be 1-65535)", cfg.Server.Port))
+	}
+
+	// Validate agent config
+	validProviders := map[string]bool{"anthropic": true, "openai": true, "google": true, "gemini": true, "ollama": true}
+	if cfg.Agent.Provider != "" && !validProviders[cfg.Agent.Provider] {
+		errs = append(errs, fmt.Sprintf("invalid provider: %s (must be anthropic, openai, google, gemini, or ollama)", cfg.Agent.Provider))
+	}
+
+	// Validate logging config
+	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+	if !validLevels[cfg.Logging.Level] {
+		errs = append(errs, fmt.Sprintf("invalid log level: %s (must be debug, info, warn, or error)", cfg.Logging.Level))
+	}
+
+	validFormats := map[string]bool{"json": true, "console": true}
+	if !validFormats[cfg.Logging.Format] {
+		errs = append(errs, fmt.Sprintf("invalid log format: %s (must be json or console)", cfg.Logging.Format))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - "))
+	}
+
+	return nil
+}
+
+// Save writes the configuration to the specified path in JSON format
+func Save(cfg *Config, path string) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}

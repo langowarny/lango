@@ -1,0 +1,81 @@
+{
+  "server": {
+    "host": "localhost",
+    "port": 18789,
+    "httpEnabled": true,
+    "wsEnabled": true
+  },
+  "agent": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "apiKey": "${ANTHROPIC_API_KEY}",
+    "maxTokens": 4096,
+    "temperature": 0.7
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "allowlist": [],
+      "pairingEnabled": true
+    },
+    "discord": {
+      "enabled": false,
+      "botToken": "${DISCORD_BOT_TOKEN}",
+      "applicationId": "",
+      "allowedGuilds": []
+    },
+    "slack": {
+      "enabled": false,
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "appToken": "${SLACK_APP_TOKEN}",
+      "signingSecret": ""
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "console",
+    "outputPath": ""
+  },
+  "session": {
+    "databasePath": "~/.lango/sessions.db",
+    "ttl": "24h",
+    "maxHistoryTurns": 50
+  },
+  "tools": {
+    "exec": {
+      "defaultTimeout": "30s",
+      "allowBackground": true,
+      "workDir": ""
+    },
+    "filesystem": {
+      "maxReadSize": 10485760,
+      "allowedPaths": []
+    },
+    "browser": {
+      "headless": true,
+      "sessionTimeout": "5m"
+    }
+  },
+  "security": {
+    "interceptor": {
+      "enabled": true,
+      "redactPii": true,
+      "approvalRequired": true
+    },
+    "signer": {
+      "provider": "local"
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    },
+    "openai": {
+      "apiKey": "${OPENAI_API_KEY}"
+    },
+    "ollama": {
+      "baseUrl": "http://localhost:11434"
+    }
+  }
+}
