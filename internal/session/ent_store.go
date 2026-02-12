@@ -87,7 +87,8 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 		hexKey := hex.EncodeToString([]byte(store.passphrase))
 		pragma := fmt.Sprintf(`PRAGMA key = "x'%s'"`, hexKey)
 		if _, err := db.Exec(pragma); err != nil {
-			logger.Warnw("failed to set PRAGMA key", "error", err)
+			db.Close()
+			return nil, fmt.Errorf("set encryption key: %w", err)
 		}
 	}
 

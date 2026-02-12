@@ -2,7 +2,11 @@ package agent
 
 import (
 	"regexp"
+
+	"github.com/langowarny/lango/internal/logging"
 )
+
+var piiLogger = logging.SubsystemSugar("pii-redactor")
 
 // PIIConfig defines configuration for PII redaction
 type PIIConfig struct {
@@ -29,9 +33,12 @@ func NewPIIRedactor(cfg PIIConfig) *PIIRedactor {
 	}
 
 	for _, pattern := range cfg.CustomRegex {
-		if r, err := regexp.Compile(pattern); err == nil {
-			regexes = append(regexes, r)
+		r, err := regexp.Compile(pattern)
+		if err != nil {
+			piiLogger.Warnw("invalid custom PII regex, skipping", "pattern", pattern, "error", err)
+			continue
 		}
+		regexes = append(regexes, r)
 	}
 
 	return &PIIRedactor{

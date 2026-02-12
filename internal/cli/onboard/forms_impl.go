@@ -79,7 +79,7 @@ func NewChannelsForm(cfg *config.Config) *FormModel {
 		Checked: cfg.Channels.Telegram.Enabled,
 	})
 	form.AddField(&Field{
-		Key: "telegram_token", Label: "  Bot Token", Type: InputText,
+		Key: "telegram_token", Label: "  Bot Token", Type: InputPassword,
 		Value:       cfg.Channels.Telegram.BotToken,
 		Placeholder: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
 	})
@@ -89,7 +89,7 @@ func NewChannelsForm(cfg *config.Config) *FormModel {
 		Checked: cfg.Channels.Discord.Enabled,
 	})
 	form.AddField(&Field{
-		Key: "discord_token", Label: "  Bot Token", Type: InputText,
+		Key: "discord_token", Label: "  Bot Token", Type: InputPassword,
 		Value: cfg.Channels.Discord.BotToken,
 	})
 
@@ -98,12 +98,12 @@ func NewChannelsForm(cfg *config.Config) *FormModel {
 		Checked: cfg.Channels.Slack.Enabled,
 	})
 	form.AddField(&Field{
-		Key: "slack_token", Label: "  Bot Token", Type: InputText,
+		Key: "slack_token", Label: "  Bot Token", Type: InputPassword,
 		Value:       cfg.Channels.Slack.BotToken,
 		Placeholder: "xoxb-...",
 	})
 	form.AddField(&Field{
-		Key: "slack_app_token", Label: "  App Token", Type: InputText,
+		Key: "slack_app_token", Label: "  App Token", Type: InputPassword,
 		Value:       cfg.Channels.Slack.AppToken,
 		Placeholder: "xapp-...",
 	})
@@ -184,7 +184,7 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 
 	// Passphrase
 	form.AddField(&Field{
-		Key: "passphrase", Label: "Local Passphrase", Type: InputText, // Ideally masked, but using Text for now
+		Key: "passphrase", Label: "Local Passphrase", Type: InputPassword,
 		Value:       cfg.Security.Passphrase,
 		Placeholder: "${ENV_VAR} or plaintext",
 	})
@@ -225,7 +225,7 @@ func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	})
 
 	form.AddField(&Field{
-		Key: "apikey", Label: "API Key", Type: InputText,
+		Key: "apikey", Label: "API Key", Type: InputPassword,
 		Value:       cfg.APIKey,
 		Placeholder: "${ENV_VAR} or key",
 	})

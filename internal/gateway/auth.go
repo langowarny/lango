@@ -12,9 +12,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/session"
 	"golang.org/x/oauth2"
 )
+
+var authLogger = logging.SubsystemSugar("gateway-auth")
 
 // AuthManager manages authentication providers
 type AuthManager struct {
@@ -103,6 +106,7 @@ func (am *AuthManager) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(10 * time.Minute),
 	})
 
@@ -132,7 +136,8 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	oauth2Token, err := provider.OAuthConfig.Exchange(ctx, r.URL.Query().Get("code"))
 	if err != nil {
-		http.Error(w, "failed to exchange token: "+err.Error(), http.StatusInternalServerError)
+		authLogger.Errorw("token exchange error", "provider", provName, "error", err)
+		http.Error(w, "authentication failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -145,7 +150,8 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	idToken, err := provider.Verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		http.Error(w, "failed to verify ID token: "+err.Error(), http.StatusInternalServerError)
+		authLogger.Errorw("token verification error", "provider", provName, "error", err)
+		http.Error(w, "authentication failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -174,7 +180,8 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := am.store.Create(sess); err != nil {
-		http.Error(w, "failed to create session: "+err.Error(), http.StatusInternalServerError)
+		authLogger.Errorw("session creation error", "provider", provName, "error", err)
+		http.Error(w, "authentication failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -185,6 +192,7 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(24 * time.Hour), // Configurable TTL?
 	})
 

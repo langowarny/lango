@@ -108,7 +108,7 @@ func migrateSecrets(ctx context.Context, store *session.EntStore, currentPass, n
 	}
 
 	// 2. Generate new random salt
-	newSalt := make([]byte, 32)
+	newSalt := make([]byte, security.SaltSize)
 	if _, err := io.ReadFull(rand.Reader, newSalt); err != nil {
 		return fmt.Errorf("failed to generate new salt: %w", err)
 	}

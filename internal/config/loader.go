@@ -102,7 +102,7 @@ func Load(configPath string) (*Config, error) {
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("failed to read config: %w", err)
+			return nil, fmt.Errorf("read config: %w", err)
 		}
 		// Config file not found, use defaults
 	}
@@ -110,7 +110,7 @@ func Load(configPath string) (*Config, error) {
 	// Unmarshal into struct
 	cfg := &Config{}
 	if err := v.Unmarshal(cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
 	// Apply environment variable substitution
@@ -192,6 +192,17 @@ func Validate(cfg *Config) error {
 		errs = append(errs, fmt.Sprintf("invalid log format: %s (must be json or console)", cfg.Logging.Format))
 	}
 
+	// Validate security config
+	if cfg.Security.Signer.Provider != "" {
+		validProviders := map[string]bool{"local": true, "rpc": true, "enclave": true}
+		if !validProviders[cfg.Security.Signer.Provider] {
+			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, or enclave)", cfg.Security.Signer.Provider))
+		}
+		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
+			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 	}
@@ -207,16 +218,74 @@ func providerKeys(providers map[string]ProviderConfig) []string {
 	return keys
 }
 
-// Save writes the configuration to the specified path in JSON format
+// Save writes the configuration to the specified path in JSON format.
+// Sensitive fields (API keys, tokens, passphrases) are replaced with
+// placeholder values to prevent plaintext secret exposure.
 func Save(cfg *Config, path string) error {
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	// Deep copy to avoid mutating the live config
+	sanitized := sanitizeForSave(cfg)
+
+	data, err := json.MarshalIndent(sanitized, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return fmt.Errorf("marshal config: %w", err)
 	}
 
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+		return fmt.Errorf("write config file: %w", err)
 	}
 
 	return nil
+}
+
+// sanitizeForSave creates a copy of the config with sensitive values replaced by placeholders.
+func sanitizeForSave(cfg *Config) *Config {
+	// Shallow copy
+	c := *cfg
+
+	// Sanitize provider credentials
+	if c.Providers != nil {
+		providers := make(map[string]ProviderConfig, len(c.Providers))
+		for k, v := range c.Providers {
+			v.APIKey = redactSecret(v.APIKey)
+			v.ClientSecret = redactSecret(v.ClientSecret)
+			providers[k] = v
+		}
+		c.Providers = providers
+	}
+
+	// Sanitize channel tokens
+	c.Channels.Telegram.BotToken = redactSecret(c.Channels.Telegram.BotToken)
+	c.Channels.Discord.BotToken = redactSecret(c.Channels.Discord.BotToken)
+	c.Channels.Slack.BotToken = redactSecret(c.Channels.Slack.BotToken)
+	c.Channels.Slack.AppToken = redactSecret(c.Channels.Slack.AppToken)
+	c.Channels.Slack.SigningSecret = redactSecret(c.Channels.Slack.SigningSecret)
+
+	// Sanitize auth provider secrets
+	if c.Auth.Providers != nil {
+		authProviders := make(map[string]OIDCProviderConfig, len(c.Auth.Providers))
+		for k, v := range c.Auth.Providers {
+			v.ClientSecret = redactSecret(v.ClientSecret)
+			authProviders[k] = v
+		}
+		c.Auth.Providers = authProviders
+	}
+
+	// Sanitize passphrase
+	c.Security.Passphrase = redactSecret(c.Security.Passphrase)
+
+	return &c
+}
+
+// redactSecret replaces a secret value with a placeholder.
+// Values that are already env var references (${...}) are preserved.
+// Empty values are preserved as-is.
+func redactSecret(value string) string {
+	if value == "" {
+		return ""
+	}
+	// Preserve env var references
+	if envVarRegex.MatchString(value) {
+		return value
+	}
+	return "***REDACTED***"
 }

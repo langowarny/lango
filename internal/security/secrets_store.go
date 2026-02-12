@@ -8,7 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/ent"
 	"github.com/langowarny/lango/internal/ent/secret"
+	"github.com/langowarny/lango/internal/logging"
 )
+
+var secretsLogger = logging.SubsystemSugar("secrets-store")
 
 // SecretInfo represents secret metadata (without the actual value).
 type SecretInfo struct {
@@ -112,10 +115,14 @@ func (s *SecretsStore) Get(ctx context.Context, name string) ([]byte, error) {
 	}
 
 	// Increment access count
-	_, _ = sec.Update().SetAccessCount(sec.AccessCount + 1).Save(ctx)
+	if _, err := sec.Update().SetAccessCount(sec.AccessCount + 1).Save(ctx); err != nil {
+		secretsLogger.Warnw("update access count", "name", sec.Name, "error", err)
+	}
 
 	// Update key last used
-	_ = s.registry.UpdateLastUsed(ctx, keyEntity.Name)
+	if err := s.registry.UpdateLastUsed(ctx, keyEntity.Name); err != nil {
+		secretsLogger.Warnw("update key last used", "key", keyEntity.Name, "error", err)
+	}
 
 	return decrypted, nil
 }

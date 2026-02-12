@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
 )
@@ -25,6 +26,11 @@ type App struct {
 
 	// Browser (optional, io.Closer)
 	Browser io.Closer
+
+	// Security Components (optional)
+	Crypto  security.CryptoProvider
+	Keys    *security.KeyRegistry
+	Secrets *security.SecretsStore
 
 	// Self-Learning Components
 	KnowledgeStore  *knowledge.Store

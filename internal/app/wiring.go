@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/hmac"
 	"fmt"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
 	"github.com/langowarny/lango/internal/supervisor"
@@ -48,6 +50,93 @@ func initSessionStore(cfg *config.Config) (session.Store, error) {
 		return nil, fmt.Errorf("session store: %w", err)
 	}
 	return store, nil
+}
+
+// initSecurity creates and initializes the security stack.
+func initSecurity(cfg *config.Config, store session.Store) (security.CryptoProvider, *security.KeyRegistry, *security.SecretsStore, error) {
+	if cfg.Security.Signer.Provider == "" {
+		return nil, nil, nil, nil
+	}
+
+	switch cfg.Security.Signer.Provider {
+	case "local":
+		passphrase := os.Getenv("LANGO_PASSPHRASE")
+		if passphrase == "" {
+			passphrase = cfg.Security.Passphrase
+		}
+		if passphrase == "" {
+			return nil, nil, nil, fmt.Errorf("local security provider requires a passphrase")
+		}
+
+		provider := security.NewLocalCryptoProvider()
+
+		entStore, ok := store.(*session.EntStore)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("local security provider requires EntStore")
+		}
+
+		salt, err := entStore.GetSalt("default")
+		if err != nil {
+			// First-time setup: initialize with new salt
+			if err := provider.Initialize(passphrase); err != nil {
+				return nil, nil, nil, fmt.Errorf("initialize crypto provider: %w", err)
+			}
+			if err := entStore.SetSalt("default", provider.Salt()); err != nil {
+				return nil, nil, nil, fmt.Errorf("store salt: %w", err)
+			}
+			checksum := provider.CalculateChecksum(passphrase, provider.Salt())
+			if err := entStore.SetChecksum("default", checksum); err != nil {
+				return nil, nil, nil, fmt.Errorf("store checksum: %w", err)
+			}
+		} else {
+			// Existing salt found: initialize with it
+			if err := provider.InitializeWithSalt(passphrase, salt); err != nil {
+				return nil, nil, nil, fmt.Errorf("initialize crypto provider with salt: %w", err)
+			}
+			// Verify checksum
+			storedChecksum, err := entStore.GetChecksum("default")
+			if err == nil {
+				computed := provider.CalculateChecksum(passphrase, salt)
+				if !hmac.Equal(storedChecksum, computed) {
+					return nil, nil, nil, fmt.Errorf("passphrase checksum mismatch: incorrect passphrase")
+				}
+			}
+		}
+
+		client := entStore.Client()
+		keys := security.NewKeyRegistry(client)
+		secrets := security.NewSecretsStore(client, keys, provider)
+
+		// Register default encryption key
+		ctx := context.Background()
+		if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+			return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+		}
+
+		logger().Info("security initialized (local provider)")
+		return provider, keys, secrets, nil
+
+	case "rpc":
+		provider := security.NewRPCProvider()
+
+		entStore, ok := store.(*session.EntStore)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("rpc security provider requires EntStore")
+		}
+
+		client := entStore.Client()
+		keys := security.NewKeyRegistry(client)
+		secrets := security.NewSecretsStore(client, keys, provider)
+
+		logger().Info("security initialized (rpc provider)")
+		return provider, keys, secrets, nil
+
+	case "enclave":
+		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
+
+	default:
+		return nil, nil, nil, fmt.Errorf("unknown security provider: %s", cfg.Security.Signer.Provider)
+	}
 }
 
 // knowledgeComponents holds optional self-learning components.
@@ -125,6 +214,17 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			logger(),
 		)
 		llm = adk.NewContextAwareModelAdapter(modelAdapter, retriever, _defaultSystemPrompt, logger())
+	}
+
+	// If PII redaction is enabled, wrap with PII-redacting adapter
+	if cfg.Security.Interceptor.Enabled && cfg.Security.Interceptor.RedactPII {
+		redactor := agent.NewPIIRedactor(agent.PIIConfig{
+			RedactEmail: true,
+			RedactPhone: true,
+			CustomRegex: cfg.Security.Interceptor.PIIRegexPatterns,
+		})
+		llm = adk.NewPIIRedactingModelAdapter(llm, redactor)
+		logger().Info("PII redaction interceptor enabled")
 	}
 
 	logger().Info("initializing agent runtime (ADK)...")

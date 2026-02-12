@@ -17,6 +17,7 @@ const (
 	InputInt
 	InputBool // Toggled via space
 	InputSelect
+	InputPassword
 )
 
 // Field represents a single configuration field in a form
@@ -55,7 +56,7 @@ func NewFormModel(title string) FormModel {
 }
 
 func (m *FormModel) AddField(f *Field) {
-	if f.Type == InputText || f.Type == InputInt {
+	if f.Type == InputText || f.Type == InputInt || f.Type == InputPassword {
 		ti := textinput.New()
 		ti.Placeholder = f.Placeholder
 		ti.SetValue(f.Value)
@@ -63,6 +64,10 @@ func (m *FormModel) AddField(f *Field) {
 		ti.Width = 30
 		if f.Width > 0 {
 			ti.Width = f.Width
+		}
+		if f.Type == InputPassword {
+			ti.EchoMode = textinput.EchoPassword
+			ti.EchoCharacter = '•'
 		}
 		f.textInput = ti
 	}
@@ -113,7 +118,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 
 	// Update specific field logic
 	field := m.Fields[m.Cursor]
-	if field.Type == InputText || field.Type == InputInt {
+	if field.Type == InputText || field.Type == InputInt || field.Type == InputPassword {
 		var inputCmd tea.Cmd
 		field.textInput, inputCmd = field.textInput.Update(msg)
 		field.Value = field.textInput.Value()
@@ -177,7 +182,7 @@ func (m FormModel) View() string {
 		b.WriteString(labelStyle.Render(f.Label))
 
 		switch f.Type {
-		case InputText, InputInt:
+		case InputText, InputInt, InputPassword:
 			if i == m.Cursor {
 				f.textInput.Focus()
 				f.textInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575"))

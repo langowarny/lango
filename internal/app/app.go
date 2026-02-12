@@ -34,13 +34,14 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	app.Store = store
 
-	// 3. Security (optional, non-blocking)
-	if cfg.Security.Passphrase != "" {
-		logger().Warn("security.passphrase in config is deprecated; use LANGO_PASSPHRASE env var")
+	// 3. Security
+	crypto, keys, secrets, err := initSecurity(cfg, store)
+	if err != nil {
+		return nil, fmt.Errorf("security init: %w", err)
 	}
-	if cfg.Security.Signer.Provider == "" {
-		logger().Info("security disabled, set security.signer.provider to enable")
-	}
+	app.Crypto = crypto
+	app.Keys = keys
+	app.Secrets = secrets
 
 	// 4. Base tools (exec + filesystem + optional browser)
 	fsConfig := filesystem.Config{
