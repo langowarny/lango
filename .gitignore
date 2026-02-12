@@ -34,9 +34,7 @@ go.work.sum
 *.json
 
 !lango.example.json
+/lango
 
-.agent/
-.claude/
-.codex/
 .cursor/
-.gemini/
+.vscode/

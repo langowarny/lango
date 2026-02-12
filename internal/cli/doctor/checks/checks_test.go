@@ -77,11 +77,13 @@ func TestProvidersCheck_Run_ExplicitProvider(t *testing.T) {
 	}
 }
 
-func TestProvidersCheck_Run_LegacyConfig(t *testing.T) {
+func TestProvidersCheck_Run_ProviderInMap(t *testing.T) {
 	cfg := &config.Config{
 		Agent: config.AgentConfig{
 			Provider: "gemini",
-			APIKey:   "test-key",
+		},
+		Providers: map[string]config.ProviderConfig{
+			"gemini": {Type: "gemini", APIKey: "test-key"},
 		},
 	}
 

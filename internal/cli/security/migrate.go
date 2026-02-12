@@ -1,8 +1,8 @@
 package security
 
 import (
-	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -76,7 +76,7 @@ func newMigratePassphraseCmd(cfg *config.Config) *cobra.Command {
 			provider := security.NewLocalCryptoProvider()
 			if currentChecksum != nil {
 				newChecksum := provider.CalculateChecksum(currentPass, salt)
-				if !bytes.Equal(currentChecksum, newChecksum) {
+				if !hmac.Equal(currentChecksum, newChecksum) {
 					return fmt.Errorf("incorrect passphrase")
 				}
 			}

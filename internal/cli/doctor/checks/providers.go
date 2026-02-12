@@ -41,20 +41,10 @@ func (c *ProvidersCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		}
 	}
 
-	// 2. Check legacy agent config if no modern providers or duplicate
-	// If agent.provider is set but not in providers map, we should check it too
+	// 2. Check that agent.provider references a valid entry in the providers map
 	if cfg.Agent.Provider != "" {
-		if _, exists := cfg.Providers[cfg.Agent.Provider]; !exists {
-			// Legacy config style
-			legacyCfg := config.ProviderConfig{
-				Type:   cfg.Agent.Provider,
-				APIKey: cfg.Agent.APIKey,
-			}
-			if err := c.checkProvider("agent.provider ("+cfg.Agent.Provider+")", legacyCfg); err != nil {
-				issues = append(issues, fmt.Sprintf("legacy: %v", err))
-			} else {
-				passed = append(passed, fmt.Sprintf("%s (legacy)", cfg.Agent.Provider))
-			}
+		if _, exists := cfg.Providers[cfg.Agent.Provider]; !exists && len(cfg.Providers) > 0 {
+			issues = append(issues, fmt.Sprintf("agent.provider %q not found in providers map", cfg.Agent.Provider))
 		}
 	}
 

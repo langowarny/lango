@@ -1,28 +1,30 @@
 package agent
 
 import (
-	"context"
 	"regexp"
 )
 
-// PIIRedactor implements AgentRuntime to redact PII from inputs.
+// PIIConfig defines configuration for PII redaction
+type PIIConfig struct {
+	RedactEmail bool
+	RedactPhone bool
+	CustomRegex []string
+}
+
+// PIIRedactor redacts PII from input strings.
 type PIIRedactor struct {
-	BaseRuntimeMiddleware
-	Config  PIIConfig
+	config  PIIConfig
 	regexes []*regexp.Regexp
 }
 
-// NewPIIRedactor creates a new PIIRedactor middleware.
-func NewPIIRedactor(cfg PIIConfig) RuntimeMiddleware {
+// NewPIIRedactor creates a new PIIRedactor.
+func NewPIIRedactor(cfg PIIConfig) *PIIRedactor {
 	var regexes []*regexp.Regexp
 
-	// Default patterns
 	if cfg.RedactEmail {
-		// Simple email regex
 		regexes = append(regexes, regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b`))
 	}
 	if cfg.RedactPhone {
-		// Simple phone regex (US context mostly)
 		regexes = append(regexes, regexp.MustCompile(`\b\d{3}-\d{3}-\d{4}\b`))
 	}
 
@@ -32,27 +34,17 @@ func NewPIIRedactor(cfg PIIConfig) RuntimeMiddleware {
 		}
 	}
 
-	return func(next AgentRuntime) AgentRuntime {
-		return &PIIRedactor{
-			BaseRuntimeMiddleware: BaseRuntimeMiddleware{Next: next},
-			Config:                cfg,
-			regexes:               regexes,
-		}
+	return &PIIRedactor{
+		config:  cfg,
+		regexes: regexes,
 	}
 }
 
-// Run intercepts the execution to redact input.
-func (mw *PIIRedactor) Run(ctx context.Context, sessionKey string, input string, events chan<- StreamEvent) error {
-	redactedInput := input
-	for _, r := range mw.regexes {
-		redactedInput = r.ReplaceAllString(redactedInput, "[REDACTED]")
+// RedactInput applies PII redaction patterns to an input string.
+func (r *PIIRedactor) RedactInput(input string) string {
+	redacted := input
+	for _, re := range r.regexes {
+		redacted = re.ReplaceAllString(redacted, "[REDACTED]")
 	}
-
-	// Log redaction if changes occurred
-	if redactedInput != input {
-		// In a real system, we might want to log that redaction happened
-		// logger.Debugw("redacted input", "original_len", len(input), "redacted_len", len(redactedInput))
-	}
-
-	return mw.Next.Run(ctx, sessionKey, redactedInput, events)
+	return redacted
 }

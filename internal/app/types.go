@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
+	"sync"
 
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/gateway"
-	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 )
 
@@ -15,16 +15,15 @@ type App struct {
 	Config *config.Config
 
 	// Core Components
-	Agent          agent.AgentRuntime
-	Gateway        *gateway.Server
-	CryptoProvider security.CryptoProvider
-	Store          session.Store
+	Agent   *adk.Agent
+	Gateway *gateway.Server
+	Store   session.Store
 
 	// Channels
 	Channels []Channel
 
-	// State
-	BrowserSessionID string
+	// wg tracks background goroutines for graceful shutdown
+	wg sync.WaitGroup
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)

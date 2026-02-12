@@ -1,26 +1,8 @@
 package agent
 
 import (
-	"context"
 	"testing"
 )
-
-type mockRuntime struct {
-	CapturedInput string
-}
-
-func (m *mockRuntime) Run(ctx context.Context, sessionKey string, input string, events chan<- StreamEvent) error {
-	m.CapturedInput = input
-	close(events)
-	return nil
-}
-
-func (m *mockRuntime) RegisterTool(tool *Tool) error     { return nil }
-func (m *mockRuntime) GetTool(name string) (*Tool, bool) { return nil, false }
-func (m *mockRuntime) ListTools() []*Tool                { return nil }
-func (m *mockRuntime) ExecuteTool(ctx context.Context, name string, params map[string]interface{}) (interface{}, error) {
-	return nil, nil
-}
 
 func TestPIIRedactor(t *testing.T) {
 	cfg := PIIConfig{
@@ -29,8 +11,6 @@ func TestPIIRedactor(t *testing.T) {
 	}
 
 	redactor := NewPIIRedactor(cfg)
-	mock := &mockRuntime{}
-	wrapped := redactor(mock)
 
 	tests := []struct {
 		name     string
@@ -61,20 +41,9 @@ func TestPIIRedactor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			events := make(chan StreamEvent)
-			// Run is async/blocking depending on implementation, here mock is sync but redactor calls Next.Run
-			go func() {
-				for range events {
-				}
-			}()
-
-			err := wrapped.Run(context.Background(), "sess", tt.input, events)
-			if err != nil {
-				t.Fatalf("Run failed: %v", err)
-			}
-
-			if mock.CapturedInput != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, mock.CapturedInput)
+			result := redactor.RedactInput(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,8 +20,11 @@ import (
 	"github.com/langowarny/lango/internal/ent/message"
 	entschema "github.com/langowarny/lango/internal/ent/schema"
 	entsession "github.com/langowarny/lango/internal/ent/session"
+	"github.com/langowarny/lango/internal/logging"
 	_ "github.com/mattn/go-sqlite3" // Use cgo driver for SQLCipher support
 )
+
+var logger = logging.SubsystemSugar("session")
 
 // StoreOption defines the functional option pattern for EntStore
 type StoreOption func(*EntStore)
@@ -77,11 +81,13 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	}
 
 	// Set key immediately if provided (essential for SQLCipher)
-	// We use PRAGMA key instead of DSN for better compatibility across versions/drivers
+	// Use hex-encoded key to avoid SQL injection via passphrase content.
+	// SQLCipher accepts: PRAGMA key = "x'HEX_ENCODED_KEY'"
 	if store.passphrase != "" {
-		if _, err := db.Exec(fmt.Sprintf("PRAGMA key = '%s'", store.passphrase)); err != nil {
-			// Don't fail hard yet, let the next operation fail if key was wrong
-			fmt.Printf("DEBUG: Failed to set PRAGMA key: %v\n", err)
+		hexKey := hex.EncodeToString([]byte(store.passphrase))
+		pragma := fmt.Sprintf(`PRAGMA key = "x'%s'"`, hexKey)
+		if _, err := db.Exec(pragma); err != nil {
+			logger.Warnw("failed to set PRAGMA key", "error", err)
 		}
 	}
 

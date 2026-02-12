@@ -9,21 +9,23 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/websocket"
-	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 )
 
-var logger = logging.SubsystemSugar("gateway")
+func logger() *zap.SugaredLogger { return logging.Gateway() }
 
 // Server represents the gateway server
 type Server struct {
 	config             Config
-	agent              agent.AgentRuntime
+	agent              *adk.Agent
 	provider           *security.RPCProvider
 	auth               *AuthManager
 	store              session.Store
@@ -82,7 +84,7 @@ type RPCError struct {
 type RPCHandler func(params json.RawMessage) (interface{}, error)
 
 // New creates a new gateway server
-func New(cfg Config, agent agent.AgentRuntime, provider *security.RPCProvider, store session.Store, auth *AuthManager) *Server {
+func New(cfg Config, agent *adk.Agent, provider *security.RPCProvider, store session.Store, auth *AuthManager) *Server {
 	s := &Server{
 		config:           cfg,
 		agent:            agent,
@@ -144,31 +146,13 @@ func (s *Server) handleChatMessage(params json.RawMessage) (interface{}, error) 
 	}
 
 	ctx := context.Background()
-	events := make(chan agent.StreamEvent)
-
-	var responseBuilder strings.Builder
-	var errExec error
-
-	// Run agent in goroutine
-	go func() {
-		errExec = s.agent.Run(ctx, req.SessionKey, req.Message, events)
-	}()
-
-	// Collect events (blocking for now)
-	for event := range events {
-		if event.Type == "text_delta" {
-			responseBuilder.WriteString(event.Text)
-		} else if event.Type == "error" {
-			return nil, fmt.Errorf("agent error: %s", event.Error)
-		}
-	}
-
-	if errExec != nil {
-		return nil, fmt.Errorf("execution failed: %w", errExec)
+	response, err := s.agent.RunAndCollect(ctx, req.SessionKey, req.Message)
+	if err != nil {
+		return nil, err
 	}
 
 	return map[string]string{
-		"response": responseBuilder.String(),
+		"response": response,
 	}, nil
 }
 
@@ -286,7 +270,7 @@ func (s *Server) handleCompanionHello(params json.RawMessage) (interface{}, erro
 	}
 
 	// Logic to store device capabilities or register pubkey for encryption can go here
-	logger.Infow("companion hello received", "deviceId", req.DeviceID)
+	logger().Infow("companion hello received", "deviceId", req.DeviceID)
 
 	return map[string]string{"status": "ok"}, nil
 }
@@ -331,7 +315,9 @@ func (s *Server) setupRoutes() {
 	// WebSocket endpoint
 	if s.config.WebSocketEnabled {
 		s.router.Get("/ws", s.handleWebSocket)
-		s.router.Get("/companion", s.handleCompanionWebSocket)
+		if s.provider != nil {
+			s.router.Get("/companion", s.handleCompanionWebSocket)
+		}
 	}
 
 	// Register Auth routes
@@ -358,7 +344,7 @@ func (s *Server) Start() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	logger.Infow("starting gateway server", "addr", addr)
+	logger().Infow("gateway server is listening", "address", addr, "http", s.config.HTTPEnabled, "ws", s.config.WebSocketEnabled)
 	return s.httpServer.ListenAndServe()
 }
 
@@ -412,7 +398,7 @@ func (s *Server) handleCompanionWebSocket(w http.ResponseWriter, r *http.Request
 func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Request, clientType string) {
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Errorw("websocket upgrade failed", "error", err)
+		logger().Errorw("websocket upgrade failed", "error", err)
 		return
 	}
 
@@ -429,7 +415,7 @@ func (s *Server) handleWebSocketConnection(w http.ResponseWriter, r *http.Reques
 	s.clients[clientID] = client
 	s.clientsMu.Unlock()
 
-	logger.Infow("client connected", "clientId", clientID)
+	logger().Infow("client connected", "clientId", clientID)
 
 	// Start read/write pumps
 	go client.writePump()
@@ -478,7 +464,7 @@ func (c *Client) readPump() {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logger.Warnw("websocket read error", "clientId", c.ID, "error", err)
+				logger().Warnw("websocket read error", "clientId", c.ID, "error", err)
 			}
 			break
 		}
@@ -565,7 +551,7 @@ func (s *Server) removeClient(id string) {
 	defer s.clientsMu.Unlock()
 
 	if client, exists := s.clients[id]; exists {
-		logger.Infow("client disconnected", "clientId", id)
+		logger().Infow("client disconnected", "clientId", id)
 		delete(s.clients, id)
 		_ = client
 	}

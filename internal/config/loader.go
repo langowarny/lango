@@ -117,12 +117,32 @@ func Load(configPath string) (*Config, error) {
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
 func substituteEnvVars(cfg *Config) {
-	cfg.Agent.APIKey = expandEnvVars(cfg.Agent.APIKey)
+	// Provider credentials
+	for id, pCfg := range cfg.Providers {
+		pCfg.APIKey = expandEnvVars(pCfg.APIKey)
+		pCfg.ClientID = expandEnvVars(pCfg.ClientID)
+		pCfg.ClientSecret = expandEnvVars(pCfg.ClientSecret)
+		cfg.Providers[id] = pCfg
+	}
+
+	// Channel tokens
 	cfg.Channels.Telegram.BotToken = expandEnvVars(cfg.Channels.Telegram.BotToken)
 	cfg.Channels.Discord.BotToken = expandEnvVars(cfg.Channels.Discord.BotToken)
 	cfg.Channels.Slack.BotToken = expandEnvVars(cfg.Channels.Slack.BotToken)
 	cfg.Channels.Slack.AppToken = expandEnvVars(cfg.Channels.Slack.AppToken)
 	cfg.Channels.Slack.SigningSecret = expandEnvVars(cfg.Channels.Slack.SigningSecret)
+
+	// Auth OIDC provider credentials
+	for id, aCfg := range cfg.Auth.Providers {
+		aCfg.ClientID = expandEnvVars(aCfg.ClientID)
+		aCfg.ClientSecret = expandEnvVars(aCfg.ClientSecret)
+		cfg.Auth.Providers[id] = aCfg
+	}
+
+	// Security passphrase
+	cfg.Security.Passphrase = expandEnvVars(cfg.Security.Passphrase)
+
+	// Paths
 	cfg.Session.DatabasePath = expandEnvVars(cfg.Session.DatabasePath)
 }
 
@@ -145,10 +165,11 @@ func Validate(cfg *Config) error {
 		errs = append(errs, fmt.Sprintf("invalid port: %d (must be 1-65535)", cfg.Server.Port))
 	}
 
-	// Validate agent config
-	validProviders := map[string]bool{"anthropic": true, "openai": true, "google": true, "gemini": true, "ollama": true}
-	if cfg.Agent.Provider != "" && !validProviders[cfg.Agent.Provider] {
-		errs = append(errs, fmt.Sprintf("invalid provider: %s (must be anthropic, openai, google, gemini, or ollama)", cfg.Agent.Provider))
+	// Validate agent.provider references an existing key in providers map
+	if cfg.Agent.Provider != "" && len(cfg.Providers) > 0 {
+		if _, ok := cfg.Providers[cfg.Agent.Provider]; !ok {
+			errs = append(errs, fmt.Sprintf("agent.provider %q not found in providers map (available: %v)", cfg.Agent.Provider, providerKeys(cfg.Providers)))
+		}
 	}
 
 	// Validate logging config
@@ -169,6 +190,14 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+func providerKeys(providers map[string]ProviderConfig) []string {
+	keys := make([]string, 0, len(providers))
+	for k := range providers {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // Save writes the configuration to the specified path in JSON format
 func Save(cfg *Config, path string) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -176,7 +205,7 @@ func Save(cfg *Config, path string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

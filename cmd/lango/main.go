@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langowarny/lango/internal/app"
+	"github.com/langowarny/lango/internal/cli/auth"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	"github.com/langowarny/lango/internal/config"
@@ -37,6 +38,7 @@ func main() {
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
+	rootCmd.AddCommand(auth.NewCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

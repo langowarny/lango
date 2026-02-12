@@ -35,10 +35,78 @@ func (p *GeminiProvider) ID() string {
 func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error) {
 	// Convert messages to genai.Content
 	var contents []*genai.Content
+	var systemParts []*genai.Part
+
 	for _, m := range params.Messages {
+		if m.Role == "system" {
+			systemParts = append(systemParts, &genai.Part{Text: m.Content})
+			continue
+		}
+
+		if m.Role == "tool" {
+			toolCallID, _ := m.Metadata["tool_call_id"].(string)
+			toolCallName, _ := m.Metadata["tool_call_name"].(string)
+
+			if toolCallID == "" || toolCallName == "" {
+				// Fallback or skip if missing info
+				continue
+			}
+
+			// Validate response is valid JSON if possible, otherwise wrap it
+			// Gemini expects the response to be a structured object in some cases,
+			// or a simple map.
+			// m.Content is the result string (JSON).
+			var responseContent map[string]interface{}
+			if err := json.Unmarshal([]byte(m.Content), &responseContent); err != nil {
+				// If not JSON object, wrap it
+				responseContent = map[string]interface{}{"result": m.Content}
+			}
+
+			contents = append(contents, &genai.Content{
+				Role: "user", // Must be user or model
+				Parts: []*genai.Part{
+					{
+						FunctionResponse: &genai.FunctionResponse{
+							Name:     toolCallName,
+							Response: responseContent,
+						},
+					},
+				},
+			})
+			continue
+		}
+
+		role := m.Role
+		if role == "assistant" {
+			role = "model"
+		}
+
+		var parts []*genai.Part
+		if m.Content != "" {
+			parts = append(parts, &genai.Part{Text: m.Content})
+		}
+
+		// If assistant message has tool calls, add them as parts
+		if role == "model" && len(m.ToolCalls) > 0 {
+			// If content is empty/present, we append ToolCalls
+			// Note: Gemini can have text AND parts.
+			for _, tc := range m.ToolCalls {
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+					args = make(map[string]interface{})
+				}
+				parts = append(parts, &genai.Part{
+					FunctionCall: &genai.FunctionCall{
+						Name: tc.Name,
+						Args: args,
+					},
+				})
+			}
+		}
+
 		contents = append(contents, &genai.Content{
-			Role:  m.Role,
-			Parts: []*genai.Part{{Text: m.Content}},
+			Role:  role,
+			Parts: parts,
 		})
 	}
 
@@ -65,19 +133,25 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 		model = params.Model
 	}
 
+	// Alias "gemini" to a valid model
+	if model == "gemini" {
+		model = "gemini-3-flash-preview"
+	}
+
 	temp := float32(params.Temperature)
 	maxTokens := int32(params.MaxTokens)
 
 	conf := &genai.GenerateContentConfig{
 		Temperature:     &temp,
-		MaxOutputTokens: maxTokens, // Updated: int32 value
+		MaxOutputTokens: maxTokens,
 		Tools:           tools,
 	}
 
-	// ToolConfig (auto)
-	// if len(params.Tools) > 0 {
-	// 	conf.ToolConfig = &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: "AUTO"}}
-	// }
+	if len(systemParts) > 0 {
+		conf.SystemInstruction = &genai.Content{
+			Parts: systemParts,
+		}
+	}
 
 	// Streaming
 	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)

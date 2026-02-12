@@ -2,8 +2,16 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"iter"
+	"os"
+	"path/filepath"
+	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
+	"golang.org/x/oauth2/google"
 
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
@@ -56,19 +64,37 @@ func (s *Supervisor) initializeProviders() error {
 			var p provider.Provider
 			var err error
 
+			apiKey := pCfg.APIKey
+			if apiKey == "" {
+				// Try to load OAuth token
+				token, err := s.getAccessToken(id, pCfg)
+				if err == nil && token != "" {
+					apiKey = token
+				} else if err != nil {
+					logger.Warnw("failed to load oauth token", "id", id, "error", err)
+				}
+			}
+
 			switch pCfg.Type {
 			case "openai":
-				p = openai.NewProvider(id, pCfg.APIKey, pCfg.BaseURL)
+				p = openai.NewProvider(id, apiKey, pCfg.BaseURL)
 			case "anthropic":
-				p = anthropic.NewProvider(pCfg.APIKey)
-			case "gemini":
-				p, err = gemini.NewProvider(context.Background(), pCfg.APIKey, "")
+				p = anthropic.NewProvider(apiKey)
+			case "gemini", "google": // Support "google" as alias
+				p, err = gemini.NewProvider(context.Background(), apiKey, "")
 			case "ollama":
 				baseURL := pCfg.BaseURL
 				if baseURL == "" {
 					baseURL = "http://localhost:11434/v1"
 				}
-				p = openai.NewProvider(id, pCfg.APIKey, baseURL)
+				p = openai.NewProvider(id, apiKey, baseURL)
+			case "github":
+				// GitHub Models uses OpenAI compatible endpoint
+				baseURL := pCfg.BaseURL
+				if baseURL == "" {
+					baseURL = "https://models.inference.ai.azure.com"
+				}
+				p = openai.NewProvider(id, apiKey, baseURL)
 			default:
 				logger.Warnw("unknown provider type", "id", id, "type", pCfg.Type)
 				continue
@@ -82,25 +108,112 @@ func (s *Supervisor) initializeProviders() error {
 		}
 	}
 
-	// Legacy config support
+	// Verify that the default provider is configured
 	if s.Config.Agent.Provider != "" {
 		if _, ok := s.registry.Get(s.Config.Agent.Provider); !ok {
-			if s.Config.Agent.Provider == "gemini" && s.Config.Agent.APIKey != "" {
-				p, err := gemini.NewProvider(context.Background(), s.Config.Agent.APIKey, s.Config.Agent.Model)
-				if err == nil {
-					s.registry.Register(p)
-				}
-			} else if s.Config.Agent.Provider == "openai" && s.Config.Agent.APIKey != "" {
-				s.registry.Register(openai.NewProvider("openai", s.Config.Agent.APIKey, ""))
-			} else if s.Config.Agent.Provider == "anthropic" && s.Config.Agent.APIKey != "" {
-				s.registry.Register(anthropic.NewProvider(s.Config.Agent.APIKey))
-			} else if s.Config.Agent.Provider == "ollama" {
-				s.registry.Register(openai.NewProvider("ollama", "", "http://localhost:11434/v1"))
-			}
+			return fmt.Errorf("configured default provider '%s' not found in providers list", s.Config.Agent.Provider)
+		}
+	} else if len(s.Config.Providers) == 1 {
+		// Auto-select the only provider if default not set
+		for id := range s.Config.Providers {
+			s.Config.Agent.Provider = id
+			logger.Infow("auto-selected default provider", "provider", id)
 		}
 	}
 
 	return nil
+}
+
+func (s *Supervisor) getAccessToken(providerID string, pCfg config.ProviderConfig) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	tokenPath := filepath.Join(home, ".lango", "tokens", providerID+".json")
+
+	f, err := os.Open(tokenPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil // Token file doesn't exist, not an error just no token
+		}
+		return "", err
+	}
+	defer f.Close()
+
+	var token oauth2.Token
+	if err := json.NewDecoder(f).Decode(&token); err != nil {
+		return "", fmt.Errorf("invalid token file: %w", err)
+	}
+
+	// Check if expired and refresh if possible
+	if !token.Valid() && token.RefreshToken != "" && pCfg.ClientID != "" && pCfg.ClientSecret != "" {
+		logger.Infow("refreshing oauth token", "provider", providerID)
+
+		var endpoint oauth2.Endpoint
+		switch pCfg.Type {
+		case "gemini", "google":
+			endpoint = google.Endpoint
+		case "github":
+			endpoint = github.Endpoint
+		default:
+			// Try to guess based on ID
+			if providerID == "google" || providerID == "gemini" {
+				endpoint = google.Endpoint
+			} else if providerID == "github" {
+				endpoint = github.Endpoint
+			} else {
+				return "", fmt.Errorf("cannot refresh token: unknown endpoint for provider %s", providerID)
+			}
+		}
+
+		conf := &oauth2.Config{
+			ClientID:     pCfg.ClientID,
+			ClientSecret: pCfg.ClientSecret,
+			Endpoint:     endpoint,
+			// RedirectURL not needed for refresh
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		src := conf.TokenSource(ctx, &token)
+		newToken, err := src.Token()
+		if err != nil {
+			return "", fmt.Errorf("failed to refresh token: %w", err)
+		}
+
+		// Save new token
+		if err := saveToken(providerID, newToken); err != nil {
+			logger.Warnw("failed to save refreshed token", "error", err)
+		}
+
+		return newToken.AccessToken, nil
+	}
+
+	if !token.Valid() {
+		return "", fmt.Errorf("token expired and cannot refresh (missing refresh token or client config)")
+	}
+
+	return token.AccessToken, nil
+}
+
+func saveToken(providerID string, token *oauth2.Token) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	tokenDir := filepath.Join(home, ".lango", "tokens")
+	if err := os.MkdirAll(tokenDir, 0700); err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(filepath.Join(tokenDir, providerID+".json"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return json.NewEncoder(file).Encode(token)
 }
 
 // Generate forwards a generation request to the appropriate provider.

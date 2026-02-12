@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/channels/discord"
 	"github.com/langowarny/lango/internal/channels/slack"
 	"github.com/langowarny/lango/internal/channels/telegram"
@@ -22,13 +20,13 @@ func (a *App) initChannels() error {
 		}
 		tgChannel, err := telegram.New(tgConfig)
 		if err != nil {
-			logger.Errorw("failed to create telegram channel", "error", err)
+			logger().Errorw("failed to create telegram channel", "error", err)
 		} else {
 			tgChannel.SetHandler(func(ctx context.Context, msg *telegram.IncomingMessage) (*telegram.OutgoingMessage, error) {
 				return a.handleTelegramMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, tgChannel)
-			logger.Info("telegram channel initialized")
+			logger().Info("telegram channel initialized")
 		}
 	}
 
@@ -41,13 +39,13 @@ func (a *App) initChannels() error {
 		}
 		dcChannel, err := discord.New(dcConfig)
 		if err != nil {
-			logger.Errorw("failed to create discord channel", "error", err)
+			logger().Errorw("failed to create discord channel", "error", err)
 		} else {
 			dcChannel.SetHandler(func(ctx context.Context, msg *discord.IncomingMessage) (*discord.OutgoingMessage, error) {
 				return a.handleDiscordMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, dcChannel)
-			logger.Info("discord channel initialized")
+			logger().Info("discord channel initialized")
 		}
 	}
 
@@ -60,13 +58,13 @@ func (a *App) initChannels() error {
 		}
 		slChannel, err := slack.New(slConfig)
 		if err != nil {
-			logger.Errorw("failed to create slack channel", "error", err)
+			logger().Errorw("failed to create slack channel", "error", err)
 		} else {
 			slChannel.SetHandler(func(ctx context.Context, msg *slack.IncomingMessage) (*slack.OutgoingMessage, error) {
 				return a.handleSlackMessage(ctx, msg)
 			})
 			a.Channels = append(a.Channels, slChannel)
-			logger.Info("slack channel initialized")
+			logger().Info("slack channel initialized")
 		}
 	}
 
@@ -102,25 +100,5 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 
 // runAgent executes the agent and aggregates the response
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
-	events := make(chan agent.StreamEvent)
-	var responseBuilder strings.Builder
-	var errExec error
-
-	go func() {
-		errExec = a.Agent.Run(ctx, sessionKey, input, events)
-	}()
-
-	for event := range events {
-		if event.Type == "text_delta" {
-			responseBuilder.WriteString(event.Text)
-		} else if event.Type == "error" {
-			return "", fmt.Errorf("agent error: %s", event.Error)
-		}
-	}
-
-	if errExec != nil {
-		return "", errExec
-	}
-
-	return responseBuilder.String(), nil
+	return a.Agent.RunAndCollect(ctx, sessionKey, input)
 }

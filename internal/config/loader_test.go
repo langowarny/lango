@@ -51,12 +51,16 @@ func TestValidate(t *testing.T) {
 	}
 	cfg.Server.Port = 18789
 
-	// Invalid provider
+	// Invalid provider (references nonexistent key in providers map)
 	cfg.Agent.Provider = "invalid"
+	cfg.Providers = map[string]ProviderConfig{
+		"google": {Type: "gemini", APIKey: "test"},
+	}
 	if err := Validate(cfg); err == nil {
 		t.Error("expected error for invalid provider")
 	}
 	cfg.Agent.Provider = "anthropic"
+	cfg.Providers = nil
 
 	// Invalid log level
 	cfg.Logging.Level = "invalid"

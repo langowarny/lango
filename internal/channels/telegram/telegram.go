@@ -7,11 +7,13 @@ import (
 	"strings"
 	"sync"
 
+	"go.uber.org/zap"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/langowarny/lango/internal/logging"
 )
 
-var logger = logging.SubsystemSugar("channel.telegram")
+func logger() *zap.SugaredLogger { return logging.Channel().Named("telegram") }
 
 // Config holds Telegram channel configuration
 type Config struct {
@@ -83,7 +85,7 @@ func New(cfg Config) (*Channel, error) {
 		botAPI = NewTelegramBot(bot)
 	}
 
-	logger.Infow("telegram bot authorized", "username", botAPI.GetSelf().UserName)
+	logger().Infow("telegram bot authorized", "username", botAPI.GetSelf().UserName)
 
 	return &Channel{
 		config:   cfg,
@@ -125,7 +127,7 @@ func (c *Channel) Start(ctx context.Context) error {
 
 				// Check allowlist
 				if !c.isAllowed(update.Message.Chat.ID, update.Message.From.ID) {
-					logger.Warnw("blocked message from non-allowed user",
+					logger().Warnw("blocked message from non-allowed user",
 						"userId", update.Message.From.ID,
 						"chatId", update.Message.Chat.ID,
 					)
@@ -137,7 +139,7 @@ func (c *Channel) Start(ctx context.Context) error {
 		}
 	}()
 
-	logger.Info("telegram channel started")
+	logger().Infow("telegram channel started", "bot", c.bot.GetSelf().UserName)
 	return nil
 }
 
@@ -172,7 +174,7 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 		incoming.MediaFileID = msg.Voice.FileID
 	}
 
-	logger.Infow("received message",
+	logger().Infow("received message",
 		"messageId", incoming.MessageID,
 		"chatId", incoming.ChatID,
 		"userId", incoming.UserID,
@@ -181,14 +183,14 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 	// Call handler
 	response, err := c.handler(ctx, incoming)
 	if err != nil {
-		logger.Errorw("handler error", "error", err)
+		logger().Errorw("handler error", "error", err)
 		c.sendError(incoming.ChatID, msg.MessageID, err)
 		return
 	}
 
 	if response != nil {
 		if err := c.Send(incoming.ChatID, response); err != nil {
-			logger.Errorw("send error", "error", err)
+			logger().Errorw("send error", "error", err)
 		}
 	}
 }
@@ -296,5 +298,5 @@ func (c *Channel) Stop() {
 	close(c.stopChan)
 	c.wg.Wait()
 	c.bot.StopReceivingUpdates()
-	logger.Info("telegram channel stopped")
+	logger().Info("telegram channel stopped")
 }

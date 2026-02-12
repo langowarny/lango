@@ -112,6 +112,7 @@ func Sync() error {
 
 // Common subsystem loggers
 var (
+	App     = func() *zap.SugaredLogger { return SubsystemSugar("app") }
 	Agent   = func() *zap.SugaredLogger { return SubsystemSugar("agent") }
 	Gateway = func() *zap.SugaredLogger { return SubsystemSugar("gateway") }
 	Channel = func() *zap.SugaredLogger { return SubsystemSugar("channel") }

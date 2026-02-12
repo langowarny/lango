@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
@@ -89,11 +90,13 @@ func (p *LocalCryptoProvider) InitializeWithSalt(passphrase string, salt []byte)
 	return nil
 }
 
-// CalculateChecksum computes the checksum for a given passphrase and salt
-// Checksum = SHA256(passphrase + salt)
+// CalculateChecksum computes the checksum for a given passphrase and salt.
+// Uses HMAC-SHA256 with salt as key to avoid length extension attacks.
+// NOTE: Changing this algorithm requires migrating existing stored checksums.
 func (p *LocalCryptoProvider) CalculateChecksum(passphrase string, salt []byte) []byte {
-	hash := sha256.Sum256(append([]byte(passphrase), salt...))
-	return hash[:]
+	mac := hmac.New(sha256.New, salt)
+	mac.Write([]byte(passphrase))
+	return mac.Sum(nil)
 }
 
 // Salt returns the current salt for persistence.
@@ -131,9 +134,7 @@ func (p *LocalCryptoProvider) Sign(ctx context.Context, keyID string, payload []
 		key = p.keys["local"]
 	}
 
-	// Use HMAC-SHA256 for local signing
-	h := sha256.New()
-	h.Write(key)
+	h := hmac.New(sha256.New, key)
 	h.Write(payload)
 	return h.Sum(nil), nil
 }

@@ -97,9 +97,6 @@ type AgentConfig struct {
 	// Model ID to use
 	Model string `mapstructure:"model" json:"model"`
 
-	// API key for the provider (supports ${ENV_VAR} substitution)
-	APIKey string `mapstructure:"apiKey" json:"apiKey"`
-
 	// Maximum tokens for context window
 	MaxTokens int `mapstructure:"maxTokens" json:"maxTokens"`
 
@@ -126,6 +123,11 @@ type ProviderConfig struct {
 
 	// Base URL for OpenAI-compatible providers
 	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
+
+	// OAuth configuration
+	ClientID     string   `mapstructure:"clientId" json:"clientId"`
+	ClientSecret string   `mapstructure:"clientSecret" json:"clientSecret"`
+	Scopes       []string `mapstructure:"scopes" json:"scopes"`
 }
 
 // ChannelsConfig holds all channel configurations
