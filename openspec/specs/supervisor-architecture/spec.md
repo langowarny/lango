@@ -1,20 +1,20 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Secret Isolation
-The Agent Runtime environment SHALL NOT contain any sensitive secrets (API Keys, Bot Tokens).
+The agent runtime SHALL have no direct access to API keys. The Supervisor SHALL hold provider credentials and proxy generation requests. This requirement is unchanged.
 
 #### Scenario: Runtime Initialization
-- **WHEN** the Agent Runtime is initialized
-- **THEN** it SHALL NOT receive API keys in its configuration
-- **AND** it SHALL NOT inherit environment variables containing secrets
+- **WHEN** the agent runtime is initialized
+- **THEN** it SHALL receive a `ProviderProxy` that delegates to the Supervisor
+- **THEN** API keys SHALL never be passed to the agent or tool execution environment
 
 ### Requirement: Supervisor Role
-A Supervisor component SHALL be responsible for managing the lifecycle of the Agent and holding all secrets.
+The Supervisor SHALL manage provider registry initialization and privileged exec tool execution. It SHALL NOT manage RPC crypto provider lifecycle. Crypto provider creation SHALL be handled optionally by the application layer only when security is explicitly configured.
 
 #### Scenario: Bootstrapping
-- **WHEN** the application starts
-- **THEN** the Supervisor SHALL be initialized first with full configuration
-- **AND** the Supervisor SHALL initialize the Agent Runtime
+- **WHEN** the Supervisor is created
+- **THEN** it SHALL initialize the provider registry and exec tool
+- **THEN** it SHALL NOT initialize any crypto or security components
 
 ### Requirement: Provider Proxy
 The Agent Runtime SHALL use a proxy mechanism to request AI generation from the Supervisor.

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Configuration file loading
 The system SHALL load configuration from JSON or YAML files with a priority chain.
@@ -27,29 +27,42 @@ The system SHALL substitute environment variables in configuration values.
 - **THEN** an error SHALL be logged and default used if available
 
 ### Requirement: Configuration validation
-The system SHALL validate configuration against a schema before use.
+The configuration system SHALL validate that at least one provider is configured with a non-empty `apiKey` or valid OAuth token. It SHALL validate that `agent.provider` references an existing key in the `providers` map. It SHALL NOT require `agent.apiKey` (this field no longer exists).
 
 #### Scenario: Valid configuration
-- **WHEN** configuration matches the expected schema
-- **THEN** the configuration SHALL be accepted
-- **AND** `providers` section SHALL be validated if present
-- **AND** `agent.provider` SHALL match a valid provider key if specified
-
-#### Scenario: Valid mult-provider configuration
-- **WHEN** `providers` map contains valid entries
-- **AND** `agent.provider` matches one of the entries
-- **THEN** validation succeeds even if legacy agent fields (like apiKey) are missing
+- **WHEN** config has `agent.provider: "google"` and `providers.google.type: "gemini"` with a valid `apiKey`
+- **THEN** validation SHALL pass
 
 #### Scenario: Invalid configuration
-- **WHEN** configuration has missing required fields or wrong types
-- **THEN** a validation error SHALL be returned with details
+- **WHEN** config has `agent.provider: "google"` but no `google` key in `providers` map
+- **THEN** validation SHALL fail with a clear error message
 
 ### Requirement: Default values
-The system SHALL apply sensible defaults for optional configuration fields.
+The configuration system SHALL apply sensible defaults for all non-credential fields. The minimum viable configuration SHALL require only: `agent.provider`, `providers.<name>.type`, `providers.<name>.apiKey`, and one channel's `enabled: true` + token. All other fields SHALL have defaults:
+- `server.host`: `"localhost"`
+- `server.port`: `18789`
+- `server.httpEnabled`: `true`
+- `server.wsEnabled`: `true`
+- `session.databasePath`: `"~/.lango/data.db"`
+- `session.maxHistoryTurns`: `100`
+- `logging.level`: `"info"`
+- `logging.format`: `"console"`
+- `agent.maxTokens`: `4096`
+- `agent.temperature`: `0.7`
+- `tools.exec.defaultTimeout`: `30s`
+- `tools.exec.allowBackground`: `true`
+- `tools.filesystem.maxReadSize`: `1048576` (1MB)
+- `tools.browser.headless`: `true`
+- `tools.browser.sessionTimeout`: `5m`
 
 #### Scenario: Missing optional field
-- **WHEN** an optional field is not specified
-- **THEN** the documented default value SHALL be used
+- **WHEN** a configuration field is not specified
+- **THEN** the system SHALL use the default value listed above
+- **THEN** no error or warning SHALL be emitted for missing optional fields
+
+#### Scenario: Minimal configuration startup
+- **WHEN** config contains only `agent.provider`, one provider entry with `type` and `apiKey`, and one channel with `enabled: true` and token
+- **THEN** the application SHALL start successfully with all defaults applied
 
 ### Requirement: Runtime configuration updates
 The system SHALL support reloading configuration without full restart.
@@ -85,3 +98,28 @@ The system SHALL allow selecting the active provider and model.
 #### Scenario: Default provider
 - **WHEN** `agent.provider` is missing but `providers` has entries
 - **THEN** the system SHALL adhere to a documented default behavior or return an error if ambiguous
+
+### Requirement: Knowledge Configuration Section
+The system SHALL support a `knowledge` section in the configuration for self-learning settings.
+
+#### Scenario: Knowledge config fields
+- **WHEN** `knowledge` section is present in configuration
+- **THEN** it SHALL support the following fields:
+  - `enabled` (bool): Enable the knowledge/learning system (default: false)
+  - `maxLearnings` (int): Maximum learning entries per session (default: 10)
+  - `maxKnowledge` (int): Maximum knowledge entries per session (default: 20)
+  - `maxContextPerLayer` (int): Maximum context items per layer in retrieval (default: 5)
+  - `autoApproveSkills` (bool): Auto-approve new skills without human review (default: false)
+  - `maxSkillsPerDay` (int): Maximum new skills per day
+
+#### Scenario: Knowledge disabled by default
+- **WHEN** `knowledge` section is omitted from configuration
+- **THEN** the system SHALL treat knowledge as disabled
+- **AND** no knowledge-related initialization SHALL occur
+
+#### Scenario: Knowledge config validation
+- **WHEN** `knowledge.enabled` is true
+- **THEN** the system SHALL apply default values for any omitted numeric fields
+- **AND** `maxLearnings` SHALL default to 10 if not specified or <= 0
+- **AND** `maxKnowledge` SHALL default to 20 if not specified or <= 0
+- **AND** `maxContextPerLayer` SHALL default to 5 if not specified or <= 0

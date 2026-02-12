@@ -12,10 +12,15 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/langowarny/lango/internal/ent/auditlog"
+	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
+	"github.com/langowarny/lango/internal/ent/knowledge"
+	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
+	"github.com/langowarny/lango/internal/ent/skill"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -76,10 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			key.Table:     key.ValidColumn,
-			message.Table: message.ValidColumn,
-			secret.Table:  secret.ValidColumn,
-			session.Table: session.ValidColumn,
+			auditlog.Table:    auditlog.ValidColumn,
+			externalref.Table: externalref.ValidColumn,
+			key.Table:         key.ValidColumn,
+			knowledge.Table:   knowledge.ValidColumn,
+			learning.Table:    learning.ValidColumn,
+			message.Table:     message.ValidColumn,
+			secret.Table:      secret.ValidColumn,
+			session.Table:     session.ValidColumn,
+			skill.Table:       skill.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

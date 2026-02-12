@@ -1,0 +1,250 @@
+package knowledge
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"go.uber.org/zap"
+)
+
+// ContextRetriever searches the 6 context layers and assembles augmented prompts.
+type ContextRetriever struct {
+	store        *Store
+	maxPerLayer  int
+	logger       *zap.SugaredLogger
+}
+
+// NewContextRetriever creates a new context retriever.
+func NewContextRetriever(store *Store, maxPerLayer int, logger *zap.SugaredLogger) *ContextRetriever {
+	if maxPerLayer <= 0 {
+		maxPerLayer = 5
+	}
+	return &ContextRetriever{
+		store:       store,
+		maxPerLayer: maxPerLayer,
+		logger:      logger,
+	}
+}
+
+// Retrieve searches the requested context layers and returns relevant items.
+func (r *ContextRetriever) Retrieve(ctx context.Context, req RetrievalRequest) (*RetrievalResult, error) {
+	result := &RetrievalResult{
+		Items: make(map[ContextLayer][]ContextItem),
+	}
+
+	maxPerLayer := req.MaxPerLayer
+	if maxPerLayer <= 0 {
+		maxPerLayer = r.maxPerLayer
+	}
+
+	layers := req.Layers
+	if len(layers) == 0 {
+		layers = []ContextLayer{
+			LayerUserKnowledge,
+			LayerSkillPatterns,
+			LayerExternalKnowledge,
+			LayerAgentLearnings,
+		}
+	}
+
+	keywords := extractKeywords(req.Query)
+	if len(keywords) == 0 {
+		return result, nil
+	}
+	searchQuery := strings.Join(keywords, " ")
+
+	for _, layer := range layers {
+		var items []ContextItem
+		var err error
+
+		switch layer {
+		case LayerUserKnowledge:
+			items, err = r.retrieveKnowledge(ctx, searchQuery, maxPerLayer)
+		case LayerSkillPatterns:
+			items, err = r.retrieveSkills(ctx, searchQuery, maxPerLayer)
+		case LayerExternalKnowledge:
+			items, err = r.retrieveExternalRefs(ctx, searchQuery, maxPerLayer)
+		case LayerAgentLearnings:
+			items, err = r.retrieveLearnings(ctx, searchQuery, maxPerLayer)
+		case LayerToolRegistry, LayerRuntimeContext:
+			continue // handled elsewhere
+		}
+
+		if err != nil {
+			r.logger.Warnw("context retrieval error", "layer", layer, "error", err)
+			continue
+		}
+
+		if len(items) > 0 {
+			result.Items[layer] = items
+			result.TotalItems += len(items)
+		}
+	}
+
+	return result, nil
+}
+
+// AssemblePrompt builds an augmented system prompt from base prompt and retrieved context.
+func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalResult) string {
+	if result == nil || result.TotalItems == 0 {
+		return basePrompt
+	}
+
+	var b strings.Builder
+	b.WriteString(basePrompt)
+
+	if items, ok := result.Items[LayerUserKnowledge]; ok && len(items) > 0 {
+		b.WriteString("\n\n## User Knowledge\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- [%s] %s: %s\n", item.Category, item.Key, item.Content))
+		}
+	}
+
+	if items, ok := result.Items[LayerAgentLearnings]; ok && len(items) > 0 {
+		b.WriteString("\n\n## Known Solutions\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- %s\n", item.Content))
+		}
+	}
+
+	if items, ok := result.Items[LayerSkillPatterns]; ok && len(items) > 0 {
+		b.WriteString("\n\n## Available Skills\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- %s: %s\n", item.Key, item.Content))
+		}
+	}
+
+	if items, ok := result.Items[LayerExternalKnowledge]; ok && len(items) > 0 {
+		b.WriteString("\n\n## External References\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- %s (%s): %s\n", item.Key, item.Source, item.Content))
+		}
+	}
+
+	return b.String()
+}
+
+func (r *ContextRetriever) retrieveKnowledge(ctx context.Context, query string, limit int) ([]ContextItem, error) {
+	entries, err := r.store.SearchKnowledge(ctx, query, "", limit)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]ContextItem, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, ContextItem{
+			Layer:    LayerUserKnowledge,
+			Key:      e.Key,
+			Content:  e.Content,
+			Category: e.Category,
+			Source:   e.Source,
+		})
+	}
+	return items, nil
+}
+
+func (r *ContextRetriever) retrieveSkills(ctx context.Context, query string, limit int) ([]ContextItem, error) {
+	skills, err := r.store.ListActiveSkills(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	queryLower := strings.ToLower(query)
+	var items []ContextItem
+	for _, sk := range skills {
+		if len(items) >= limit {
+			break
+		}
+		nameLower := strings.ToLower(sk.Name)
+		descLower := strings.ToLower(sk.Description)
+		if strings.Contains(nameLower, queryLower) || strings.Contains(descLower, queryLower) {
+			items = append(items, ContextItem{
+				Layer:    LayerSkillPatterns,
+				Key:      sk.Name,
+				Content:  sk.Description,
+				Category: sk.Type,
+			})
+		}
+	}
+	return items, nil
+}
+
+func (r *ContextRetriever) retrieveExternalRefs(ctx context.Context, query string, limit int) ([]ContextItem, error) {
+	refs, err := r.store.SearchExternalRefs(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]ContextItem, 0, len(refs))
+	for i, ref := range refs {
+		if i >= limit {
+			break
+		}
+		items = append(items, ContextItem{
+			Layer:   LayerExternalKnowledge,
+			Key:     ref.Name,
+			Content: ref.Summary,
+			Source:  ref.Location,
+		})
+	}
+	return items, nil
+}
+
+func (r *ContextRetriever) retrieveLearnings(ctx context.Context, query string, limit int) ([]ContextItem, error) {
+	learnings, err := r.store.SearchLearnings(ctx, query, "", limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []ContextItem
+	for _, l := range learnings {
+		content := l.Trigger
+		if l.Fix != "" {
+			content = fmt.Sprintf("When '%s' occurs: %s", l.Trigger, l.Fix)
+		}
+		items = append(items, ContextItem{
+			Layer:    LayerAgentLearnings,
+			Key:      l.Trigger,
+			Content:  content,
+			Category: l.Category,
+		})
+	}
+	return items, nil
+}
+
+// Common English stop words to filter from queries.
+var _stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "is": true, "are": true,
+	"was": true, "were": true, "be": true, "been": true, "being": true,
+	"have": true, "has": true, "had": true, "do": true, "does": true,
+	"did": true, "will": true, "would": true, "could": true, "should": true,
+	"may": true, "might": true, "can": true, "shall": true,
+	"to": true, "of": true, "in": true, "for": true, "on": true,
+	"with": true, "at": true, "by": true, "from": true, "as": true,
+	"into": true, "about": true, "between": true,
+	"and": true, "or": true, "but": true, "not": true, "no": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true,
+	"those": true, "my": true, "your": true, "his": true, "her": true,
+	"our": true, "their": true, "what": true, "which": true, "who": true,
+	"how": true, "when": true, "where": true, "why": true,
+	"i": true, "me": true, "we": true, "you": true, "he": true, "she": true, "they": true,
+}
+
+// extractKeywords extracts meaningful keywords from a query string.
+func extractKeywords(query string) []string {
+	words := strings.Fields(strings.ToLower(query))
+	var keywords []string
+	for _, w := range words {
+		// Remove punctuation
+		w = strings.Trim(w, ".,!?;:'\"()[]{}")
+		if len(w) < 2 {
+			continue
+		}
+		if _stopWords[w] {
+			continue
+		}
+		keywords = append(keywords, w)
+	}
+	return keywords
+}

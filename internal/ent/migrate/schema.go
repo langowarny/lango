@@ -8,6 +8,63 @@ import (
 )
 
 var (
+	// AuditLogsColumns holds the columns for the "audit_logs" table.
+	AuditLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString, Nullable: true},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "knowledge_search", "approval_request", "approval_response"}},
+		{Name: "actor", Type: field.TypeString},
+		{Name: "target", Type: field.TypeString, Nullable: true},
+		{Name: "details", Type: field.TypeJSON, Nullable: true},
+		{Name: "timestamp", Type: field.TypeTime},
+	}
+	// AuditLogsTable holds the schema information for the "audit_logs" table.
+	AuditLogsTable = &schema.Table{
+		Name:       "audit_logs",
+		Columns:    AuditLogsColumns,
+		PrimaryKey: []*schema.Column{AuditLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "auditlog_session_key",
+				Unique:  false,
+				Columns: []*schema.Column{AuditLogsColumns[1]},
+			},
+			{
+				Name:    "auditlog_action",
+				Unique:  false,
+				Columns: []*schema.Column{AuditLogsColumns[2]},
+			},
+			{
+				Name:    "auditlog_timestamp",
+				Unique:  false,
+				Columns: []*schema.Column{AuditLogsColumns[6]},
+			},
+		},
+	}
+	// ExternalRefsColumns holds the columns for the "external_refs" table.
+	ExternalRefsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "ref_type", Type: field.TypeEnum, Enums: []string{"url", "file", "mcp"}},
+		{Name: "location", Type: field.TypeString},
+		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ExternalRefsTable holds the schema information for the "external_refs" table.
+	ExternalRefsTable = &schema.Table{
+		Name:       "external_refs",
+		Columns:    ExternalRefsColumns,
+		PrimaryKey: []*schema.Column{ExternalRefsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "externalref_ref_type",
+				Unique:  false,
+				Columns: []*schema.Column{ExternalRefsColumns[2]},
+			},
+		},
+	}
 	// KeysColumns holds the columns for the "keys" table.
 	KeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -32,6 +89,65 @@ var (
 				Name:    "key_type",
 				Unique:  false,
 				Columns: []*schema.Column{KeysColumns[3]},
+			},
+		},
+	}
+	// KnowledgesColumns holds the columns for the "knowledges" table.
+	KnowledgesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "key", Type: field.TypeString, Unique: true},
+		{Name: "category", Type: field.TypeEnum, Enums: []string{"rule", "definition", "preference", "fact"}},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "tags", Type: field.TypeJSON, Nullable: true},
+		{Name: "source", Type: field.TypeString, Nullable: true},
+		{Name: "use_count", Type: field.TypeInt, Default: 0},
+		{Name: "relevance_score", Type: field.TypeFloat64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// KnowledgesTable holds the schema information for the "knowledges" table.
+	KnowledgesTable = &schema.Table{
+		Name:       "knowledges",
+		Columns:    KnowledgesColumns,
+		PrimaryKey: []*schema.Column{KnowledgesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "knowledge_category",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgesColumns[2]},
+			},
+		},
+	}
+	// LearningsColumns holds the columns for the "learnings" table.
+	LearningsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "trigger", Type: field.TypeString},
+		{Name: "error_pattern", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "diagnosis", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "fix", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "category", Type: field.TypeEnum, Enums: []string{"tool_error", "provider_error", "user_correction", "timeout", "permission", "general"}},
+		{Name: "tags", Type: field.TypeJSON, Nullable: true},
+		{Name: "occurrence_count", Type: field.TypeInt, Default: 1},
+		{Name: "success_count", Type: field.TypeInt, Default: 0},
+		{Name: "confidence", Type: field.TypeFloat64, Default: 0.5},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// LearningsTable holds the schema information for the "learnings" table.
+	LearningsTable = &schema.Table{
+		Name:       "learnings",
+		Columns:    LearningsColumns,
+		PrimaryKey: []*schema.Column{LearningsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "learning_category",
+				Unique:  false,
+				Columns: []*schema.Column{LearningsColumns[5]},
+			},
+			{
+				Name:    "learning_confidence",
+				Unique:  false,
+				Columns: []*schema.Column{LearningsColumns[9]},
 			},
 		},
 	}
@@ -119,12 +235,52 @@ var (
 			},
 		},
 	}
+	// SkillsColumns holds the columns for the "skills" table.
+	SkillsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "description", Type: field.TypeString, Size: 2147483647},
+		{Name: "skill_type", Type: field.TypeEnum, Enums: []string{"composite", "script", "template"}},
+		{Name: "definition", Type: field.TypeJSON},
+		{Name: "parameters", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "draft", "disabled"}, Default: "draft"},
+		{Name: "created_by", Type: field.TypeString, Nullable: true},
+		{Name: "use_count", Type: field.TypeInt, Default: 0},
+		{Name: "success_count", Type: field.TypeInt, Default: 0},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "requires_approval", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SkillsTable holds the schema information for the "skills" table.
+	SkillsTable = &schema.Table{
+		Name:       "skills",
+		Columns:    SkillsColumns,
+		PrimaryKey: []*schema.Column{SkillsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "skill_status",
+				Unique:  false,
+				Columns: []*schema.Column{SkillsColumns[6]},
+			},
+			{
+				Name:    "skill_skill_type",
+				Unique:  false,
+				Columns: []*schema.Column{SkillsColumns[3]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AuditLogsTable,
+		ExternalRefsTable,
 		KeysTable,
+		KnowledgesTable,
+		LearningsTable,
 		MessagesTable,
 		SecretsTable,
 		SessionsTable,
+		SkillsTable,
 	}
 )
 

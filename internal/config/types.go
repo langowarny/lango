@@ -28,8 +28,32 @@ type Config struct {
 	// Security configuration
 	Security SecurityConfig `mapstructure:"security" json:"security"`
 
+	// Knowledge configuration
+	Knowledge KnowledgeConfig `mapstructure:"knowledge" json:"knowledge"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+}
+
+// KnowledgeConfig defines self-learning knowledge system settings
+type KnowledgeConfig struct {
+	// Enable the knowledge/learning system
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Maximum learning entries per session
+	MaxLearnings int `mapstructure:"maxLearnings" json:"maxLearnings"`
+
+	// Maximum knowledge entries per session
+	MaxKnowledge int `mapstructure:"maxKnowledge" json:"maxKnowledge"`
+
+	// Maximum context items per layer in retrieval
+	MaxContextPerLayer int `mapstructure:"maxContextPerLayer" json:"maxContextPerLayer"`
+
+	// Auto-approve new skills without human review
+	AutoApproveSkills bool `mapstructure:"autoApproveSkills" json:"autoApproveSkills"`
+
+	// Maximum new skills per day
+	MaxSkillsPerDay int `mapstructure:"maxSkillsPerDay" json:"maxSkillsPerDay"`
 }
 
 // AuthConfig defines authentication settings

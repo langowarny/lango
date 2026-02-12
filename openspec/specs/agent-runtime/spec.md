@@ -1,32 +1,17 @@
-## ADDED Requirements
-
-### Requirement: Security Tools Registration
-The system SHALL register secrets and crypto tools during agent initialization.
-
-#### Scenario: Tools registered on startup
-- **WHEN** agent runtime is initialized
-- **THEN** the system SHALL register `secrets` tool with store, get, list, delete operations
-- **AND** SHALL register `crypto` tool with encrypt, decrypt, sign, hash, keys operations
-- **AND** SHALL ensure these tools work across all supported providers
-
-### Requirement: Sensitive Tool Configuration
-The system SHALL configure ApprovalMiddleware with security-sensitive tools.
-
-#### Scenario: secrets.get requires approval
-- **WHEN** agent runtime configures ApprovalMiddleware
-- **THEN** `secrets.get` SHALL be included in SensitiveTools list
-
-#### Scenario: crypto operations without approval
-- **WHEN** AI calls crypto.encrypt or crypto.decrypt
-- **THEN** the operation SHALL proceed without user approval
+## Requirements
 
 ### Requirement: Multi-Provider Support
-The agent runtime SHALL support multiple AI providers via the Provider Registry.
+The agent runtime SHALL delegate all LLM interactions to the ADK agent (`internal/adk/agent.go`). The legacy `Runtime.Run()` execution loop SHALL be removed. Type definitions (`Tool`, `ToolHandler`, `StreamEvent`, `Config`, `ParameterDef`, `AdkToolAdapter`) SHALL be retained for use by tool registration code.
 
 #### Scenario: Provider initialization
-- **WHEN** the agent runtime starts
-- **THEN** it SHALL initialize the configured provider from the registry
-- **AND** SHALL verify the provider is ready for use
+- **WHEN** the application creates an ADK agent
+- **THEN** it SHALL use `supervisor.NewProviderProxy()` and `adk.NewModelAdapter()` to bridge the provider to ADK
+- **THEN** the `adk.Agent.Run()` method SHALL be the only execution path for generating responses
+
+#### Scenario: Legacy runtime removal
+- **WHEN** code references `agent.Runtime`
+- **THEN** only type definitions and tool registration methods (`RegisterTool`, `GetTool`, `ListTools`, `ExecuteTool`) SHALL be available
+- **THEN** the `Run()` method SHALL NOT exist
 
 ### Requirement: Model Fallback execution
 The system SHALL execute model fallbacks when the primary provider fails.

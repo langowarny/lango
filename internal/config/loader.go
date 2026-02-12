@@ -50,6 +50,13 @@ func DefaultConfig() *Config {
 				SessionTimeout: 5 * time.Minute,
 			},
 		},
+		Knowledge: KnowledgeConfig{
+			Enabled:            false,
+			MaxLearnings:       10,
+			MaxKnowledge:       20,
+			MaxContextPerLayer: 5,
+			MaxSkillsPerDay:    5,
+		},
 	}
 }
 

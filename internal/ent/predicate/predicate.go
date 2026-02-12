@@ -6,8 +6,20 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AuditLog is the predicate function for auditlog builders.
+type AuditLog func(*sql.Selector)
+
+// ExternalRef is the predicate function for externalref builders.
+type ExternalRef func(*sql.Selector)
+
 // Key is the predicate function for key builders.
 type Key func(*sql.Selector)
+
+// Knowledge is the predicate function for knowledge builders.
+type Knowledge func(*sql.Selector)
+
+// Learning is the predicate function for learning builders.
+type Learning func(*sql.Selector)
 
 // Message is the predicate function for message builders.
 type Message func(*sql.Selector)
@@ -17,3 +29,6 @@ type Secret func(*sql.Selector)
 
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
+
+// Skill is the predicate function for skill builders.
+type Skill func(*sql.Selector)

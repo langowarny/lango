@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Provider Registration
 The system SHALL support dynamic registration of providers at startup.
@@ -46,3 +46,4 @@ The system SHALL support provider initialization from configuration.
 #### Scenario: Initialize from config
 - **WHEN** application starts with providers in configuration
 - **THEN** each configured provider SHALL be initialized and registered
+- **AND** MUST return a model compatible with the ADK Model interface

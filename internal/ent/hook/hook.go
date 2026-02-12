@@ -9,6 +9,30 @@ import (
 	"github.com/langowarny/lango/internal/ent"
 )
 
+// The AuditLogFunc type is an adapter to allow the use of ordinary
+// function as AuditLog mutator.
+type AuditLogFunc func(context.Context, *ent.AuditLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuditLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
+}
+
+// The ExternalRefFunc type is an adapter to allow the use of ordinary
+// function as ExternalRef mutator.
+type ExternalRefFunc func(context.Context, *ent.ExternalRefMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExternalRefFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExternalRefMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExternalRefMutation", m)
+}
+
 // The KeyFunc type is an adapter to allow the use of ordinary
 // function as Key mutator.
 type KeyFunc func(context.Context, *ent.KeyMutation) (ent.Value, error)
@@ -19,6 +43,30 @@ func (f KeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KeyMutation", m)
+}
+
+// The KnowledgeFunc type is an adapter to allow the use of ordinary
+// function as Knowledge mutator.
+type KnowledgeFunc func(context.Context, *ent.KnowledgeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f KnowledgeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.KnowledgeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KnowledgeMutation", m)
+}
+
+// The LearningFunc type is an adapter to allow the use of ordinary
+// function as Learning mutator.
+type LearningFunc func(context.Context, *ent.LearningMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LearningFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.LearningMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LearningMutation", m)
 }
 
 // The MessageFunc type is an adapter to allow the use of ordinary
@@ -55,6 +103,18 @@ func (f SessionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SessionMutation", m)
+}
+
+// The SkillFunc type is an adapter to allow the use of ordinary
+// function as Skill mutator.
+type SkillFunc func(context.Context, *ent.SkillMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SkillFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SkillMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SkillMutation", m)
 }
 
 // Condition is a hook condition function.

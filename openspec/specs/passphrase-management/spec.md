@@ -6,26 +6,24 @@ This capability defines how the user's passphrase for the Local Crypto Provider 
 ## Requirements
 
 ### Requirement: Interactive Passphrase Prompt
-The system SHALL prompt for passphrase via terminal instead of reading from config file.
+The passphrase prompt SHALL only be triggered when `security.signer.provider` is explicitly set to `"local"`. When security is not configured, the system SHALL skip passphrase initialization entirely without error. When security IS configured but passphrase initialization fails, the system SHALL log a warning and continue startup without security tools (non-blocking).
 
 #### Scenario: First-time passphrase setup
-- **WHEN** LocalCryptoProvider is initialized
-- **AND** no salt/checksum exists in database
-- **THEN** system prompts "Enter new passphrase: " with hidden input
-- **AND** prompts "Confirm passphrase: " for verification
-- **AND** stores salt and checksum in database
+- **WHEN** `security.signer.provider` is `"local"` and no salt exists and environment is interactive
+- **THEN** the system SHALL prompt for passphrase creation
+- **THEN** the system SHALL store salt and checksum
 
-#### Scenario: Subsequent passphrase entry
-- **WHEN** LocalCryptoProvider is initialized
-- **AND** salt/checksum exists in database
-- **THEN** system prompts "Enter passphrase: " with hidden input
-- **AND** validates against stored checksum
+#### Scenario: Security not configured
+- **WHEN** `security.signer.provider` is empty or not set
+- **THEN** the system SHALL skip all passphrase initialization
+- **THEN** the system SHALL log an info message about security being disabled
+- **THEN** the agent SHALL start normally without security tools
 
-#### Scenario: Passphrase mismatch
-- **WHEN** user enters incorrect passphrase
-- **THEN** system displays "Passphrase does not match. Please try again."
-- **AND** allows up to 3 retry attempts
-- **AND** exits with error after 3 failures
+#### Scenario: Passphrase initialization failure
+- **WHEN** `security.signer.provider` is `"local"` but passphrase cannot be obtained (non-interactive, no env var)
+- **THEN** the system SHALL log a warning
+- **THEN** the system SHALL continue startup without security tools
+- **THEN** the system SHALL NOT return an error or block startup
 
 ### Requirement: Passphrase Checksum Validation
 The system SHALL store a checksum to detect incorrect passphrase early.
@@ -61,9 +59,9 @@ The system SHALL provide a CLI command to migrate encrypted data to a new passph
 - **AND** preserves original encrypted data
 
 ### Requirement: Config Passphrase Deprecation
-The system SHALL ignore passphrase in config file and warn user.
+The `security.passphrase` config field SHALL be ignored. The `LANGO_PASSPHRASE` environment variable SHALL be the only supported method for providing passphrase non-interactively. A deprecation warning SHALL be logged if `security.passphrase` is set in config.
 
 #### Scenario: Passphrase in config detected
-- **WHEN** config file contains security.passphrase field
-- **THEN** system logs WARNING: "security.passphrase in config is deprecated and ignored. Passphrase will be prompted interactively."
-- **AND** does NOT use the config value
+- **WHEN** `security.passphrase` is set in config file
+- **THEN** the system SHALL log a deprecation warning
+- **THEN** the system SHALL NOT use the config value

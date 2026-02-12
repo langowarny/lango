@@ -12,14 +12,24 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// AuditLog is the client for interacting with the AuditLog builders.
+	AuditLog *AuditLogClient
+	// ExternalRef is the client for interacting with the ExternalRef builders.
+	ExternalRef *ExternalRefClient
 	// Key is the client for interacting with the Key builders.
 	Key *KeyClient
+	// Knowledge is the client for interacting with the Knowledge builders.
+	Knowledge *KnowledgeClient
+	// Learning is the client for interacting with the Learning builders.
+	Learning *LearningClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
 	// Secret is the client for interacting with the Secret builders.
 	Secret *SecretClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// Skill is the client for interacting with the Skill builders.
+	Skill *SkillClient
 
 	// lazily loaded.
 	client     *Client
@@ -151,10 +161,15 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.AuditLog = NewAuditLogClient(tx.config)
+	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)
+	tx.Knowledge = NewKnowledgeClient(tx.config)
+	tx.Learning = NewLearningClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.Skill = NewSkillClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
@@ -164,7 +179,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Key.QueryXXX(), the query will be executed
+// applies a query, for example: AuditLog.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

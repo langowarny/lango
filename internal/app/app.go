@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/tools/filesystem"
@@ -40,26 +41,48 @@ func New(cfg *config.Config) (*App, error) {
 		logger().Info("security disabled, set security.signer.provider to enable")
 	}
 
-	// 4. Tools (exec + filesystem only)
+	// 4. Base tools (exec + filesystem)
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
 	}
 	tools := buildTools(sv, fsConfig)
 
-	// 5. ADK Agent
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools)
+	// 5. Knowledge system (optional, non-blocking)
+	kc := initKnowledge(cfg, store, tools)
+	if kc != nil {
+		app.KnowledgeStore = kc.store
+		app.LearningEngine = kc.engine
+		app.SkillRegistry = kc.registry
+
+		// Wrap base tools with learning engine
+		wrapped := make([]*agent.Tool, len(tools))
+		for i, t := range tools {
+			wrapped[i] = wrapWithLearning(t, kc.engine)
+		}
+		tools = wrapped
+
+		// Add dynamic skills from registry
+		tools = append(tools, kc.registry.AllTools()...)
+
+		// Add meta-tools
+		metaTools := buildMetaTools(kc.store, kc.engine, kc.registry, cfg.Knowledge.AutoApproveSkills)
+		tools = append(tools, metaTools...)
+	}
+
+	// 6. ADK Agent
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
 	app.Agent = adkAgent
 
-	// 6. Channels
+	// 7. Channels
 	if err := app.initChannels(); err != nil {
 		logger().Errorw("failed to initialize channels", "error", err)
 	}
 
-	// 7. Gateway
+	// 8. Gateway
 	app.Gateway = initGateway(cfg, app.Agent, app.Store)
 
 	return app, nil

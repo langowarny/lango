@@ -6,17 +6,60 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langowarny/lango/internal/ent/auditlog"
+	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
+	"github.com/langowarny/lango/internal/ent/knowledge"
+	"github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/message"
 	"github.com/langowarny/lango/internal/ent/schema"
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
+	"github.com/langowarny/lango/internal/ent/skill"
 )
 
 // The init function reads all schema descriptors with runtime code
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	auditlogFields := schema.AuditLog{}.Fields()
+	_ = auditlogFields
+	// auditlogDescActor is the schema descriptor for actor field.
+	auditlogDescActor := auditlogFields[3].Descriptor()
+	// auditlog.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
+	auditlog.ActorValidator = auditlogDescActor.Validators[0].(func(string) error)
+	// auditlogDescTimestamp is the schema descriptor for timestamp field.
+	auditlogDescTimestamp := auditlogFields[6].Descriptor()
+	// auditlog.DefaultTimestamp holds the default value on creation for the timestamp field.
+	auditlog.DefaultTimestamp = auditlogDescTimestamp.Default.(func() time.Time)
+	// auditlogDescID is the schema descriptor for id field.
+	auditlogDescID := auditlogFields[0].Descriptor()
+	// auditlog.DefaultID holds the default value on creation for the id field.
+	auditlog.DefaultID = auditlogDescID.Default.(func() uuid.UUID)
+	externalrefFields := schema.ExternalRef{}.Fields()
+	_ = externalrefFields
+	// externalrefDescName is the schema descriptor for name field.
+	externalrefDescName := externalrefFields[1].Descriptor()
+	// externalref.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	externalref.NameValidator = externalrefDescName.Validators[0].(func(string) error)
+	// externalrefDescLocation is the schema descriptor for location field.
+	externalrefDescLocation := externalrefFields[3].Descriptor()
+	// externalref.LocationValidator is a validator for the "location" field. It is called by the builders before save.
+	externalref.LocationValidator = externalrefDescLocation.Validators[0].(func(string) error)
+	// externalrefDescCreatedAt is the schema descriptor for created_at field.
+	externalrefDescCreatedAt := externalrefFields[6].Descriptor()
+	// externalref.DefaultCreatedAt holds the default value on creation for the created_at field.
+	externalref.DefaultCreatedAt = externalrefDescCreatedAt.Default.(func() time.Time)
+	// externalrefDescUpdatedAt is the schema descriptor for updated_at field.
+	externalrefDescUpdatedAt := externalrefFields[7].Descriptor()
+	// externalref.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	externalref.DefaultUpdatedAt = externalrefDescUpdatedAt.Default.(func() time.Time)
+	// externalref.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	externalref.UpdateDefaultUpdatedAt = externalrefDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// externalrefDescID is the schema descriptor for id field.
+	externalrefDescID := externalrefFields[0].Descriptor()
+	// externalref.DefaultID holds the default value on creation for the id field.
+	externalref.DefaultID = externalrefDescID.Default.(func() uuid.UUID)
 	keyFields := schema.Key{}.Fields()
 	_ = keyFields
 	// keyDescName is the schema descriptor for name field.
@@ -35,6 +78,70 @@ func init() {
 	keyDescID := keyFields[0].Descriptor()
 	// key.DefaultID holds the default value on creation for the id field.
 	key.DefaultID = keyDescID.Default.(func() uuid.UUID)
+	knowledgeFields := schema.Knowledge{}.Fields()
+	_ = knowledgeFields
+	// knowledgeDescKey is the schema descriptor for key field.
+	knowledgeDescKey := knowledgeFields[1].Descriptor()
+	// knowledge.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	knowledge.KeyValidator = knowledgeDescKey.Validators[0].(func(string) error)
+	// knowledgeDescContent is the schema descriptor for content field.
+	knowledgeDescContent := knowledgeFields[3].Descriptor()
+	// knowledge.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	knowledge.ContentValidator = knowledgeDescContent.Validators[0].(func(string) error)
+	// knowledgeDescUseCount is the schema descriptor for use_count field.
+	knowledgeDescUseCount := knowledgeFields[6].Descriptor()
+	// knowledge.DefaultUseCount holds the default value on creation for the use_count field.
+	knowledge.DefaultUseCount = knowledgeDescUseCount.Default.(int)
+	// knowledgeDescRelevanceScore is the schema descriptor for relevance_score field.
+	knowledgeDescRelevanceScore := knowledgeFields[7].Descriptor()
+	// knowledge.DefaultRelevanceScore holds the default value on creation for the relevance_score field.
+	knowledge.DefaultRelevanceScore = knowledgeDescRelevanceScore.Default.(float64)
+	// knowledgeDescCreatedAt is the schema descriptor for created_at field.
+	knowledgeDescCreatedAt := knowledgeFields[8].Descriptor()
+	// knowledge.DefaultCreatedAt holds the default value on creation for the created_at field.
+	knowledge.DefaultCreatedAt = knowledgeDescCreatedAt.Default.(func() time.Time)
+	// knowledgeDescUpdatedAt is the schema descriptor for updated_at field.
+	knowledgeDescUpdatedAt := knowledgeFields[9].Descriptor()
+	// knowledge.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	knowledge.DefaultUpdatedAt = knowledgeDescUpdatedAt.Default.(func() time.Time)
+	// knowledge.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	knowledge.UpdateDefaultUpdatedAt = knowledgeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// knowledgeDescID is the schema descriptor for id field.
+	knowledgeDescID := knowledgeFields[0].Descriptor()
+	// knowledge.DefaultID holds the default value on creation for the id field.
+	knowledge.DefaultID = knowledgeDescID.Default.(func() uuid.UUID)
+	learningFields := schema.Learning{}.Fields()
+	_ = learningFields
+	// learningDescTrigger is the schema descriptor for trigger field.
+	learningDescTrigger := learningFields[1].Descriptor()
+	// learning.TriggerValidator is a validator for the "trigger" field. It is called by the builders before save.
+	learning.TriggerValidator = learningDescTrigger.Validators[0].(func(string) error)
+	// learningDescOccurrenceCount is the schema descriptor for occurrence_count field.
+	learningDescOccurrenceCount := learningFields[7].Descriptor()
+	// learning.DefaultOccurrenceCount holds the default value on creation for the occurrence_count field.
+	learning.DefaultOccurrenceCount = learningDescOccurrenceCount.Default.(int)
+	// learningDescSuccessCount is the schema descriptor for success_count field.
+	learningDescSuccessCount := learningFields[8].Descriptor()
+	// learning.DefaultSuccessCount holds the default value on creation for the success_count field.
+	learning.DefaultSuccessCount = learningDescSuccessCount.Default.(int)
+	// learningDescConfidence is the schema descriptor for confidence field.
+	learningDescConfidence := learningFields[9].Descriptor()
+	// learning.DefaultConfidence holds the default value on creation for the confidence field.
+	learning.DefaultConfidence = learningDescConfidence.Default.(float64)
+	// learningDescCreatedAt is the schema descriptor for created_at field.
+	learningDescCreatedAt := learningFields[10].Descriptor()
+	// learning.DefaultCreatedAt holds the default value on creation for the created_at field.
+	learning.DefaultCreatedAt = learningDescCreatedAt.Default.(func() time.Time)
+	// learningDescUpdatedAt is the schema descriptor for updated_at field.
+	learningDescUpdatedAt := learningFields[11].Descriptor()
+	// learning.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	learning.DefaultUpdatedAt = learningDescUpdatedAt.Default.(func() time.Time)
+	// learning.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	learning.UpdateDefaultUpdatedAt = learningDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// learningDescID is the schema descriptor for id field.
+	learningDescID := learningFields[0].Descriptor()
+	// learning.DefaultID holds the default value on creation for the id field.
+	learning.DefaultID = learningDescID.Default.(func() uuid.UUID)
 	messageFields := schema.Message{}.Fields()
 	_ = messageFields
 	// messageDescRole is the schema descriptor for role field.
@@ -85,4 +192,40 @@ func init() {
 	session.DefaultUpdatedAt = sessionDescUpdatedAt.Default.(func() time.Time)
 	// session.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	session.UpdateDefaultUpdatedAt = sessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	skillFields := schema.Skill{}.Fields()
+	_ = skillFields
+	// skillDescName is the schema descriptor for name field.
+	skillDescName := skillFields[1].Descriptor()
+	// skill.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	skill.NameValidator = skillDescName.Validators[0].(func(string) error)
+	// skillDescDescription is the schema descriptor for description field.
+	skillDescDescription := skillFields[2].Descriptor()
+	// skill.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	skill.DescriptionValidator = skillDescDescription.Validators[0].(func(string) error)
+	// skillDescUseCount is the schema descriptor for use_count field.
+	skillDescUseCount := skillFields[8].Descriptor()
+	// skill.DefaultUseCount holds the default value on creation for the use_count field.
+	skill.DefaultUseCount = skillDescUseCount.Default.(int)
+	// skillDescSuccessCount is the schema descriptor for success_count field.
+	skillDescSuccessCount := skillFields[9].Descriptor()
+	// skill.DefaultSuccessCount holds the default value on creation for the success_count field.
+	skill.DefaultSuccessCount = skillDescSuccessCount.Default.(int)
+	// skillDescRequiresApproval is the schema descriptor for requires_approval field.
+	skillDescRequiresApproval := skillFields[11].Descriptor()
+	// skill.DefaultRequiresApproval holds the default value on creation for the requires_approval field.
+	skill.DefaultRequiresApproval = skillDescRequiresApproval.Default.(bool)
+	// skillDescCreatedAt is the schema descriptor for created_at field.
+	skillDescCreatedAt := skillFields[12].Descriptor()
+	// skill.DefaultCreatedAt holds the default value on creation for the created_at field.
+	skill.DefaultCreatedAt = skillDescCreatedAt.Default.(func() time.Time)
+	// skillDescUpdatedAt is the schema descriptor for updated_at field.
+	skillDescUpdatedAt := skillFields[13].Descriptor()
+	// skill.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	skill.DefaultUpdatedAt = skillDescUpdatedAt.Default.(func() time.Time)
+	// skill.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	skill.UpdateDefaultUpdatedAt = skillDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// skillDescID is the schema descriptor for id field.
+	skillDescID := skillFields[0].Descriptor()
+	// skill.DefaultID holds the default value on creation for the id field.
+	skill.DefaultID = skillDescID.Default.(func() uuid.UUID)
 }

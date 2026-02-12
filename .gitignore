@@ -39,3 +39,5 @@ go.work.sum
 .cursor/
 .vscode/
 .claude/
+
+tmp/
