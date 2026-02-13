@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/langowarny/lango/internal/config"
@@ -50,5 +51,27 @@ func TestNew_SecurityDisabledByDefault(t *testing.T) {
 	_, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New() should succeed without security config, got: %v", err)
+	}
+}
+
+func TestNew_NoProviders(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = nil
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected error when no providers configured")
+	}
+}
+
+func TestNew_InvalidProviderType(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"test": {Type: "nonexistent", APIKey: "test-key"},
+	}
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid provider type")
 	}
 }
