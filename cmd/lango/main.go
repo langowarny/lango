@@ -14,6 +14,7 @@ import (
 	"github.com/langowarny/lango/internal/cli/auth"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	"github.com/langowarny/lango/internal/cli/onboard"
+	clisecurity "github.com/langowarny/lango/internal/cli/security"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
 )
@@ -39,6 +40,9 @@ func main() {
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
 	rootCmd.AddCommand(auth.NewCommand())
+	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
+		return config.Load(cfgFile)
+	}))
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

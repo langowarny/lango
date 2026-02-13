@@ -17,23 +17,28 @@ import (
 
 var logger = logging.SubsystemSugar("cli-security")
 
-// NewSecurityCmd creates the security command
-func NewSecurityCmd(cfg *config.Config) *cobra.Command {
+// NewSecurityCmd creates the security command with lazy config loading.
+func NewSecurityCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "security",
 		Short: "Manage security settings",
 	}
 
-	cmd.AddCommand(newMigratePassphraseCmd(cfg))
+	cmd.AddCommand(newMigratePassphraseCmd(cfgLoader))
 
 	return cmd
 }
 
-func newMigratePassphraseCmd(cfg *config.Config) *cobra.Command {
+func newMigratePassphraseCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate-passphrase",
 		Short: "Migrate encrypted data to a new passphrase",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := cfgLoader()
+			if err != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+
 			if cfg.Security.Signer.Provider != "local" {
 				return fmt.Errorf("this command is only available when using 'local' security provider")
 			}

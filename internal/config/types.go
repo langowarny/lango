@@ -172,8 +172,6 @@ type TelegramConfig struct {
 	// Allowed user/group IDs (empty = allow all)
 	Allowlist []int64 `mapstructure:"allowlist" json:"allowlist"`
 
-	// Enable pairing for unknown users
-	PairingEnabled bool `mapstructure:"pairingEnabled" json:"pairingEnabled"`
 }
 
 // DiscordConfig defines Discord bot settings

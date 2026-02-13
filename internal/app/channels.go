@@ -14,9 +14,8 @@ func (a *App) initChannels() error {
 	// Telegram
 	if a.Config.Channels.Telegram.Enabled {
 		tgConfig := telegram.Config{
-			BotToken:       a.Config.Channels.Telegram.BotToken,
-			Allowlist:      a.Config.Channels.Telegram.Allowlist,
-			PairingEnabled: a.Config.Channels.Telegram.PairingEnabled,
+			BotToken:  a.Config.Channels.Telegram.BotToken,
+			Allowlist: a.Config.Channels.Telegram.Allowlist,
 		}
 		tgChannel, err := telegram.New(tgConfig)
 		if err != nil {

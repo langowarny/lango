@@ -7,13 +7,33 @@ import (
 	"time"
 
 	"github.com/langowarny/lango/internal/agent"
+	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/skill"
 	"github.com/langowarny/lango/internal/supervisor"
 	"github.com/langowarny/lango/internal/tools/browser"
+	toolcrypto "github.com/langowarny/lango/internal/tools/crypto"
 	"github.com/langowarny/lango/internal/tools/filesystem"
+	toolsecrets "github.com/langowarny/lango/internal/tools/secrets"
 )
+
+// sessionKeyCtxKey is the context key type for session keys.
+type sessionKeyCtxKey struct{}
+
+// WithSessionKey adds a session key to the context.
+func WithSessionKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, sessionKeyCtxKey{}, key)
+}
+
+// SessionKeyFromContext extracts the session key from context.
+func SessionKeyFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(sessionKeyCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // buildTools creates the set of tools available to the agent.
 // When browserSM is non-nil, browser tools are included.
@@ -674,8 +694,165 @@ func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
 		Parameters:  t.Parameters,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			result, err := original(ctx, params)
-			engine.OnToolResult(ctx, "", t.Name, params, result, err)
+			sessionKey := SessionKeyFromContext(ctx)
+			engine.OnToolResult(ctx, sessionKey, t.Name, params, result, err)
 			return result, err
+		},
+	}
+}
+
+// buildCryptoTools wraps crypto.Tool methods as agent tools.
+func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry) []*agent.Tool {
+	ct := toolcrypto.New(crypto, keys)
+	return []*agent.Tool{
+		{
+			Name:        "crypto_encrypt",
+			Description: "Encrypt data using a registered key",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"data":  map[string]interface{}{"type": "string", "description": "The data to encrypt"},
+					"keyId": map[string]interface{}{"type": "string", "description": "Key ID to use (default: default key)"},
+				},
+				"required": []string{"data"},
+			},
+			Handler: ct.Encrypt,
+		},
+		{
+			Name:        "crypto_decrypt",
+			Description: "Decrypt data using a registered key",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"ciphertext": map[string]interface{}{"type": "string", "description": "Base64-encoded ciphertext to decrypt"},
+					"keyId":      map[string]interface{}{"type": "string", "description": "Key ID to use (default: default key)"},
+				},
+				"required": []string{"ciphertext"},
+			},
+			Handler: ct.Decrypt,
+		},
+		{
+			Name:        "crypto_sign",
+			Description: "Generate a digital signature for data",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"data":  map[string]interface{}{"type": "string", "description": "The data to sign"},
+					"keyId": map[string]interface{}{"type": "string", "description": "Key ID to use"},
+				},
+				"required": []string{"data"},
+			},
+			Handler: ct.Sign,
+		},
+		{
+			Name:        "crypto_hash",
+			Description: "Compute a cryptographic hash of data",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"data":      map[string]interface{}{"type": "string", "description": "The data to hash"},
+					"algorithm": map[string]interface{}{"type": "string", "description": "Hash algorithm: sha256 or sha512", "enum": []string{"sha256", "sha512"}},
+				},
+				"required": []string{"data"},
+			},
+			Handler: ct.Hash,
+		},
+		{
+			Name:        "crypto_keys",
+			Description: "List all registered cryptographic keys",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: ct.Keys,
+		},
+	}
+}
+
+// buildSecretsTools wraps secrets.Tool methods as agent tools.
+func buildSecretsTools(secretsStore *security.SecretsStore) []*agent.Tool {
+	st := toolsecrets.New(secretsStore)
+	return []*agent.Tool{
+		{
+			Name:        "secrets_store",
+			Description: "Encrypt and store a secret value",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name":  map[string]interface{}{"type": "string", "description": "Unique name for the secret"},
+					"value": map[string]interface{}{"type": "string", "description": "The secret value to store"},
+				},
+				"required": []string{"name", "value"},
+			},
+			Handler: st.Store,
+		},
+		{
+			Name:        "secrets_get",
+			Description: "Retrieve and decrypt a stored secret",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{"type": "string", "description": "Name of the secret to retrieve"},
+				},
+				"required": []string{"name"},
+			},
+			Handler: st.Get,
+		},
+		{
+			Name:        "secrets_list",
+			Description: "List all stored secrets (metadata only, no values)",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+			Handler: st.List,
+		},
+		{
+			Name:        "secrets_delete",
+			Description: "Delete a stored secret",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{"type": "string", "description": "Name of the secret to delete"},
+				},
+				"required": []string{"name"},
+			},
+			Handler: st.Delete,
+		},
+	}
+}
+
+// wrapWithApproval wraps a tool to require companion approval if it's in the sensitive tools list.
+// Uses fail-open: if no companion is connected, logs a warning and proceeds.
+func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server) *agent.Tool {
+	isSensitive := false
+	for _, name := range sensitiveTools {
+		if name == t.Name {
+			isSensitive = true
+			break
+		}
+	}
+	if !isSensitive {
+		return t
+	}
+
+	original := t.Handler
+	return &agent.Tool{
+		Name:        t.Name,
+		Description: t.Description,
+		Parameters:  t.Parameters,
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if gw.HasCompanions() {
+				approved, err := gw.RequestApproval(ctx, fmt.Sprintf("Tool '%s' requires approval", t.Name))
+				if err != nil {
+					logger().Warnw("approval request error, proceeding (fail-open)", "tool", t.Name, "error", err)
+				} else if !approved {
+					return nil, fmt.Errorf("tool '%s' execution denied by companion", t.Name)
+				}
+			} else {
+				logger().Warnw("sensitive tool executed without companion approval (no companion connected)", "tool", t.Name)
+			}
+			return original(ctx, params)
 		},
 	}
 }

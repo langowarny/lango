@@ -17,10 +17,9 @@ func logger() *zap.SugaredLogger { return logging.Channel().Named("telegram") }
 
 // Config holds Telegram channel configuration
 type Config struct {
-	BotToken       string
-	Allowlist      []int64 // allowed user/chat IDs (empty = all)
-	PairingEnabled bool
-	APIEndpoint    string       // optional, for testing
+	BotToken    string
+	Allowlist   []int64      // allowed user/chat IDs (empty = all)
+	APIEndpoint string       // optional, for testing
 	HTTPClient     *http.Client // optional, for testing
 	Bot            BotAPI       // optional, for testing
 }

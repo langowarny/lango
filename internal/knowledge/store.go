@@ -28,25 +28,32 @@ type Store struct {
 	mu              sync.Mutex
 	knowledgeCounts map[string]int
 	learningCounts  map[string]int
+	dailySkillCounts map[string]int
 	maxKnowledge    int
 	maxLearnings    int
+	maxSkillsPerDay int
 }
 
 // NewStore creates a new knowledge store.
-func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLearnings int) *Store {
+func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLearnings, maxSkillsPerDay int) *Store {
 	if maxKnowledge <= 0 {
 		maxKnowledge = 20
 	}
 	if maxLearnings <= 0 {
 		maxLearnings = 10
 	}
+	if maxSkillsPerDay <= 0 {
+		maxSkillsPerDay = 5
+	}
 	return &Store{
-		client:          client,
-		logger:          logger,
-		knowledgeCounts: make(map[string]int),
-		learningCounts:  make(map[string]int),
-		maxKnowledge:    maxKnowledge,
-		maxLearnings:    maxLearnings,
+		client:           client,
+		logger:           logger,
+		knowledgeCounts:  make(map[string]int),
+		learningCounts:   make(map[string]int),
+		dailySkillCounts: make(map[string]int),
+		maxKnowledge:     maxKnowledge,
+		maxLearnings:     maxLearnings,
+		maxSkillsPerDay:  maxSkillsPerDay,
 	}
 }
 
@@ -316,6 +323,10 @@ func (s *Store) BoostLearningConfidence(ctx context.Context, id uuid.UUID, succe
 
 // SaveSkill creates a new skill (default draft status).
 func (s *Store) SaveSkill(ctx context.Context, entry SkillEntry) error {
+	if err := s.reserveSkillSlot(); err != nil {
+		return err
+	}
+
 	builder := s.client.Skill.Create().
 		SetName(entry.Name).
 		SetDescription(entry.Description).
@@ -549,5 +560,19 @@ func (s *Store) reserveLearningSlot(sessionKey string) error {
 		return fmt.Errorf("learning save limit reached for session (%d/%d)", s.maxLearnings, s.maxLearnings)
 	}
 	s.learningCounts[sessionKey]++
+	return nil
+}
+
+func (s *Store) reserveSkillSlot() error {
+	if s.maxSkillsPerDay <= 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	today := time.Now().Format("2006-01-02")
+	if s.dailySkillCounts[today] >= s.maxSkillsPerDay {
+		return fmt.Errorf("daily skill creation limit reached (%d/%d)", s.maxSkillsPerDay, s.maxSkillsPerDay)
+	}
+	s.dailySkillCounts[today]++
 	return nil
 }

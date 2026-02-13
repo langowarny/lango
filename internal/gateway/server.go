@@ -306,11 +306,11 @@ func (s *Server) setupRoutes() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(middleware.RequestID)
 
-	// Health check
-	s.router.Get("/health", s.handleHealth)
-
-	// Status endpoint
-	s.router.Get("/status", s.handleStatus)
+	// HTTP API endpoints (conditional)
+	if s.config.HTTPEnabled {
+		s.router.Get("/health", s.handleHealth)
+		s.router.Get("/status", s.handleStatus)
+	}
 
 	// WebSocket endpoint
 	if s.config.WebSocketEnabled {
@@ -324,6 +324,11 @@ func (s *Server) setupRoutes() {
 	if s.auth != nil {
 		s.auth.RegisterRoutes(s.router)
 	}
+}
+
+// SetAgent sets the agent on the server (used for deferred wiring).
+func (s *Server) SetAgent(agent *adk.Agent) {
+	s.agent = agent
 }
 
 // RegisterHandler registers an RPC method handler
@@ -544,6 +549,19 @@ func (c *Client) Close() {
 		close(c.Send)
 		c.Conn.Close()
 	}
+}
+
+// HasCompanions returns true if at least one companion client is connected.
+func (s *Server) HasCompanions() bool {
+	s.clientsMu.RLock()
+	defer s.clientsMu.RUnlock()
+
+	for _, c := range s.clients {
+		if c.Type == "companion" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) removeClient(id string) {

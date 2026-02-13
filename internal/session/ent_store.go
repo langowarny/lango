@@ -36,12 +36,28 @@ func WithPassphrase(passphrase string) StoreOption {
 	}
 }
 
+// WithMaxHistoryTurns limits the number of messages kept per session.
+func WithMaxHistoryTurns(n int) StoreOption {
+	return func(s *EntStore) {
+		s.maxHistoryTurns = n
+	}
+}
+
+// WithTTL sets the session time-to-live.
+func WithTTL(d time.Duration) StoreOption {
+	return func(s *EntStore) {
+		s.ttl = d
+	}
+}
+
 // EntStore implements Store using entgo.io
 type EntStore struct {
-	client     *ent.Client
-	db         *sql.DB
-	mu         sync.RWMutex
-	passphrase string
+	client          *ent.Client
+	db              *sql.DB
+	mu              sync.RWMutex
+	passphrase      string
+	maxHistoryTurns int
+	ttl             time.Duration
 }
 
 // NewEntStore creates a new ent-backed session store
@@ -205,6 +221,11 @@ func (s *EntStore) Get(key string) (*Session, error) {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
+	// Check TTL
+	if s.ttl > 0 && time.Since(entSession.UpdatedAt) > s.ttl {
+		return nil, fmt.Errorf("session expired: %s", key)
+	}
+
 	return s.entToSession(entSession), nil
 }
 
@@ -336,7 +357,31 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 
 	// Update session timestamp
 	_, err = entSession.Update().SetUpdatedAt(time.Now()).Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Trim excess messages if maxHistoryTurns is configured
+	if s.maxHistoryTurns > 0 {
+		msgCount, err := s.client.Message.Query().
+			Where(message.HasSessionWith(entsession.Key(key))).
+			Count(ctx)
+		if err == nil && msgCount > s.maxHistoryTurns {
+			// Get IDs of oldest messages to delete
+			oldest, err := s.client.Message.Query().
+				Where(message.HasSessionWith(entsession.Key(key))).
+				Order(message.ByTimestamp()).
+				Limit(msgCount - s.maxHistoryTurns).
+				IDs(ctx)
+			if err == nil && len(oldest) > 0 {
+				_, _ = s.client.Message.Delete().
+					Where(message.IDIn(oldest...)).
+					Exec(ctx)
+			}
+		}
+	}
+
+	return nil
 }
 
 // Close closes the ent client

@@ -65,6 +65,16 @@ func New(cfg *config.Config) (*App, error) {
 
 	tools := buildTools(sv, fsConfig, browserSM)
 
+	// 4b. Crypto/Secrets tools (if security is enabled)
+	if app.Crypto != nil && app.Keys != nil {
+		tools = append(tools, buildCryptoTools(app.Crypto, app.Keys)...)
+		logger().Info("crypto tools registered")
+	}
+	if app.Secrets != nil {
+		tools = append(tools, buildSecretsTools(app.Secrets)...)
+		logger().Info("secrets tools registered")
+	}
+
 	// 5. Knowledge system (optional, non-blocking)
 	kc := initKnowledge(cfg, store, tools)
 	if kc != nil {
@@ -87,20 +97,34 @@ func New(cfg *config.Config) (*App, error) {
 		tools = append(tools, metaTools...)
 	}
 
-	// 6. ADK Agent
+	// 6. Auth
+	auth := initAuth(cfg, store)
+
+	// 7. Gateway (created before agent so we can wire approval)
+	app.Gateway = initGateway(cfg, nil, app.Store, auth)
+
+	// 8. Tool approval wrapper (if configured)
+	if cfg.Security.Interceptor.ApprovalRequired && len(cfg.Security.Interceptor.SensitiveTools) > 0 {
+		for i, t := range tools {
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor.SensitiveTools, app.Gateway)
+		}
+		logger().Infow("tool approval enabled", "sensitiveTools", cfg.Security.Interceptor.SensitiveTools)
+	}
+
+	// 9. ADK Agent
 	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
 	app.Agent = adkAgent
 
-	// 7. Channels
+	// Update gateway with the created agent
+	app.Gateway.SetAgent(adkAgent)
+
+	// 10. Channels
 	if err := app.initChannels(); err != nil {
 		logger().Errorw("failed to initialize channels", "error", err)
 	}
-
-	// 8. Gateway
-	app.Gateway = initGateway(cfg, app.Agent, app.Store)
 
 	return app, nil
 }

@@ -22,6 +22,24 @@ import (
 
 const _defaultSystemPrompt = "You are Lango, a powerful AI assistant. You have access to tools for shell command execution and file system operations. Use them when appropriate to help the user."
 
+// loadSystemPrompt returns the system prompt from file or the default.
+func loadSystemPrompt(path string) string {
+	if path == "" {
+		return _defaultSystemPrompt
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logger().Warnw("system prompt file not found, using default", "path", path, "error", err)
+		return _defaultSystemPrompt
+	}
+	prompt := string(data)
+	if prompt == "" {
+		return _defaultSystemPrompt
+	}
+	logger().Infow("loaded custom system prompt", "path", path)
+	return prompt
+}
+
 // initSupervisor creates and initializes the Supervisor.
 func initSupervisor(cfg *config.Config) (*supervisor.Supervisor, error) {
 	logger().Info("initializing supervisor...")
@@ -42,6 +60,12 @@ func initSessionStore(cfg *config.Config) (session.Store, error) {
 	var storeOpts []session.StoreOption
 	if passphrase != "" {
 		storeOpts = append(storeOpts, session.WithPassphrase(passphrase))
+	}
+	if cfg.Session.MaxHistoryTurns > 0 {
+		storeOpts = append(storeOpts, session.WithMaxHistoryTurns(cfg.Session.MaxHistoryTurns))
+	}
+	if cfg.Session.TTL > 0 {
+		storeOpts = append(storeOpts, session.WithTTL(cfg.Session.TTL))
 	}
 
 	logger().Info("initializing session store...")
@@ -166,6 +190,7 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 		client, kLogger,
 		cfg.Knowledge.MaxKnowledge,
 		cfg.Knowledge.MaxLearnings,
+		cfg.Knowledge.MaxSkillsPerDay,
 	)
 
 	engine := learning.NewEngine(kStore, kLogger)
@@ -188,6 +213,22 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 	}
 }
 
+// initAuth creates the auth manager if OIDC providers are configured.
+func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
+	if len(cfg.Auth.Providers) == 0 {
+		return nil
+	}
+
+	auth, err := gateway.NewAuthManager(cfg.Auth, store)
+	if err != nil {
+		logger().Warnw("auth manager init error, skipping", "error", err)
+		return nil
+	}
+
+	logger().Info("auth manager initialized")
+	return auth
+}
+
 // initAgent creates the ADK agent with the given tools and provider proxy.
 func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents) (*adk.Agent, error) {
 	// Adapt tools to ADK format
@@ -201,9 +242,23 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		adkTools = append(adkTools, at)
 	}
 
-	// Create provider proxy and model adapter
-	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model)
+	// Create provider proxy with temperature, maxTokens, and fallback options
+	var proxyOpts []supervisor.ProxyOption
+	if cfg.Agent.Temperature != 0 {
+		proxyOpts = append(proxyOpts, supervisor.WithTemperature(cfg.Agent.Temperature))
+	}
+	if cfg.Agent.MaxTokens != 0 {
+		proxyOpts = append(proxyOpts, supervisor.WithMaxTokens(cfg.Agent.MaxTokens))
+	}
+	if cfg.Agent.FallbackProvider != "" {
+		proxyOpts = append(proxyOpts, supervisor.WithFallback(cfg.Agent.FallbackProvider, cfg.Agent.FallbackModel))
+	}
+
+	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model, proxyOpts...)
 	modelAdapter := adk.NewModelAdapter(proxy)
+
+	// Load system prompt (from file or default)
+	systemPrompt := loadSystemPrompt(cfg.Agent.SystemPromptPath)
 
 	// If knowledge is enabled, wrap with context-aware adapter
 	var llm model.LLM = modelAdapter
@@ -213,7 +268,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			cfg.Knowledge.MaxContextPerLayer,
 			logger(),
 		)
-		llm = adk.NewContextAwareModelAdapter(modelAdapter, retriever, _defaultSystemPrompt, logger())
+		llm = adk.NewContextAwareModelAdapter(modelAdapter, retriever, systemPrompt, logger())
 	}
 
 	// If PII redaction is enabled, wrap with PII-redacting adapter
@@ -228,7 +283,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	}
 
 	logger().Info("initializing agent runtime (ADK)...")
-	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, _defaultSystemPrompt, store)
+	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
 	}
@@ -236,11 +291,11 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 }
 
 // initGateway creates the gateway server.
-func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store) *gateway.Server {
+func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, auth *gateway.AuthManager) *gateway.Server {
 	return gateway.New(gateway.Config{
 		Host:             cfg.Server.Host,
 		Port:             cfg.Server.Port,
 		HTTPEnabled:      cfg.Server.HTTPEnabled,
 		WebSocketEnabled: cfg.Server.WebSocketEnabled,
-	}, adkAgent, nil, store, nil)
+	}, adkAgent, nil, store, auth)
 }
