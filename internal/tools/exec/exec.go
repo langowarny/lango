@@ -14,6 +14,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/security"
 )
 
 var logger = logging.SubsystemSugar("tool.exec")
@@ -25,6 +26,7 @@ type Config struct {
 	WorkDir         string
 	EnvFilter       []string // environment variables to exclude
 	EnvWhitelist    []string // if set, ONLY these vars are allowed
+	Refs            *security.RefStore // secret reference token resolver
 }
 
 // Tool provides shell command execution
@@ -65,6 +67,16 @@ func New(cfg Config) *Tool {
 	}
 }
 
+// resolveRefs resolves any secret reference tokens in the command string.
+// Tokens like {{secret:name}} and {{decrypt:id}} are replaced with actual values
+// just before execution. The resolved command is never logged or returned to the agent.
+func (t *Tool) resolveRefs(command string) string {
+	if t.config.Refs == nil {
+		return command
+	}
+	return t.config.Refs.ResolveAll(command)
+}
+
 // Run executes a command synchronously
 func (t *Tool) Run(ctx context.Context, command string, timeout time.Duration) (*Result, error) {
 	if timeout == 0 {
@@ -74,7 +86,10 @@ func (t *Tool) Run(ctx context.Context, command string, timeout time.Duration) (
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	// Resolve secret reference tokens just before execution.
+	// The resolved command is never logged or sent back to the agent.
+	resolved := t.resolveRefs(command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", resolved)
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 
@@ -117,7 +132,8 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	resolved := t.resolveRefs(command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", resolved)
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 
@@ -174,7 +190,8 @@ func (t *Tool) StartBackground(command string) (string, error) {
 
 	id := fmt.Sprintf("bg-%d", time.Now().UnixNano())
 
-	cmd := exec.Command("sh", "-c", command)
+	resolved := t.resolveRefs(command)
+	cmd := exec.Command("sh", "-c", resolved)
 	cmd.Dir = t.config.WorkDir
 	cmd.Env = t.filterEnv(os.Environ())
 

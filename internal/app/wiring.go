@@ -230,7 +230,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -278,7 +278,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			RedactPhone: true,
 			CustomRegex: cfg.Security.Interceptor.PIIRegexPatterns,
 		})
-		llm = adk.NewPIIRedactingModelAdapter(llm, redactor)
+		llm = adk.NewPIIRedactingModelAdapter(llm, redactor, scanner)
 		logger().Info("PII redaction interceptor enabled")
 	}
 

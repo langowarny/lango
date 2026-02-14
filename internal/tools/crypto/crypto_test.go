@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/langowarny/lango/internal/ent/enttest"
@@ -37,7 +38,8 @@ func TestCryptoTool_Hash(t *testing.T) {
 
 	mock := &mockCryptoProvider{}
 	registry := security.NewKeyRegistry(client)
-	tool := New(mock, registry)
+	refs := security.NewRefStore()
+	tool := New(mock, registry, refs, nil)
 	ctx := context.Background()
 
 	// Compute expected sha256 hash of "hello"
@@ -116,6 +118,8 @@ func TestCryptoTool_Encrypt(t *testing.T) {
 		t.Fatalf("register key: %v", err)
 	}
 
+	refs := security.NewRefStore()
+
 	// Mock returns reversed bytes
 	mock := &mockCryptoProvider{
 		encryptFn: func(_ context.Context, _ string, plaintext []byte) ([]byte, error) {
@@ -126,7 +130,7 @@ func TestCryptoTool_Encrypt(t *testing.T) {
 			return reversed, nil
 		},
 	}
-	tool := New(mock, registry)
+	tool := New(mock, registry, refs, nil)
 
 	tests := []struct {
 		give      string
@@ -184,7 +188,7 @@ func TestCryptoTool_Encrypt(t *testing.T) {
 				return nil, fmt.Errorf("provider failure")
 			},
 		}
-		errTool := New(errMock, registry)
+		errTool := New(errMock, registry, refs, nil)
 		_, err := errTool.Encrypt(ctx, map[string]interface{}{"data": "hello"})
 		if err == nil {
 			t.Fatal("expected error from provider failure")
@@ -201,6 +205,8 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
 		t.Fatalf("register key: %v", err)
 	}
+
+	refs := security.NewRefStore()
 
 	// Mock: encrypt reverses, decrypt reverses back
 	mock := &mockCryptoProvider{
@@ -219,9 +225,9 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 			return reversed, nil
 		},
 	}
-	tool := New(mock, registry)
+	tool := New(mock, registry, refs, nil)
 
-	t.Run("round trip encrypt then decrypt", func(t *testing.T) {
+	t.Run("decrypt returns reference token", func(t *testing.T) {
 		encResult, err := tool.Encrypt(ctx, map[string]interface{}{"data": "secret"})
 		if err != nil {
 			t.Fatalf("encrypt: %v", err)
@@ -234,8 +240,23 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 			t.Fatalf("decrypt: %v", err)
 		}
 		decMap := decResult.(map[string]interface{})
-		if decMap["data"] != "secret" {
-			t.Errorf("round trip: want %q, got %q", "secret", decMap["data"])
+
+		// Value should be a reference token, not plaintext
+		dataStr, ok := decMap["data"].(string)
+		if !ok {
+			t.Fatalf("expected data to be string, got %T", decMap["data"])
+		}
+		if !strings.HasPrefix(dataStr, "{{decrypt:") || !strings.HasSuffix(dataStr, "}}") {
+			t.Errorf("expected reference token {{decrypt:...}}, got %q", dataStr)
+		}
+
+		// RefStore should resolve the token to actual plaintext
+		val, ok := refs.Resolve(dataStr)
+		if !ok {
+			t.Fatalf("RefStore could not resolve %q", dataStr)
+		}
+		if string(val) != "secret" {
+			t.Errorf("resolved value: want %q, got %q", "secret", val)
 		}
 	})
 
@@ -259,7 +280,7 @@ func TestCryptoTool_Decrypt(t *testing.T) {
 				return nil, fmt.Errorf("decrypt failure")
 			},
 		}
-		errTool := New(errMock, registry)
+		errTool := New(errMock, registry, refs, nil)
 		validB64 := base64.StdEncoding.EncodeToString([]byte("data"))
 		_, err := errTool.Decrypt(ctx, map[string]interface{}{"ciphertext": validB64})
 		if err == nil {
@@ -274,6 +295,7 @@ func TestCryptoTool_Sign(t *testing.T) {
 
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(client)
+	refs := security.NewRefStore()
 
 	fixedSig := []byte("fixed-signature-bytes")
 	mock := &mockCryptoProvider{
@@ -281,7 +303,7 @@ func TestCryptoTool_Sign(t *testing.T) {
 			return fixedSig, nil
 		},
 	}
-	tool := New(mock, registry)
+	tool := New(mock, registry, refs, nil)
 
 	tests := []struct {
 		give      string
@@ -332,8 +354,9 @@ func TestCryptoTool_Keys(t *testing.T) {
 
 	ctx := context.Background()
 	registry := security.NewKeyRegistry(client)
+	refs := security.NewRefStore()
 	mock := &mockCryptoProvider{}
-	tool := New(mock, registry)
+	tool := New(mock, registry, refs, nil)
 
 	// Register 2 keys
 	if _, err := registry.RegisterKey(ctx, "key1", "remote1", security.KeyTypeEncryption); err != nil {

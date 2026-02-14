@@ -9,7 +9,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func newTestSecretsTool(t *testing.T) *Tool {
+func newTestSecretsTool(t *testing.T) (*Tool, *security.RefStore) {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
@@ -24,12 +24,13 @@ func newTestSecretsTool(t *testing.T) *Tool {
 		t.Fatalf("register key: %v", err)
 	}
 
+	refs := security.NewRefStore()
 	store := security.NewSecretsStore(client, registry, crypto)
-	return New(store)
+	return New(store, refs, nil), refs
 }
 
 func TestSecretsTool_Store(t *testing.T) {
-	tool := newTestSecretsTool(t)
+	tool, _ := newTestSecretsTool(t)
 	ctx := context.Background()
 
 	tests := []struct {
@@ -77,7 +78,7 @@ func TestSecretsTool_Store(t *testing.T) {
 }
 
 func TestSecretsTool_Get(t *testing.T) {
-	tool := newTestSecretsTool(t)
+	tool, refs := newTestSecretsTool(t)
 	ctx := context.Background()
 
 	// Store a secret first
@@ -93,9 +94,9 @@ func TestSecretsTool_Get(t *testing.T) {
 		wantError bool
 	}{
 		{
-			give:      "get existing secret",
+			give:      "get returns reference token",
 			params:    map[string]interface{}{"name": "db-pass"},
-			wantValue: "p@ssw0rd",
+			wantValue: "{{secret:db-pass}}",
 		},
 		{
 			give:      "non-existent secret",
@@ -127,10 +128,21 @@ func TestSecretsTool_Get(t *testing.T) {
 			}
 		})
 	}
+
+	// Verify RefStore can resolve the token to actual plaintext
+	t.Run("refstore resolves to plaintext", func(t *testing.T) {
+		val, ok := refs.Resolve("{{secret:db-pass}}")
+		if !ok {
+			t.Fatal("RefStore could not resolve {{secret:db-pass}}")
+		}
+		if string(val) != "p@ssw0rd" {
+			t.Errorf("resolved value: want %q, got %q", "p@ssw0rd", val)
+		}
+	})
 }
 
 func TestSecretsTool_List(t *testing.T) {
-	tool := newTestSecretsTool(t)
+	tool, _ := newTestSecretsTool(t)
 	ctx := context.Background()
 
 	t.Run("empty list count is 0", func(t *testing.T) {
@@ -167,7 +179,7 @@ func TestSecretsTool_List(t *testing.T) {
 }
 
 func TestSecretsTool_Delete(t *testing.T) {
-	tool := newTestSecretsTool(t)
+	tool, _ := newTestSecretsTool(t)
 	ctx := context.Background()
 
 	// Store then delete
@@ -202,7 +214,7 @@ func TestSecretsTool_Delete(t *testing.T) {
 }
 
 func TestSecretsTool_UpdateExisting(t *testing.T) {
-	tool := newTestSecretsTool(t)
+	tool, refs := newTestSecretsTool(t)
 	ctx := context.Background()
 
 	// Store initial value
@@ -215,13 +227,22 @@ func TestSecretsTool_UpdateExisting(t *testing.T) {
 		t.Fatalf("store v2: %v", err)
 	}
 
-	// Get should return latest value
+	// Get should return reference token (not plaintext)
 	result, err := tool.Get(ctx, map[string]interface{}{"name": "mutable"})
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	m := result.(map[string]interface{})
-	if m["value"] != "v2" {
-		t.Errorf("value: want %q, got %q", "v2", m["value"])
+	if m["value"] != "{{secret:mutable}}" {
+		t.Errorf("value: want %q, got %q", "{{secret:mutable}}", m["value"])
+	}
+
+	// RefStore should resolve to latest value
+	val, ok := refs.Resolve("{{secret:mutable}}")
+	if !ok {
+		t.Fatal("RefStore could not resolve {{secret:mutable}}")
+	}
+	if string(val) != "v2" {
+		t.Errorf("resolved value: want %q, got %q", "v2", val)
 	}
 }

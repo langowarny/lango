@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"hash"
 
+	"github.com/google/uuid"
+	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
 )
@@ -17,16 +19,23 @@ import (
 var logger = logging.SubsystemSugar("tool.crypto")
 
 // Tool provides cryptographic operations for AI agents.
+// Decrypted values are returned as opaque reference tokens; the plaintext
+// never enters the agent context.
 type Tool struct {
 	crypto   security.CryptoProvider
 	registry *security.KeyRegistry
+	refs     *security.RefStore
+	scanner  *agent.SecretScanner
 }
 
 // New creates a new crypto tool.
-func New(crypto security.CryptoProvider, registry *security.KeyRegistry) *Tool {
+// If scanner is non-nil, decrypted values are registered for output scanning.
+func New(crypto security.CryptoProvider, registry *security.KeyRegistry, refs *security.RefStore, scanner *agent.SecretScanner) *Tool {
 	return &Tool{
 		crypto:   crypto,
 		registry: registry,
+		refs:     refs,
+		scanner:  scanner,
 	}
 }
 
@@ -97,7 +106,8 @@ func (t *Tool) Encrypt(ctx context.Context, params map[string]interface{}) (inte
 	}, nil
 }
 
-// Decrypt decrypts data using the specified key.
+// Decrypt decrypts data and returns an opaque reference token.
+// The plaintext is stored in the RefStore and resolved at execution time.
 func (t *Tool) Decrypt(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	var p DecryptParams
 	if err := mapToStruct(params, &p); err != nil {
@@ -115,7 +125,6 @@ func (t *Tool) Decrypt(ctx context.Context, params map[string]interface{}) (inte
 
 	keyID := p.KeyID
 	if keyID == "" {
-		// Use default key
 		keyInfo, err := t.registry.GetDefaultKey(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("no default key available: %w", err)
@@ -130,9 +139,19 @@ func (t *Tool) Decrypt(ctx context.Context, params map[string]interface{}) (inte
 		return nil, fmt.Errorf("decryption failed: %w", err)
 	}
 
+	// Store plaintext in RefStore and return opaque reference token.
+	refID := uuid.New().String()
+	ref := t.refs.StoreDecrypted(refID, plaintext)
+
+	// Register with scanner for output-side secret detection.
+	if t.scanner != nil {
+		t.scanner.Register("decrypt:"+refID, plaintext)
+	}
+
 	return map[string]interface{}{
 		"success": true,
-		"data":    string(plaintext),
+		"data":    ref,
+		"note":    "This is a reference token. Use it directly in exec commands — it will be resolved at execution time.",
 	}, nil
 }
 

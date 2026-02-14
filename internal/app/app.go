@@ -9,6 +9,7 @@ import (
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/tools/browser"
 	"github.com/langowarny/lango/internal/tools/filesystem"
 )
@@ -66,12 +67,16 @@ func New(cfg *config.Config) (*App, error) {
 	tools := buildTools(sv, fsConfig, browserSM)
 
 	// 4b. Crypto/Secrets tools (if security is enabled)
+	// RefStore holds opaque references; plaintext never reaches agent context.
+	// SecretScanner detects leaked secrets in model output.
+	refs := security.NewRefStore()
+	scanner := agent.NewSecretScanner()
 	if app.Crypto != nil && app.Keys != nil {
-		tools = append(tools, buildCryptoTools(app.Crypto, app.Keys)...)
+		tools = append(tools, buildCryptoTools(app.Crypto, app.Keys, refs, scanner)...)
 		logger().Info("crypto tools registered")
 	}
 	if app.Secrets != nil {
-		tools = append(tools, buildSecretsTools(app.Secrets)...)
+		tools = append(tools, buildSecretsTools(app.Secrets, refs, scanner)...)
 		logger().Info("secrets tools registered")
 	}
 
@@ -111,8 +116,8 @@ func New(cfg *config.Config) (*App, error) {
 		logger().Infow("tool approval enabled", "sensitiveTools", cfg.Security.Interceptor.SensitiveTools)
 	}
 
-	// 9. ADK Agent
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc)
+	// 9. ADK Agent (scanner is passed for output-side secret scanning)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, scanner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}

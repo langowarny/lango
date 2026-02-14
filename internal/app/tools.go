@@ -1,10 +1,15 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/gateway"
@@ -702,8 +707,8 @@ func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
 }
 
 // buildCryptoTools wraps crypto.Tool methods as agent tools.
-func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry) []*agent.Tool {
-	ct := toolcrypto.New(crypto, keys)
+func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry, refs *security.RefStore, scanner *agent.SecretScanner) []*agent.Tool {
+	ct := toolcrypto.New(crypto, keys, refs, scanner)
 	return []*agent.Tool{
 		{
 			Name:        "crypto_encrypt",
@@ -720,7 +725,7 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 		},
 		{
 			Name:        "crypto_decrypt",
-			Description: "Decrypt data using a registered key",
+			Description: "Decrypt data using a registered key. Returns an opaque {{decrypt:id}} reference token. The decrypted value never enters the agent context.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -770,8 +775,8 @@ func buildCryptoTools(crypto security.CryptoProvider, keys *security.KeyRegistry
 }
 
 // buildSecretsTools wraps secrets.Tool methods as agent tools.
-func buildSecretsTools(secretsStore *security.SecretsStore) []*agent.Tool {
-	st := toolsecrets.New(secretsStore)
+func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefStore, scanner *agent.SecretScanner) []*agent.Tool {
+	st := toolsecrets.New(secretsStore, refs, scanner)
 	return []*agent.Tool{
 		{
 			Name:        "secrets_store",
@@ -788,7 +793,7 @@ func buildSecretsTools(secretsStore *security.SecretsStore) []*agent.Tool {
 		},
 		{
 			Name:        "secrets_get",
-			Description: "Retrieve and decrypt a stored secret",
+			Description: "Retrieve a stored secret as a reference token. Returns an opaque {{secret:name}} token that is resolved at execution time by exec tools. The actual secret value never enters the agent context.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -822,8 +827,12 @@ func buildSecretsTools(secretsStore *security.SecretsStore) []*agent.Tool {
 	}
 }
 
-// wrapWithApproval wraps a tool to require companion approval if it's in the sensitive tools list.
-// Uses fail-open: if no companion is connected, logs a warning and proceeds.
+// wrapWithApproval wraps a tool to require approval if it's in the sensitive tools list.
+// Uses fail-closed: denies execution unless explicitly approved.
+// Approval sources (in priority order):
+//  1. Companion app approval via gateway
+//  2. Interactive TTY prompt (if stdin is a terminal)
+//  3. Deny with error (no approval source available)
 func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server) *agent.Tool {
 	isSensitive := false
 	for _, name := range sensitiveTools {
@@ -842,17 +851,51 @@ func wrapWithApproval(t *agent.Tool, sensitiveTools []string, gw *gateway.Server
 		Description: t.Description,
 		Parameters:  t.Parameters,
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			if gw.HasCompanions() {
-				approved, err := gw.RequestApproval(ctx, fmt.Sprintf("Tool '%s' requires approval", t.Name))
-				if err != nil {
-					logger().Warnw("approval request error, proceeding (fail-open)", "tool", t.Name, "error", err)
-				} else if !approved {
-					return nil, fmt.Errorf("tool '%s' execution denied by companion", t.Name)
-				}
-			} else {
-				logger().Warnw("sensitive tool executed without companion approval (no companion connected)", "tool", t.Name)
+			approved, err := requestToolApproval(ctx, t.Name, gw)
+			if err != nil {
+				return nil, fmt.Errorf("tool '%s' approval: %w", t.Name, err)
+			}
+			if !approved {
+				return nil, fmt.Errorf("tool '%s' execution denied", t.Name)
 			}
 			return original(ctx, params)
 		},
 	}
+}
+
+// requestToolApproval requests approval for a sensitive tool execution.
+// Returns (true, nil) if approved, (false, nil) if denied, or (false, err) on error.
+func requestToolApproval(ctx context.Context, toolName string, gw *gateway.Server) (bool, error) {
+	// Priority 1: Companion approval
+	if gw.HasCompanions() {
+		approved, err := gw.RequestApproval(ctx, fmt.Sprintf("Tool '%s' requires approval", toolName))
+		if err != nil {
+			logger().Warnw("companion approval error (fail-closed)", "tool", toolName, "error", err)
+			return false, fmt.Errorf("companion approval error: %w", err)
+		}
+		return approved, nil
+	}
+
+	// Priority 2: Interactive TTY prompt
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return promptTTYApproval(toolName)
+	}
+
+	// Priority 3: No approval source — deny
+	logger().Warnw("sensitive tool denied: no approval source available", "tool", toolName)
+	return false, nil
+}
+
+// promptTTYApproval prompts the user via terminal for tool approval.
+func promptTTYApproval(toolName string) (bool, error) {
+	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval. Allow? [y/N]: ", toolName)
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("read approval input: %w", err)
+	}
+
+	answer := strings.TrimSpace(strings.ToLower(input))
+	return answer == "y" || answer == "yes", nil
 }

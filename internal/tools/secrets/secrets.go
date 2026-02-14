@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
 )
@@ -12,13 +13,18 @@ import (
 var logger = logging.SubsystemSugar("tool.secrets")
 
 // Tool provides secure secrets management for AI agents.
+// Secret values are never returned as plaintext; instead, opaque reference
+// tokens are returned that are resolved at execution time by the exec tool.
 type Tool struct {
-	store *security.SecretsStore
+	store   *security.SecretsStore
+	refs    *security.RefStore
+	scanner *agent.SecretScanner
 }
 
 // New creates a new secrets tool.
-func New(store *security.SecretsStore) *Tool {
-	return &Tool{store: store}
+// If scanner is non-nil, retrieved secrets are registered for output scanning.
+func New(store *security.SecretsStore, refs *security.RefStore, scanner *agent.SecretScanner) *Tool {
+	return &Tool{store: store, refs: refs, scanner: scanner}
 }
 
 // StoreParams are the parameters for the store operation.
@@ -77,8 +83,9 @@ func (t *Tool) Store(ctx context.Context, params map[string]interface{}) (interf
 	}, nil
 }
 
-// Get retrieves and decrypts a secret value.
-// This operation requires user approval.
+// Get retrieves a secret and returns an opaque reference token.
+// The plaintext value is stored in the RefStore and resolved at execution time.
+// The agent never sees the actual secret value.
 func (t *Tool) Get(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	var p GetParams
 	if err := mapToStruct(params, &p); err != nil {
@@ -89,17 +96,26 @@ func (t *Tool) Get(ctx context.Context, params map[string]interface{}) (interfac
 		return nil, fmt.Errorf("name is required")
 	}
 
-	logger.Infow("retrieving secret", "name", p.Name)
+	logger.Infow("retrieving secret reference", "name", p.Name)
 
 	value, err := t.store.Get(ctx, p.Name)
 	if err != nil {
 		return nil, err
 	}
 
+	// Store plaintext in RefStore and return opaque reference token.
+	ref := t.refs.Store(p.Name, value)
+
+	// Register with scanner for output-side secret detection.
+	if t.scanner != nil {
+		t.scanner.Register(p.Name, value)
+	}
+
 	return map[string]interface{}{
 		"success": true,
 		"name":    p.Name,
-		"value":   string(value),
+		"value":   ref,
+		"note":    "This is a reference token. Use it directly in exec commands — it will be resolved at execution time.",
 	}, nil
 }
 
