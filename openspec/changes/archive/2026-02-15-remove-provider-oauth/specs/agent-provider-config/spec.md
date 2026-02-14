@@ -1,4 +1,10 @@
-## Requirements
+## REMOVED Requirements
+
+### Requirement: Provider Configuration
+**Reason**: OAuth authentication path removed. Replaced with API key-only configuration.
+**Migration**: Remove `clientId`, `clientSecret`, and `scopes` fields from provider entries. Use `apiKey` with `${ENV_VAR}` references.
+
+## MODIFIED Requirements
 
 ### Requirement: Provider Configuration
 The system SHALL allow configuring AI providers with an API key. All provider credentials SHALL be configured in the `providers` map.
@@ -25,21 +31,3 @@ The system SHALL allow configuring AI providers with an API key. All provider cr
 - **WHEN** `agent.provider` is set to "google"
 - **BUT** `providers.google` is missing or empty
 - **THEN** system fails to start with a configuration error
-
-## Removed Requirements
-
-### Requirement: OAuth Provider Login (REMOVED 2026-02-14)
-**Reason**: OAuth with AI providers risks account bans.
-**Migration**: Use API key authentication with `${ENV_VAR}` references.
-
-Previously, providers could be configured with `clientId`, `clientSecret`, and `scopes` for OAuth-based authentication via `lango login [provider]`. This has been removed.
-
-## Deprecated Requirements
-
-### Requirement: Legacy API Key Support
-**Reason**: Duplication and ambiguity with `providers` map.
-**Migration**: Move `agent.apiKey` to `providers.<agent.provider>.apiKey`.
-
-#### Scenario: Legacy config detected
-- **WHEN** user configuration contains `agent.apiKey`
-- **THEN** system fails to start (or ignores it with a warning, depending on strictness - we choose fail for clarity)

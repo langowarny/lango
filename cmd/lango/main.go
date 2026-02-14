@@ -14,7 +14,6 @@ import (
 
 	"github.com/langowarny/lango/internal/app"
 	"github.com/langowarny/lango/internal/bootstrap"
-	"github.com/langowarny/lango/internal/cli/auth"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
@@ -44,7 +43,6 @@ func main() {
 	rootCmd.AddCommand(configCmd())
 	rootCmd.AddCommand(doctor.NewCommand())
 	rootCmd.AddCommand(onboard.NewCommand())
-	rootCmd.AddCommand(auth.NewCommand())
 	rootCmd.AddCommand(clisecurity.NewSecurityCmd(func() (*config.Config, error) {
 		boot, err := bootstrap.Run(bootstrap.Options{MigrationPath: cfgFile})
 		if err != nil {

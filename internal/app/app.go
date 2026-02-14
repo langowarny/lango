@@ -248,7 +248,6 @@ func registerConfigSecrets(scanner *agent.SecretScanner, cfg *config.Config) {
 	// Provider credentials
 	for id, p := range cfg.Providers {
 		register("provider."+id+".apiKey", p.APIKey)
-		register("provider."+id+".clientSecret", p.ClientSecret)
 	}
 
 	// Channel tokens

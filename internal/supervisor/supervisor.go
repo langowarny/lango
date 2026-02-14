@@ -2,16 +2,8 @@ package supervisor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"iter"
-	"os"
-	"path/filepath"
-	"time"
-
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/github"
-	"golang.org/x/oauth2/google"
 
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
@@ -66,13 +58,7 @@ func (s *Supervisor) initializeProviders() error {
 
 			apiKey := pCfg.APIKey
 			if apiKey == "" {
-				// Try to load OAuth token
-				token, err := s.getAccessToken(id, pCfg)
-				if err == nil && token != "" {
-					apiKey = token
-				} else if err != nil {
-					logger.Warnw("failed to load oauth token", "id", id, "error", err)
-				}
+				logger.Warnw("provider has no API key configured", "id", id)
 			}
 
 			switch pCfg.Type {
@@ -122,98 +108,6 @@ func (s *Supervisor) initializeProviders() error {
 	}
 
 	return nil
-}
-
-func (s *Supervisor) getAccessToken(providerID string, pCfg config.ProviderConfig) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	tokenPath := filepath.Join(home, ".lango", "tokens", providerID+".json")
-
-	f, err := os.Open(tokenPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil // Token file doesn't exist, not an error just no token
-		}
-		return "", err
-	}
-	defer f.Close()
-
-	var token oauth2.Token
-	if err := json.NewDecoder(f).Decode(&token); err != nil {
-		return "", fmt.Errorf("invalid token file: %w", err)
-	}
-
-	// Check if expired and refresh if possible
-	if !token.Valid() && token.RefreshToken != "" && pCfg.ClientID != "" && pCfg.ClientSecret != "" {
-		logger.Infow("refreshing oauth token", "provider", providerID)
-
-		var endpoint oauth2.Endpoint
-		switch pCfg.Type {
-		case "gemini", "google":
-			endpoint = google.Endpoint
-		case "github":
-			endpoint = github.Endpoint
-		default:
-			// Try to guess based on ID
-			if providerID == "google" || providerID == "gemini" {
-				endpoint = google.Endpoint
-			} else if providerID == "github" {
-				endpoint = github.Endpoint
-			} else {
-				return "", fmt.Errorf("cannot refresh token: unknown endpoint for provider %s", providerID)
-			}
-		}
-
-		conf := &oauth2.Config{
-			ClientID:     pCfg.ClientID,
-			ClientSecret: pCfg.ClientSecret,
-			Endpoint:     endpoint,
-			// RedirectURL not needed for refresh
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		src := conf.TokenSource(ctx, &token)
-		newToken, err := src.Token()
-		if err != nil {
-			return "", fmt.Errorf("failed to refresh token: %w", err)
-		}
-
-		// Save new token
-		if err := saveToken(providerID, newToken); err != nil {
-			logger.Warnw("failed to save refreshed token", "error", err)
-		}
-
-		return newToken.AccessToken, nil
-	}
-
-	if !token.Valid() {
-		return "", fmt.Errorf("token expired and cannot refresh (missing refresh token or client config)")
-	}
-
-	return token.AccessToken, nil
-}
-
-func saveToken(providerID string, token *oauth2.Token) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	tokenDir := filepath.Join(home, ".lango", "tokens")
-	if err := os.MkdirAll(tokenDir, 0700); err != nil {
-		return err
-	}
-
-	file, err := os.OpenFile(filepath.Join(tokenDir, providerID+".json"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	return json.NewEncoder(file).Encode(token)
 }
 
 // Generate forwards a generation request to the appropriate provider.

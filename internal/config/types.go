@@ -170,10 +170,6 @@ type ProviderConfig struct {
 	// Base URL for OpenAI-compatible providers
 	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
 
-	// OAuth configuration
-	ClientID     string   `mapstructure:"clientId" json:"clientId"`
-	ClientSecret string   `mapstructure:"clientSecret" json:"clientSecret"`
-	Scopes       []string `mapstructure:"scopes" json:"scopes"`
 }
 
 // ChannelsConfig holds all channel configurations

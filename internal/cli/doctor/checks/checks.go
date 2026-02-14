@@ -106,6 +106,7 @@ func AllChecks() []Check {
 	return []Check{
 		&ConfigCheck{},
 		&ProvidersCheck{},
+		&APIKeySecurityCheck{},
 		&ChannelCheck{},
 		&DatabaseCheck{},
 		&NetworkCheck{},

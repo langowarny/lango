@@ -129,8 +129,6 @@ func substituteEnvVars(cfg *Config) {
 	// Provider credentials
 	for id, pCfg := range cfg.Providers {
 		pCfg.APIKey = expandEnvVars(pCfg.APIKey)
-		pCfg.ClientID = expandEnvVars(pCfg.ClientID)
-		pCfg.ClientSecret = expandEnvVars(pCfg.ClientSecret)
 		cfg.Providers[id] = pCfg
 	}
 
