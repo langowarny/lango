@@ -384,7 +384,21 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			cfg.Knowledge.MaxContextPerLayer,
 			logger(),
 		)
+
+		// Wire tool registry and runtime context providers
+		toolAdapter := adk.NewToolRegistryAdapter(tools)
+		retriever.WithToolRegistry(toolAdapter)
+
+		runtimeAdapter := adk.NewRuntimeContextAdapter(
+			len(tools),
+			cfg.Security.Signer.Provider != "",
+			cfg.Knowledge.Enabled,
+			cfg.ObservationalMemory.Enabled,
+		)
+		retriever.WithRuntimeContext(runtimeAdapter)
+
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, systemPrompt, logger())
+		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
 
 		// Wire in observational memory if available
 		if mc != nil {

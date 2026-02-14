@@ -88,3 +88,19 @@ type ExternalRefEntry struct {
 	Summary  string
 	Metadata map[string]interface{}
 }
+
+// ToolDescriptor describes a single tool available to the agent.
+type ToolDescriptor struct {
+	Name        string
+	Description string
+}
+
+// RuntimeContext holds the current session and system state.
+type RuntimeContext struct {
+	SessionKey        string
+	ChannelType       string // "telegram", "discord", "slack", "direct"
+	ActiveToolCount   int
+	EncryptionEnabled bool
+	KnowledgeEnabled  bool
+	MemoryEnabled     bool
+}

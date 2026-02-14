@@ -205,6 +205,181 @@ func TestContextRetriever_Retrieve_StopWordsOnly(t *testing.T) {
 	}
 }
 
+// mockToolProvider implements ToolRegistryProvider for testing.
+type mockToolProvider struct {
+	tools []ToolDescriptor
+}
+
+func (m *mockToolProvider) ListTools() []ToolDescriptor {
+	return m.tools
+}
+
+func (m *mockToolProvider) SearchTools(query string, limit int) []ToolDescriptor {
+	queryLower := strings.ToLower(query)
+	var result []ToolDescriptor
+	for _, t := range m.tools {
+		if len(result) >= limit {
+			break
+		}
+		if strings.Contains(strings.ToLower(t.Name), queryLower) ||
+			strings.Contains(strings.ToLower(t.Description), queryLower) {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// mockRuntimeProvider implements RuntimeContextProvider for testing.
+type mockRuntimeProvider struct {
+	rc RuntimeContext
+}
+
+func (m *mockRuntimeProvider) GetRuntimeContext() RuntimeContext {
+	return m.rc
+}
+
+func TestContextRetriever_RetrieveTools(t *testing.T) {
+	retriever, _ := newTestRetriever(t)
+	ctx := context.Background()
+
+	tp := &mockToolProvider{
+		tools: []ToolDescriptor{
+			{Name: "exec_command", Description: "Execute shell commands"},
+			{Name: "read_file", Description: "Read file contents"},
+			{Name: "web_search", Description: "Search the web"},
+		},
+	}
+	retriever.WithToolRegistry(tp)
+
+	t.Run("keyword search matches tool", func(t *testing.T) {
+		result, err := retriever.Retrieve(ctx, RetrievalRequest{
+			Query:  "execute shell command",
+			Layers: []ContextLayer{LayerToolRegistry},
+		})
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		items, ok := result.Items[LayerToolRegistry]
+		if !ok || len(items) == 0 {
+			t.Fatal("expected tool registry items")
+		}
+		if items[0].Key != "exec_command" {
+			t.Errorf("want exec_command, got %s", items[0].Key)
+		}
+	})
+
+	t.Run("nil provider returns empty", func(t *testing.T) {
+		r2, _ := newTestRetriever(t)
+		result, err := r2.Retrieve(ctx, RetrievalRequest{
+			Query:  "execute shell",
+			Layers: []ContextLayer{LayerToolRegistry},
+		})
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		if result.TotalItems != 0 {
+			t.Errorf("want 0 items with nil provider, got %d", result.TotalItems)
+		}
+	})
+}
+
+func TestContextRetriever_RetrieveRuntimeContext(t *testing.T) {
+	retriever, _ := newTestRetriever(t)
+	ctx := context.Background()
+
+	rp := &mockRuntimeProvider{
+		rc: RuntimeContext{
+			SessionKey:        "telegram:123:456",
+			ChannelType:       "telegram",
+			ActiveToolCount:   5,
+			EncryptionEnabled: true,
+			KnowledgeEnabled:  true,
+			MemoryEnabled:     false,
+		},
+	}
+	retriever.WithRuntimeContext(rp)
+
+	result, err := retriever.Retrieve(ctx, RetrievalRequest{
+		Query:  "session state information",
+		Layers: []ContextLayer{LayerRuntimeContext},
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	items, ok := result.Items[LayerRuntimeContext]
+	if !ok || len(items) == 0 {
+		t.Fatal("expected runtime context items")
+	}
+	if !strings.Contains(items[0].Content, "telegram:123:456") {
+		t.Errorf("expected session key in content, got %q", items[0].Content)
+	}
+	if !strings.Contains(items[0].Content, "Channel: telegram") {
+		t.Errorf("expected channel type in content, got %q", items[0].Content)
+	}
+
+	t.Run("nil provider returns empty", func(t *testing.T) {
+		r2, _ := newTestRetriever(t)
+		result, err := r2.Retrieve(ctx, RetrievalRequest{
+			Query:  "session info",
+			Layers: []ContextLayer{LayerRuntimeContext},
+		})
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		if result.TotalItems != 0 {
+			t.Errorf("want 0 items with nil provider, got %d", result.TotalItems)
+		}
+	})
+}
+
+func TestAssemblePrompt_WithToolsAndRuntime(t *testing.T) {
+	retriever, _ := newTestRetriever(t)
+	basePrompt := "You are a helpful assistant."
+
+	result := &RetrievalResult{
+		Items: map[ContextLayer][]ContextItem{
+			LayerRuntimeContext: {
+				{Layer: LayerRuntimeContext, Key: "session-state", Content: "Session: s1 | Channel: telegram | Tools: 3 | Encryption: true | Knowledge: true | Memory: false"},
+			},
+			LayerToolRegistry: {
+				{Layer: LayerToolRegistry, Key: "exec_command", Content: "Execute shell commands"},
+			},
+			LayerUserKnowledge: {
+				{Layer: LayerUserKnowledge, Key: "rule-1", Content: "Always test", Category: "rule"},
+			},
+		},
+		TotalItems: 3,
+	}
+	got := retriever.AssemblePrompt(basePrompt, result)
+
+	// Runtime Context should appear before User Knowledge
+	runtimeIdx := strings.Index(got, "## Runtime Context")
+	toolIdx := strings.Index(got, "## Available Tools")
+	knowledgeIdx := strings.Index(got, "## User Knowledge")
+
+	if runtimeIdx == -1 {
+		t.Error("expected Runtime Context section")
+	}
+	if toolIdx == -1 {
+		t.Error("expected Available Tools section")
+	}
+	if knowledgeIdx == -1 {
+		t.Error("expected User Knowledge section")
+	}
+	if runtimeIdx > toolIdx {
+		t.Error("Runtime Context should appear before Available Tools")
+	}
+	if toolIdx > knowledgeIdx {
+		t.Error("Available Tools should appear before User Knowledge")
+	}
+	if !strings.Contains(got, "exec_command") {
+		t.Error("expected tool name in output")
+	}
+	if !strings.Contains(got, "Channel: telegram") {
+		t.Error("expected runtime info in output")
+	}
+}
+
 func TestAssemblePrompt(t *testing.T) {
 	retriever, _ := newTestRetriever(t)
 	basePrompt := "You are a helpful assistant."

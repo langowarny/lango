@@ -57,10 +57,17 @@ The system SHALL assemble an augmented system prompt from base prompt, retrieved
 #### Scenario: Context sections
 - **WHEN** `AssemblePrompt` is called with retrieved items
 - **THEN** the system SHALL append markdown sections for each layer with items:
+  - "Runtime Context" for runtime context items
+  - "Available Tools" for tool registry items
   - "User Knowledge" for user knowledge items
   - "Known Solutions" for agent learnings
   - "Available Skills" for skill patterns
   - "External References" for external knowledge
+
+#### Scenario: Section ordering
+- **WHEN** `AssemblePrompt` is called with items from multiple layers
+- **THEN** "Runtime Context" SHALL appear before "Available Tools"
+- **AND** "Available Tools" SHALL appear before "User Knowledge"
 
 #### Scenario: Observation memory section
 - **WHEN** `AssemblePrompt` is called with observations or reflections
@@ -73,7 +80,81 @@ The system SHALL wrap the ADK model adapter to transparently inject retrieved co
 #### Scenario: System prompt augmentation
 - **WHEN** `GenerateContent` is called on the context-aware adapter
 - **THEN** the system SHALL extract the user's latest message as query
-- **AND** retrieve relevant context from all layers
+- **AND** retrieve relevant context from all 6 layers (Runtime Context, Tool Registry, User Knowledge, Skill Patterns, External Knowledge, Agent Learnings)
+- **AND** update the runtime adapter's session state before retrieval
 - **AND** retrieve observations and reflections for the current session
 - **AND** augment the system instruction with assembled context including observations
 - **AND** forward the modified request to the underlying model adapter
+
+### Requirement: Tool Registry Provider Interface
+The system SHALL define a `ToolRegistryProvider` interface for supplying available tool information to the context retriever.
+
+#### Scenario: List all tools
+- **WHEN** `ListTools()` is called on a `ToolRegistryProvider`
+- **THEN** the system SHALL return all registered `ToolDescriptor` entries
+
+#### Scenario: Search tools by query
+- **WHEN** `SearchTools(query, limit)` is called on a `ToolRegistryProvider`
+- **THEN** the system SHALL return tools whose name or description contains the query (case-insensitive)
+- **AND** the result SHALL contain at most `limit` items
+
+### Requirement: Runtime Context Provider Interface
+The system SHALL define a `RuntimeContextProvider` interface for supplying session and system state.
+
+#### Scenario: Get runtime context
+- **WHEN** `GetRuntimeContext()` is called on a `RuntimeContextProvider`
+- **THEN** the system SHALL return a `RuntimeContext` containing session key, channel type, active tool count, encryption enabled flag, knowledge enabled flag, and memory enabled flag
+
+### Requirement: Tool Registry Retrieval
+The system SHALL retrieve matching tools when the Tool Registry layer is requested.
+
+#### Scenario: Retrieve tools by keyword
+- **WHEN** `Retrieve` is called with `LayerToolRegistry` in the layer list
+- **AND** a `ToolRegistryProvider` is configured
+- **THEN** the system SHALL search tools using extracted keywords and return matching items as `ContextItem` entries with `LayerToolRegistry` layer
+
+#### Scenario: Nil tool provider
+- **WHEN** `Retrieve` is called with `LayerToolRegistry` in the layer list
+- **AND** no `ToolRegistryProvider` is configured
+- **THEN** the system SHALL return zero items for that layer without error
+
+### Requirement: Runtime Context Retrieval
+The system SHALL retrieve session state when the Runtime Context layer is requested.
+
+#### Scenario: Retrieve runtime context
+- **WHEN** `Retrieve` is called with `LayerRuntimeContext` in the layer list
+- **AND** a `RuntimeContextProvider` is configured
+- **THEN** the system SHALL return a single `ContextItem` with key "session-state" containing formatted session information
+
+#### Scenario: Nil runtime provider
+- **WHEN** `Retrieve` is called with `LayerRuntimeContext` in the layer list
+- **AND** no `RuntimeContextProvider` is configured
+- **THEN** the system SHALL return zero items for that layer without error
+
+### Requirement: Tool Registry Adapter
+The system SHALL provide a `ToolRegistryAdapter` that adapts `[]*agent.Tool` to `ToolRegistryProvider`.
+
+#### Scenario: Boundary copy on construction
+- **WHEN** a `ToolRegistryAdapter` is created with a tool slice
+- **THEN** the adapter SHALL copy the slice so external mutations do not affect internal state
+
+#### Scenario: Case-insensitive search
+- **WHEN** `SearchTools` is called with a query
+- **THEN** the adapter SHALL match tools using case-insensitive substring comparison on name and description
+
+### Requirement: Runtime Context Adapter
+The system SHALL provide a `RuntimeContextAdapter` with thread-safe session updates.
+
+#### Scenario: Default channel type
+- **WHEN** a `RuntimeContextAdapter` is created without calling `SetSession`
+- **THEN** the channel type SHALL be "direct"
+
+#### Scenario: Derive channel type from session key
+- **WHEN** `SetSession` is called with a session key in the format "channel:id:subid"
+- **THEN** the adapter SHALL extract the channel type from the prefix
+- **AND** recognized prefixes SHALL be "telegram", "discord", "slack"
+- **AND** unrecognized prefixes SHALL map to "direct"
+
+#### Scenario: Thread-safe access
+- **WHEN** `SetSession` and `GetRuntimeContext` are called concurrently
+- **THEN** the adapter SHALL use mutex protection to prevent data races

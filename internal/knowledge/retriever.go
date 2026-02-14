@@ -8,11 +8,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// ToolRegistryProvider supplies available tool information.
+type ToolRegistryProvider interface {
+	ListTools() []ToolDescriptor
+	SearchTools(query string, limit int) []ToolDescriptor
+}
+
+// RuntimeContextProvider supplies current session/system state.
+type RuntimeContextProvider interface {
+	GetRuntimeContext() RuntimeContext
+}
+
 // ContextRetriever searches the 6 context layers and assembles augmented prompts.
 type ContextRetriever struct {
-	store        *Store
-	maxPerLayer  int
-	logger       *zap.SugaredLogger
+	store           *Store
+	maxPerLayer     int
+	logger          *zap.SugaredLogger
+	toolProvider    ToolRegistryProvider
+	runtimeProvider RuntimeContextProvider
 }
 
 // NewContextRetriever creates a new context retriever.
@@ -25,6 +38,18 @@ func NewContextRetriever(store *Store, maxPerLayer int, logger *zap.SugaredLogge
 		maxPerLayer: maxPerLayer,
 		logger:      logger,
 	}
+}
+
+// WithToolRegistry sets the tool registry provider.
+func (r *ContextRetriever) WithToolRegistry(p ToolRegistryProvider) *ContextRetriever {
+	r.toolProvider = p
+	return r
+}
+
+// WithRuntimeContext sets the runtime context provider.
+func (r *ContextRetriever) WithRuntimeContext(p RuntimeContextProvider) *ContextRetriever {
+	r.runtimeProvider = p
+	return r
 }
 
 // Retrieve searches the requested context layers and returns relevant items.
@@ -67,8 +92,10 @@ func (r *ContextRetriever) Retrieve(ctx context.Context, req RetrievalRequest) (
 			items, err = r.retrieveExternalRefs(ctx, searchQuery, maxPerLayer)
 		case LayerAgentLearnings:
 			items, err = r.retrieveLearnings(ctx, searchQuery, maxPerLayer)
-		case LayerToolRegistry, LayerRuntimeContext:
-			continue // handled elsewhere
+		case LayerToolRegistry:
+			items = r.retrieveTools(searchQuery, maxPerLayer)
+		case LayerRuntimeContext:
+			items = r.retrieveRuntimeContext()
 		}
 
 		if err != nil {
@@ -93,6 +120,20 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 
 	var b strings.Builder
 	b.WriteString(basePrompt)
+
+	if items, ok := result.Items[LayerRuntimeContext]; ok && len(items) > 0 {
+		b.WriteString("\n\n## Runtime Context\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- %s\n", item.Content))
+		}
+	}
+
+	if items, ok := result.Items[LayerToolRegistry]; ok && len(items) > 0 {
+		b.WriteString("\n\n## Available Tools\n")
+		for _, item := range items {
+			b.WriteString(fmt.Sprintf("- **%s**: %s\n", item.Key, item.Content))
+		}
+	}
 
 	if items, ok := result.Items[LayerUserKnowledge]; ok && len(items) > 0 {
 		b.WriteString("\n\n## User Knowledge\n")
@@ -123,6 +164,39 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 	}
 
 	return b.String()
+}
+
+func (r *ContextRetriever) retrieveTools(query string, limit int) []ContextItem {
+	if r.toolProvider == nil {
+		return nil
+	}
+	tools := r.toolProvider.SearchTools(query, limit)
+	items := make([]ContextItem, 0, len(tools))
+	for _, t := range tools {
+		items = append(items, ContextItem{
+			Layer:   LayerToolRegistry,
+			Key:     t.Name,
+			Content: t.Description,
+		})
+	}
+	return items
+}
+
+func (r *ContextRetriever) retrieveRuntimeContext() []ContextItem {
+	if r.runtimeProvider == nil {
+		return nil
+	}
+	rc := r.runtimeProvider.GetRuntimeContext()
+	content := fmt.Sprintf(
+		"Session: %s | Channel: %s | Tools: %d | Encryption: %v | Knowledge: %v | Memory: %v",
+		rc.SessionKey, rc.ChannelType, rc.ActiveToolCount,
+		rc.EncryptionEnabled, rc.KnowledgeEnabled, rc.MemoryEnabled,
+	)
+	return []ContextItem{{
+		Layer:   LayerRuntimeContext,
+		Key:     "session-state",
+		Content: content,
+	}}
 }
 
 func (r *ContextRetriever) retrieveKnowledge(ctx context.Context, query string, limit int) ([]ContextItem, error) {

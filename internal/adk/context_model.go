@@ -27,6 +27,7 @@ type ContextAwareModelAdapter struct {
 	inner          *ModelAdapter
 	retriever      *knowledge.ContextRetriever
 	memoryProvider MemoryProvider
+	runtimeAdapter *RuntimeContextAdapter
 	sessionKey     string
 	basePrompt     string
 	logger         *zap.SugaredLogger
@@ -54,6 +55,12 @@ func (m *ContextAwareModelAdapter) WithMemory(provider MemoryProvider, sessionKe
 	return m
 }
 
+// WithRuntimeAdapter adds runtime context support to the adapter.
+func (m *ContextAwareModelAdapter) WithRuntimeAdapter(adapter *RuntimeContextAdapter) *ContextAwareModelAdapter {
+	m.runtimeAdapter = adapter
+	return m
+}
+
 // Name delegates to the inner adapter.
 func (m *ContextAwareModelAdapter) Name() string {
 	return m.inner.Name()
@@ -63,11 +70,25 @@ func (m *ContextAwareModelAdapter) Name() string {
 func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	prompt := m.basePrompt
 
+	// Update runtime session state before retrieval
+	if m.runtimeAdapter != nil && m.sessionKey != "" {
+		m.runtimeAdapter.SetSession(m.sessionKey)
+	}
+
 	// Retrieve knowledge context
 	userQuery := extractLastUserMessage(req.Contents)
 	if userQuery != "" && m.retriever != nil {
+		layers := []knowledge.ContextLayer{
+			knowledge.LayerRuntimeContext,
+			knowledge.LayerToolRegistry,
+			knowledge.LayerUserKnowledge,
+			knowledge.LayerSkillPatterns,
+			knowledge.LayerExternalKnowledge,
+			knowledge.LayerAgentLearnings,
+		}
 		retrieved, err := m.retriever.Retrieve(ctx, knowledge.RetrievalRequest{
-			Query: userQuery,
+			Query:  userQuery,
+			Layers: layers,
 		})
 		if err != nil {
 			m.logger.Warnw("context retrieval error", "error", err)
