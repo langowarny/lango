@@ -112,6 +112,16 @@ The system SHALL check security provider configuration and provide appropriate w
 - **THEN** doctor displays "Security: Using RPCProvider (production mode)"
 - **AND** check status is "pass"
 
+#### Scenario: Enclave provider configured
+- **WHEN** security.signer.provider is "enclave"
+- **THEN** doctor SHALL NOT display any warnings
+- **AND** check status is "pass"
+
+#### Scenario: Unknown provider
+- **WHEN** security.signer.provider is an unrecognized value
+- **THEN** doctor displays error: "Unknown security provider: <value>"
+- **AND** check status is "fail"
+
 #### Scenario: Companion connectivity with RPC
 - **WHEN** security.signer.provider is "rpc"
 - **AND** no companion is connected
@@ -146,6 +156,13 @@ If the database is locked, `doctor` SHOULD suggest how to unlock (e.g., set `LAN
 
 ### Requirement: Security Config Validation
 The `Security Configuration` check MUST verify that the `security` block in `lango.json` is valid according to the new schema.
+
+### Requirement: Doctor command description lists all checks
+The `lango doctor` command Long description SHALL enumerate all diagnostic checks performed.
+
+#### Scenario: Long description content
+- **WHEN** user runs `lango doctor --help`
+- **THEN** the description SHALL list: Configuration file validity, API key and provider configuration, Channel token validation, Session database accessibility, Server port availability, Security configuration, Companion connectivity
 
 ### Requirement: Documentation Alignment
 - **Example Config**: `lango.example.json` MUST include valid `providers` map and `security` block.

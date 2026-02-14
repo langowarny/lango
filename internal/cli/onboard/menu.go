@@ -29,6 +29,7 @@ func NewMenuModel() MenuModel {
 			{"channels", "📡 Channels", "Telegram, Discord, Slack"},
 			{"tools", "🛠️ Tools", "Exec, Browser, Filesystem"},
 			{"security", "🔒 Security", "PII, Approval, Encryption"},
+			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"providers", "☁️ Providers", "Manage multi-provider configurations"},
 			{"save", "💾 Save & Exit", "Write config to file"},
 			{"cancel", "❌ Cancel", "Exit without saving"},

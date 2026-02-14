@@ -36,6 +36,12 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if f, err := strconv.ParseFloat(val, 64); err == nil {
 				s.Current.Agent.Temperature = f
 			}
+		case "system_prompt_path":
+			s.Current.Agent.SystemPromptPath = val
+		case "fallback_provider":
+			s.Current.Agent.FallbackProvider = val
+		case "fallback_model":
+			s.Current.Agent.FallbackModel = val
 
 		// Server
 		case "host":
@@ -76,8 +82,14 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 		case "exec_bg":
 			s.Current.Tools.Exec.AllowBackground = f.Checked
+		case "browser_enabled":
+			s.Current.Tools.Browser.Enabled = f.Checked
 		case "browser_headless":
 			s.Current.Tools.Browser.Headless = f.Checked
+		case "browser_session_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Tools.Browser.SessionTimeout = d
+			}
 		case "fs_max_read":
 			if i, err := strconv.ParseInt(val, 10, 64); err == nil {
 				s.Current.Tools.Filesystem.MaxReadSize = i
@@ -89,6 +101,10 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "ttl":
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.Session.TTL = d
+			}
+		case "max_history_turns":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Session.MaxHistoryTurns = i
 			}
 
 		// Security - Interceptor
@@ -110,6 +126,28 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		// Security - Passphrase
 		case "passphrase":
 			s.Current.Security.Passphrase = val
+
+		// Knowledge
+		case "knowledge_enabled":
+			s.Current.Knowledge.Enabled = f.Checked
+		case "knowledge_max_learnings":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Knowledge.MaxLearnings = i
+			}
+		case "knowledge_max_knowledge":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Knowledge.MaxKnowledge = i
+			}
+		case "knowledge_max_context":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Knowledge.MaxContextPerLayer = i
+			}
+		case "knowledge_auto_approve":
+			s.Current.Knowledge.AutoApproveSkills = f.Checked
+		case "knowledge_max_skills_day":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Knowledge.MaxSkillsPerDay = i
+			}
 		}
 	}
 }

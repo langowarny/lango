@@ -29,12 +29,17 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 	status := StatusPass
 
 	// 1. Check Provider
-	if cfg.Security.Signer.Provider == "local" {
+	switch cfg.Security.Signer.Provider {
+	case "enclave":
+		// Most secure option — no warnings
+	case "rpc":
+		// Production-ready option — no warnings
+	case "local":
 		issues = append(issues, "Using 'local' security provider (not recommended for production)")
 		if status < StatusWarn {
 			status = StatusWarn
 		}
-	} else if cfg.Security.Signer.Provider != "rpc" {
+	default:
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusFail,

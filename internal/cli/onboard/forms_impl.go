@@ -39,6 +39,24 @@ func NewAgentForm(cfg *config.Config) *FormModel {
 		Value: fmt.Sprintf("%.1f", cfg.Agent.Temperature),
 	})
 
+	form.AddField(&Field{
+		Key: "system_prompt_path", Label: "System Prompt Path", Type: InputText,
+		Value:       cfg.Agent.SystemPromptPath,
+		Placeholder: "path/to/system_prompt.txt",
+	})
+
+	form.AddField(&Field{
+		Key: "fallback_provider", Label: "Fallback Provider", Type: InputSelect,
+		Value:   cfg.Agent.FallbackProvider,
+		Options: []string{"", "anthropic", "openai", "gemini", "ollama"},
+	})
+
+	form.AddField(&Field{
+		Key: "fallback_model", Label: "Fallback Model", Type: InputText,
+		Value:       cfg.Agent.FallbackModel,
+		Placeholder: "e.g. gpt-4o",
+	})
+
 	return &form
 }
 
@@ -126,9 +144,19 @@ func NewToolsForm(cfg *config.Config) *FormModel {
 	})
 
 	form.AddField(&Field{
+		Key: "browser_enabled", Label: "Browser Enabled", Type: InputBool,
+		Checked: cfg.Tools.Browser.Enabled,
+	})
+	form.AddField(&Field{
 		Key: "browser_headless", Label: "Browser Headless", Type: InputBool,
 		Checked: cfg.Tools.Browser.Headless,
 	})
+	form.AddField(&Field{
+		Key: "browser_session_timeout", Label: "Browser Session Timeout", Type: InputText,
+		Value:       cfg.Tools.Browser.SessionTimeout.String(),
+		Placeholder: "5m",
+	})
+
 	form.AddField(&Field{
 		Key: "fs_max_read", Label: "Max Read Size", Type: InputInt,
 		Value: strconv.FormatInt(cfg.Tools.Filesystem.MaxReadSize, 10),
@@ -149,6 +177,11 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 	form.AddField(&Field{
 		Key: "ttl", Label: "Session TTL", Type: InputText,
 		Value: cfg.Session.TTL.String(),
+	})
+
+	form.AddField(&Field{
+		Key: "max_history_turns", Label: "Max History Turns", Type: InputInt,
+		Value: strconv.Itoa(cfg.Session.MaxHistoryTurns),
 	})
 
 	// Interceptor
@@ -201,6 +234,43 @@ func validatePort(s string) error {
 		return fmt.Errorf("port out of range")
 	}
 	return nil
+}
+
+// Helper to create Knowledge configuration form
+func NewKnowledgeForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🧠 Knowledge Configuration")
+
+	form.AddField(&Field{
+		Key: "knowledge_enabled", Label: "Enabled", Type: InputBool,
+		Checked: cfg.Knowledge.Enabled,
+	})
+
+	form.AddField(&Field{
+		Key: "knowledge_max_learnings", Label: "Max Learnings", Type: InputInt,
+		Value: strconv.Itoa(cfg.Knowledge.MaxLearnings),
+	})
+
+	form.AddField(&Field{
+		Key: "knowledge_max_knowledge", Label: "Max Knowledge", Type: InputInt,
+		Value: strconv.Itoa(cfg.Knowledge.MaxKnowledge),
+	})
+
+	form.AddField(&Field{
+		Key: "knowledge_max_context", Label: "Max Context/Layer", Type: InputInt,
+		Value: strconv.Itoa(cfg.Knowledge.MaxContextPerLayer),
+	})
+
+	form.AddField(&Field{
+		Key: "knowledge_auto_approve", Label: "Auto Approve Skills", Type: InputBool,
+		Checked: cfg.Knowledge.AutoApproveSkills,
+	})
+
+	form.AddField(&Field{
+		Key: "knowledge_max_skills_day", Label: "Max Skills/Day", Type: InputInt,
+		Value: strconv.Itoa(cfg.Knowledge.MaxSkillsPerDay),
+	})
+
+	return &form
 }
 
 // Helper to create Provider configuration form

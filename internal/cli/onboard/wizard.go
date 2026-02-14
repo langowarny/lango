@@ -187,6 +187,9 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 	case "security":
 		w.activeForm = NewSecurityForm(w.state.Current)
 		w.activeForm.Focus = true
+		w.step = StepForm
+	case "knowledge":
+		w.activeForm = NewKnowledgeForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
 	case "providers":

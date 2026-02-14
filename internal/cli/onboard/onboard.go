@@ -17,11 +17,14 @@ func NewCommand() *cobra.Command {
 		Short: "Interactive setup wizard for Lango",
 		Long: `The onboard command guides you through setting up Lango for the first time.
 
-Steps:
-  1. Welcome and mode selection (QuickStart vs Advanced)
-  2. API key configuration
-  3. Model selection
-  4. Channel setup (Telegram, Discord, or Slack)
+An interactive menu-based editor lets you configure each section independently:
+  - Agent:      Provider, Model, Tokens, Fallback settings
+  - Server:     Host, Port, HTTP/WebSocket toggles
+  - Channels:   Telegram, Discord, Slack tokens
+  - Tools:      Exec timeouts, Browser, Filesystem limits
+  - Security:   Session DB, TTL, PII interceptor, Signer
+  - Knowledge:  Learning limits, Skills, Context per layer
+  - Providers:  Manage multiple provider configurations
 
 Configuration is saved to lango.json in the current directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {

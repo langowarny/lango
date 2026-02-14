@@ -1,9 +1,4 @@
-# CLI Onboard Spec
-
-## Goal
-The `lango onboard` command must provide a comprehensive, interactive configuration editor that allows users to modify all aspects of their `lango.json` configuration file without manual editing.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Configuration Coverage
 The onboarding tool MUST support editing the following configuration sections:
@@ -76,6 +71,8 @@ The onboarding tool MUST support editing the following configuration sections:
 - **THEN** a "Knowledge" category SHALL appear between Security and Providers
 - **AND** selecting it SHALL display the Knowledge configuration form with 6 fields
 
+## MODIFIED Requirements
+
 ### User Interface
 - **Navigation**:
     - Users MUST be able to navigate between configuration categories freely.
@@ -85,27 +82,12 @@ The onboarding tool MUST support editing the following configuration sections:
 #### Scenario: Knowledge category in menu
 - **WHEN** user views the configuration menu
 - **THEN** "Knowledge" category SHALL be listed after "Security" and before "Providers"
-- **Validation**:
-    - Input fields MUST validate data types (int, float, bool).
-    - Port numbers MUST be within valid range (1-65535).
-    - Essential fields (like Provider) MUST NOT be empty.
-- **Feedback**:
-    - Invalid inputs MUST display an error message immediately or upon submission.
-    - Changes MUST be explicitly saved or discarded.
 
-### Persistence
-- Configuration MUST be saved to `lango.json`.
-- Passwords/Secrets (API Keys, Tokens) MUST be handled securely (though typically stored in env vars, the config references them).
-- The tool should generate a `.lango.env` template if new env vars are required.
+## ADDED Requirements
 
-### Onboard command description reflects actual flow
+### Requirement: Onboard command description reflects actual flow
 The `lango onboard` command Long description SHALL accurately list all configurable sections.
 
 #### Scenario: Long description content
 - **WHEN** user runs `lango onboard --help`
 - **THEN** the description SHALL list Agent, Server, Channels, Tools, Security, Knowledge, and Providers as configurable sections
-
-## Success Criteria
-1.  User can launch `lango onboard`, navigate to "Server" settings, change the port, save, and verify `lango.json` is updated.
-2.  User can navigate to "Agent" settings, switch provider to Ollama, and save.
-3.  Invalid inputs (e.g., Port 99999) are rejected by the UI.

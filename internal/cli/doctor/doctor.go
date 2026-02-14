@@ -32,10 +32,12 @@ for common issues and can automatically fix some problems.
 
 Checks performed:
   - Configuration file validity
-  - API key configuration
+  - API key and provider configuration
   - Channel token validation
   - Session database accessibility
-  - Server port availability`,
+  - Server port availability
+  - Security configuration (signer, interceptor, passphrase)
+  - Companion connectivity (WebSocket gateway status)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), opts)
 		},

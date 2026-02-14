@@ -61,6 +61,18 @@ Browser tools SHALL be disabled by default and require explicit opt-in.
 - **GIVEN** `tools.browser.enabled: true` in configuration
 - **THEN** browser tools SHALL be registered and available to the agent
 
+### Requirement: Browser config fields exposed in TUI
+The Onboard TUI Tools form SHALL expose the `enabled` and `sessionTimeout` fields for browser tool configuration.
+
+#### Scenario: Browser enabled toggle in TUI
+- **WHEN** user navigates to Tools configuration in the onboard wizard
+- **THEN** a "Browser Enabled" boolean toggle SHALL be displayed before the "Browser Headless" toggle
+
+#### Scenario: Browser session timeout in TUI
+- **WHEN** user navigates to Tools configuration in the onboard wizard
+- **THEN** a "Browser Session Timeout" duration text field SHALL be displayed after the "Browser Headless" toggle
+- **AND** the field SHALL accept Go duration strings (e.g., "5m", "10m")
+
 ### Requirement: Lifecycle cleanup
 The system SHALL clean up browser resources on shutdown.
 

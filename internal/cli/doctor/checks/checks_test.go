@@ -167,6 +167,34 @@ func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	}
 }
 
+func TestSecurityCheck_Run_EnclaveProvider(t *testing.T) {
+	cfg := &config.Config{
+		Session: config.SessionConfig{
+			DatabasePath: "", // skip DB checks
+		},
+	}
+	cfg.Security.Signer.Provider = "enclave"
+
+	check := &SecurityCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	if result.Status == StatusFail {
+		t.Errorf("enclave provider should not return Fail, got: %s", result.Message)
+	}
+}
+
+func TestSecurityCheck_Run_UnknownProvider(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Security.Signer.Provider = "some-unknown-provider"
+
+	check := &SecurityCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	if result.Status != StatusFail {
+		t.Errorf("expected StatusFail for unknown provider, got %v: %s", result.Status, result.Message)
+	}
+}
+
 func TestNewSummary(t *testing.T) {
 	results := []Result{
 		{Name: "Test1", Status: StatusPass},
