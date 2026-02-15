@@ -104,6 +104,16 @@ func (r *Registry) ActivateSkill(ctx context.Context, name string) error {
 	return r.LoadSkills(ctx)
 }
 
+// LoadedSkills returns only the dynamically loaded skill tools (no base tools).
+func (r *Registry) LoadedSkills() []*agent.Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*agent.Tool, len(r.loaded))
+	copy(result, r.loaded)
+	return result
+}
+
 // GetSkillTool returns a specific loaded skill tool by name.
 func (r *Registry) GetSkillTool(name string) (*agent.Tool, bool) {
 	toolName := "skill_" + name

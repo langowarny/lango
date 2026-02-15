@@ -111,7 +111,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = wrapped
 
 		// Add dynamic skills from registry
-		tools = append(tools, kc.registry.AllTools()...)
+		tools = append(tools, kc.registry.LoadedSkills()...)
 
 		// Add meta-tools
 		metaTools := buildMetaTools(kc.store, kc.engine, kc.registry, cfg.Knowledge.AutoApproveSkills)

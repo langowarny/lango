@@ -124,6 +124,48 @@ func TestRegistry_LoadSkills_AllTools(t *testing.T) {
 	}
 }
 
+func TestRegistry_LoadedSkills(t *testing.T) {
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	// Before loading any skills, LoadedSkills should return empty (no base tools).
+	loaded := registry.LoadedSkills()
+	if len(loaded) != 0 {
+		t.Fatalf("LoadedSkills before load: len = %d, want 0", len(loaded))
+	}
+
+	// Create and activate a skill.
+	err := registry.CreateSkill(ctx, knowledge.SkillEntry{
+		Name:        "loaded_skill",
+		Description: "test loaded",
+		Type:        "template",
+		Definition:  map[string]interface{}{"template": "Hi"},
+	})
+	if err != nil {
+		t.Fatalf("CreateSkill: %v", err)
+	}
+
+	err = registry.ActivateSkill(ctx, "loaded_skill")
+	if err != nil {
+		t.Fatalf("ActivateSkill: %v", err)
+	}
+
+	// After activation, LoadedSkills should return only the dynamic skill.
+	loaded = registry.LoadedSkills()
+	if len(loaded) != 1 {
+		t.Fatalf("LoadedSkills after load: len = %d, want 1", len(loaded))
+	}
+	if loaded[0].Name != "skill_loaded_skill" {
+		t.Errorf("loaded tool name = %q, want %q", loaded[0].Name, "skill_loaded_skill")
+	}
+
+	// AllTools should still include both base and loaded.
+	all := registry.AllTools()
+	if len(all) != 2 {
+		t.Fatalf("AllTools: len = %d, want 2", len(all))
+	}
+}
+
 func TestRegistry_ActivateSkill(t *testing.T) {
 	registry := newTestRegistry(t)
 	ctx := context.Background()

@@ -34,6 +34,27 @@ The system SHALL provide a registry for managing reusable skill definitions with
 - **WHEN** the registry is initialized
 - **THEN** `LoadSkills` SHALL load all active skills from the store
 
+#### Scenario: App tool assembly with knowledge system
+- **WHEN** the knowledge system is enabled and tools are assembled in `app.go`
+- **THEN** the app SHALL use `LoadedSkills()` to append only dynamic skills
+- **AND** SHALL NOT use `AllTools()` which would duplicate base tools already present in the tool list
+
+### Requirement: Loaded Skills Retrieval
+The registry SHALL provide a `LoadedSkills()` method that returns only dynamically loaded skill tools, excluding base tools.
+
+#### Scenario: No skills loaded
+- **WHEN** `LoadedSkills` is called before any skills are loaded
+- **THEN** the system SHALL return an empty slice
+
+#### Scenario: Skills loaded
+- **WHEN** `LoadedSkills` is called after skills have been activated
+- **THEN** the system SHALL return only the dynamically loaded skill tools
+- **AND** the result SHALL NOT include any base tools passed during registry creation
+
+#### Scenario: Concurrent safety
+- **WHEN** `LoadedSkills` is called concurrently with `LoadSkills`
+- **THEN** access SHALL be protected by a read lock
+
 ### Requirement: Skill Executor
 The system SHALL safely execute skills of three types: composite, script, and template.
 
