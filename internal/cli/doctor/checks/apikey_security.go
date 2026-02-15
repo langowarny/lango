@@ -60,15 +60,15 @@ func (c *APIKeySecurityCheck) Run(ctx context.Context, cfg *config.Config) Resul
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusWarn,
-			Message: fmt.Sprintf("Plaintext API keys detected for: %s", strings.Join(plaintext, ", ")),
-			Details: "Use environment variable references (e.g., ${MY_API_KEY}) or encrypted profiles instead of plaintext keys",
+			Message: fmt.Sprintf("Inline API keys for: %s", strings.Join(plaintext, ", ")),
+			Details: "Keys stored directly in an encrypted profile are safe. For portability across environments, consider using ${ENV_VAR} references instead.",
 		}
 	}
 
 	return Result{
 		Name:    c.Name(),
 		Status:  StatusPass,
-		Message: "All API keys use environment variable references",
+		Message: "All API keys secured",
 	}
 }
 

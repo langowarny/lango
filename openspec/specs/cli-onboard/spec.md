@@ -212,15 +212,19 @@ The onboard wizard SHALL include an "Auth" menu category for managing OIDC provi
 - **THEN** the wizard SHALL return to the configuration menu
 
 ### Persistence
-- Passwords/Secrets (API Keys, Tokens) MUST be handled securely (though typically stored in env vars, the config references them).
-- The tool should generate a `.lango.env` template if new env vars are required.
+- Passwords/Secrets (API Keys, Tokens) MUST be handled securely. All settings including API keys are stored in the encrypted profile.
+- Users MAY optionally use `${ENV_VAR}` references for portability across environments.
 
 ### Onboard command description reflects actual flow
-The `lango onboard` command Long description SHALL accurately list all configurable sections.
+The `lango onboard` command Long description SHALL accurately list all configurable sections and note that all settings are saved in an encrypted profile.
 
 #### Scenario: Long description content
 - **WHEN** user runs `lango onboard --help`
-- **THEN** the description SHALL list Agent, Server, Channels, Tools, Security, Knowledge, and Providers as configurable sections
+- **THEN** the description SHALL list Agent, Server, Channels, Tools, Auth, Security, Session, Knowledge, and Providers as configurable sections
+- **AND** Auth SHALL describe "OIDC providers, JWT settings"
+- **AND** Security SHALL describe "PII interceptor, Signer"
+- **AND** Session SHALL describe "Session DB, TTL"
+- **AND** the description SHALL note that all settings are saved in an encrypted profile
 
 ## Success Criteria
 1.  User can launch `lango onboard`, navigate to "Server" settings, change the port, save, and verify the encrypted profile is updated.
@@ -294,12 +298,18 @@ The onboard command SHALL run `bootstrap.Run()` to initialize the database, cryp
 - **THEN** the onboard command SHALL return the bootstrap error without starting the TUI
 
 ### Requirement: Updated post-save messaging
-After saving, the onboard command SHALL display the profile name, storage path (`~/.lango/lango.db`), and profile management commands (`lango config list`, `lango config use`).
+After saving, the onboard command SHALL display the profile name, storage path (`~/.lango/lango.db`), concise next steps (start Lango, run doctor), and profile management commands (`lango config list`, `lango config use`). The output SHALL NOT include environment variable export instructions or channel-specific token setup guidance. The onboard command SHALL NOT generate a `.lango.env.example` file.
 
 #### Scenario: Post-save output
 - **WHEN** user saves configuration via onboard
 - **THEN** the output SHALL include the encrypted profile name and storage path
+- **AND** the output SHALL include numbered next steps for `lango serve` and `lango doctor`
 - **AND** the output SHALL include profile management command hints
+- **AND** the output SHALL NOT print any `export` commands or environment variable guidance
+
+#### Scenario: No env example file generation
+- **WHEN** user completes the onboard wizard and saves
+- **THEN** no `.lango.env.example` file SHALL be created in the working directory
 
 ### Requirement: Save menu text reflects encrypted storage
 The "Save & Exit" menu item description SHALL read "Save encrypted profile" instead of "Write config to file".
