@@ -325,10 +325,11 @@ func NewObservationalMemoryForm(cfg *config.Config) *FormModel {
 		Checked: cfg.ObservationalMemory.Enabled,
 	})
 
+	omProviderOpts := append([]string{""}, buildProviderOptions(cfg)...)
 	form.AddField(&Field{
-		Key: "om_provider", Label: "Provider", Type: InputText,
-		Value:       cfg.ObservationalMemory.Provider,
-		Placeholder: "leave empty for agent default",
+		Key: "om_provider", Label: "Provider", Type: InputSelect,
+		Value:   cfg.ObservationalMemory.Provider,
+		Options: omProviderOpts,
 	})
 
 	form.AddField(&Field{

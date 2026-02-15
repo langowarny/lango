@@ -235,6 +235,43 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	}
 }
 
+func TestNewObservationalMemoryForm_ProviderIsSelect(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewObservationalMemoryForm(cfg)
+
+	wantKeys := []string{
+		"om_enabled", "om_provider", "om_model",
+		"om_msg_threshold", "om_obs_threshold", "om_max_budget",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	// om_provider must be InputSelect with empty-string option first
+	f := fieldByKey(form, "om_provider")
+	if f.Type != InputSelect {
+		t.Errorf("om_provider: want InputSelect, got %d", f.Type)
+	}
+	if len(f.Options) == 0 {
+		t.Fatal("om_provider: options must not be empty")
+	}
+	if f.Options[0] != "" {
+		t.Errorf("om_provider: first option should be empty string, got %q", f.Options[0])
+	}
+
+	// om_model remains InputText
+	if mf := fieldByKey(form, "om_model"); mf.Type != InputText {
+		t.Errorf("om_model: want InputText, got %d", mf.Type)
+	}
+}
+
 func TestNewEmbeddingForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewEmbeddingForm(cfg)
