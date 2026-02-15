@@ -78,16 +78,12 @@ func TestNewToolsForm_AllFields(t *testing.T) {
 	}
 }
 
-func TestNewSecurityForm_AllFields(t *testing.T) {
+func TestNewSessionForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
-	form := NewSecurityForm(cfg)
+	form := NewSessionForm(cfg)
 
 	wantKeys := []string{
 		"db_path", "ttl", "max_history_turns",
-		"interceptor_enabled", "interceptor_pii", "interceptor_approval",
-		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
-		"signer_provider", "signer_rpc", "signer_keyid",
-		"passphrase",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -102,6 +98,27 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 
 	if f := fieldByKey(form, "max_history_turns"); f.Value != "50" {
 		t.Errorf("max_history_turns: want %q, got %q", "50", f.Value)
+	}
+}
+
+func TestNewSecurityForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewSecurityForm(cfg)
+
+	wantKeys := []string{
+		"interceptor_enabled", "interceptor_pii", "interceptor_approval",
+		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
+		"signer_provider", "signer_rpc", "signer_keyid",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
 	}
 }
 

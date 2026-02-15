@@ -152,7 +152,11 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		w.providersList, plCmd = w.providersList.Update(msg)
 		cmd = plCmd
 
-		if w.providersList.Exit {
+		if w.providersList.Deleted != "" {
+			delete(w.state.Current.Providers, w.providersList.Deleted)
+			w.state.MarkDirty("providers")
+			w.providersList = NewProvidersListModel(w.state.Current)
+		} else if w.providersList.Exit {
 			w.providersList.Exit = false
 			w.step = StepMenu
 		} else if w.providersList.Selected != "" {
@@ -191,6 +195,10 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.step = StepForm
 	case "tools":
 		w.activeForm = NewToolsForm(w.state.Current)
+		w.activeForm.Focus = true
+		w.step = StepForm
+	case "session":
+		w.activeForm = NewSessionForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
 	case "security":

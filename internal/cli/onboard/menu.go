@@ -28,6 +28,7 @@ func NewMenuModel() MenuModel {
 			{"server", "🌐 Server", "Host, Port, Networking"},
 			{"channels", "📡 Channels", "Telegram, Discord, Slack"},
 			{"tools", "🛠️ Tools", "Exec, Browser, Filesystem"},
+			{"session", "📂 Session", "Database, TTL, History"},
 			{"security", "🔒 Security", "PII, Approval, Encryption"},
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},

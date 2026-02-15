@@ -92,8 +92,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 			if m.Cursor > 0 {
 				m.Cursor--
 			} else {
-				m.Cursor = len(m.Fields) // Wrap to buttons if we add them later?
-				// For now stick to fields
+				// Already at top, do nothing
 			}
 		case "down", "tab":
 			if m.Cursor < len(m.Fields)-1 {

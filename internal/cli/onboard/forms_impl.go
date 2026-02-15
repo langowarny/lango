@@ -2,20 +2,35 @@ package onboard
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/langowarny/lango/internal/config"
 )
 
+// buildProviderOptions builds provider options from registered providers
+func buildProviderOptions(cfg *config.Config) []string {
+	opts := make([]string, 0, len(cfg.Providers))
+	for id := range cfg.Providers {
+		opts = append(opts, id)
+	}
+	sort.Strings(opts)
+	if len(opts) == 0 {
+		opts = []string{"anthropic", "openai", "gemini", "ollama"}
+	}
+	return opts
+}
+
 // Helper to create the Agent configuration form
 func NewAgentForm(cfg *config.Config) *FormModel {
 	form := NewFormModel("🤖 Agent Configuration")
 
+	providerOpts := buildProviderOptions(cfg)
 	form.AddField(&Field{
 		Key: "provider", Label: "Provider", Type: InputSelect,
 		Value:   cfg.Agent.Provider,
-		Options: []string{"anthropic", "openai", "gemini", "ollama"},
+		Options: providerOpts,
 	})
 
 	form.AddField(&Field{
@@ -46,10 +61,11 @@ func NewAgentForm(cfg *config.Config) *FormModel {
 		Placeholder: "path/to/system_prompt.txt",
 	})
 
+	fallbackOpts := append([]string{""}, providerOpts...)
 	form.AddField(&Field{
 		Key: "fallback_provider", Label: "Fallback Provider", Type: InputSelect,
 		Value:   cfg.Agent.FallbackProvider,
-		Options: []string{"", "anthropic", "openai", "gemini", "ollama"},
+		Options: fallbackOpts,
 	})
 
 	form.AddField(&Field{
@@ -166,12 +182,12 @@ func NewToolsForm(cfg *config.Config) *FormModel {
 	return &form
 }
 
-// Helper to create Security configuration form
-func NewSecurityForm(cfg *config.Config) *FormModel {
-	form := NewFormModel("🔒 Security Configuration")
+// Helper to create Session configuration form
+func NewSessionForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("📂 Session Configuration")
 
 	form.AddField(&Field{
-		Key: "db_path", Label: "Session DB Path", Type: InputText,
+		Key: "db_path", Label: "Database Path", Type: InputText,
 		Value: cfg.Session.DatabasePath,
 	})
 
@@ -184,6 +200,13 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Key: "max_history_turns", Label: "Max History Turns", Type: InputInt,
 		Value: strconv.Itoa(cfg.Session.MaxHistoryTurns),
 	})
+
+	return &form
+}
+
+// Helper to create Security configuration form
+func NewSecurityForm(cfg *config.Config) *FormModel {
+	form := NewFormModel("🔒 Security Configuration")
 
 	// Interceptor
 	form.AddField(&Field{
@@ -240,11 +263,6 @@ func NewSecurityForm(cfg *config.Config) *FormModel {
 		Key: "interceptor_sensitive_tools", Label: "  Sensitive Tools", Type: InputText,
 		Value:       strings.Join(cfg.Security.Interceptor.SensitiveTools, ","),
 		Placeholder: "exec,browser (comma-separated)",
-	})
-
-	// Passphrase
-	form.AddField(&Field{
-		Key: "passphrase", Label: "DB Passphrase", Type: InputPassword,
 	})
 
 	return &form
@@ -424,18 +442,18 @@ func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	}
 	form := NewFormModel(title)
 
-	if id == "" {
-		form.AddField(&Field{
-			Key: "id", Label: "ID", Type: InputText,
-			Placeholder: "unique-provider-id",
-		})
-	}
-
 	form.AddField(&Field{
 		Key: "type", Label: "Type", Type: InputSelect,
 		Value:   cfg.Type,
 		Options: []string{"openai", "anthropic", "gemini", "ollama"},
 	})
+
+	if id == "" {
+		form.AddField(&Field{
+			Key: "id", Label: "Provider Name", Type: InputText,
+			Placeholder: "e.g. my-openai, production-claude",
+		})
+	}
 
 	form.AddField(&Field{
 		Key: "apikey", Label: "API Key", Type: InputPassword,

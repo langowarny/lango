@@ -19,6 +19,7 @@ type ProvidersListModel struct {
 	Providers []ProviderItem
 	Cursor    int
 	Selected  string // ID of selected provider, or "NEW"
+	Deleted   string // ID of provider to delete
 	Exit      bool   // True if user wants to go back
 }
 
@@ -64,6 +65,12 @@ func (m ProvidersListModel) Update(msg tea.Msg) (ProvidersListModel, tea.Cmd) {
 				m.Selected = m.Providers[m.Cursor].ID
 			}
 			return m, nil
+		case "d":
+			// Delete selected provider (not the "Add New" option)
+			if m.Cursor < len(m.Providers) {
+				m.Deleted = m.Providers[m.Cursor].ID
+				return m, nil
+			}
 		case "esc":
 			m.Exit = true
 			return m, nil
@@ -110,7 +117,7 @@ func (m ProvidersListModel) View() string {
 	b.WriteString(itemStyle.Render("+ Add New Provider"))
 	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("Use arrow keys to navigate • enter to select • esc to back"))
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#626262")).Render("↑/↓: navigate • enter: select • d: delete • esc: back"))
 
 	return b.String()
 }
