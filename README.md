@@ -47,15 +47,7 @@ lango serve
 lango config validate
 ```
 
-### Getting Started
-
-Use the interactive onboard wizard for first-time setup:
-
-```bash
-lango onboard
-```
-
-This guides you through:
+The onboard wizard guides you through:
 1. AI provider configuration (API keys, models)
 2. Server and channel setup (Telegram, Discord, Slack)
 3. Security settings (encryption, signer mode, approval workflows)
@@ -75,7 +67,7 @@ lango config list                List all configuration profiles
 lango config create <name>       Create a new profile with defaults
 lango config use <name>          Switch to a different profile
 lango config delete <name>       Delete a profile (--force to skip prompt)
-lango config import <file>       Import and encrypt a JSON config (source file is deleted after import)
+lango config import <file>       Import and encrypt a JSON config (--profile <name>, source file is deleted after import)
 lango config export <name>       Export active profile as JSON (requires passphrase)
 lango config validate            Validate the active profile
 
@@ -89,7 +81,6 @@ lango memory list [--json]       List observational memory entries
 lango memory status [--json]     Show memory system status
 lango memory clear [--force]     Clear all memory entries
 
-lango login <provider>           Login via OIDC provider
 ```
 
 ### Diagnostics
@@ -120,11 +111,13 @@ lango/
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
 │   ├── channels/           # Telegram, Discord, Slack integrations
 │   ├── cli/                # CLI commands
-│   │   ├── auth/           #   lango login (OIDC/OAuth)
+│   │   ├── common/         #   shared CLI helpers
 │   │   ├── doctor/         #   lango doctor (diagnostics)
 │   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (TUI wizard)
-│   │   └── security/       #   lango security status/secrets/migrate-passphrase
+│   │   ├── prompt/         #   interactive prompt utilities
+│   │   ├── security/       #   lango security status/secrets/migrate-passphrase
+│   │   └── tui/            #   TUI components and views
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
 │   ├── embedding/          # Embedding providers (OpenAI, Google, local) and RAG
@@ -143,7 +136,7 @@ lango/
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # Skill registry, executor, builder
 │   ├── supervisor/         # Provider proxy, privileged tool execution
-│   └── tools/              # exec, filesystem, browser
+│   └── tools/              # browser, crypto, exec, filesystem, secrets
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -153,7 +146,7 @@ Lango supports multiple AI providers with a unified interface. Provider aliases 
 
 ### Supported Providers
 - **OpenAI** (`openai`): GPT-4o, GPT-4, and OpenAI-compatible APIs
-- **Anthropic** (`anthropic`): Claude 3, Claude 3.5
+- **Anthropic** (`anthropic`): Claude Sonnet 4, Claude 3.5, Claude 3
 - **Gemini** (`gemini`): Google Gemini models
 - **Ollama** (`ollama`): Local models via Ollama (default: `http://localhost:11434/v1`)
 
@@ -170,16 +163,16 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | **Server** | | | |
 | `server.host` | string | `localhost` | Bind address |
 | `server.port` | int | `18789` | Listen port |
-| `server.httpEnabled` | bool | `false` | Enable HTTP API endpoints |
-| `server.wsEnabled` | bool | `false` | Enable WebSocket server |
+| `server.httpEnabled` | bool | `true` | Enable HTTP API endpoints |
+| `server.wsEnabled` | bool | `true` | Enable WebSocket server |
 | `server.allowedOrigins` | []string | `[]` | WebSocket CORS allowed origins (empty = same-origin, `["*"]` = allow all) |
 | **Agent** | | | |
-| `agent.provider` | string | `gemini` | Primary AI provider ID |
-| `agent.model` | string | `gemini-2.0-flash-exp` | Primary model ID |
+| `agent.provider` | string | `anthropic` | Primary AI provider ID |
+| `agent.model` | string | `claude-sonnet-4-20250514` | Primary model ID |
 | `agent.fallbackProvider` | string | - | Fallback provider ID |
 | `agent.fallbackModel` | string | - | Fallback model ID |
 | `agent.maxTokens` | int | `4096` | Max tokens |
-| `agent.temperature` | float | `0` | Generation temperature |
+| `agent.temperature` | float | `0.7` | Generation temperature |
 | `agent.systemPromptPath` | string | - | Custom system prompt template path |
 | **Providers** | | | |
 | `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
@@ -189,7 +182,7 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `logging.level` | string | `info` | Log level |
 | `logging.format` | string | `console` | `json` or `console` |
 | **Session** | | | |
-| `session.databasePath` | string | `~/.lango/sessions.db` | SQLite path |
+| `session.databasePath` | string | `~/.lango/data.db` | SQLite path |
 | `session.ttl` | duration | - | Session TTL before expiration |
 | `session.maxHistoryTurns` | int | - | Maximum history turns per session |
 | **Security** | | | |
@@ -209,7 +202,7 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `auth.providers.<id>.scopes` | []string | - | OIDC scopes (e.g. `["openid", "email"]`) |
 | **Tools** | | | |
 | `tools.exec.defaultTimeout` | duration | - | Default timeout for shell commands |
-| `tools.exec.allowBackground` | bool | `false` | Allow background processes |
+| `tools.exec.allowBackground` | bool | `true` | Allow background processes |
 | `tools.exec.workDir` | string | - | Working directory (empty = current) |
 | `tools.filesystem.maxReadSize` | int | - | Maximum file size to read |
 | `tools.filesystem.allowedPaths` | []string | - | Allowed paths (empty = allow all) |
@@ -341,14 +334,7 @@ Lango supports optional companion apps for hardware-backed security. Companion d
 
 ### Authentication
 
-Lango supports OIDC authentication for the gateway:
-
-```bash
-# Login via OIDC provider
-lango login google
-```
-
-Configure OIDC providers via `lango onboard` or `lango config` CLI.
+Lango supports OIDC authentication for the gateway. Configure OIDC providers via `lango onboard` or `lango config` CLI.
 
 #### Auth Endpoints
 
