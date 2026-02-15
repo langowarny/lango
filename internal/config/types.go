@@ -34,6 +34,9 @@ type Config struct {
 	// Observational Memory configuration
 	ObservationalMemory ObservationalMemoryConfig `mapstructure:"observationalMemory" json:"observationalMemory"`
 
+	// Embedding / RAG configuration
+	Embedding EmbeddingConfig `mapstructure:"embedding" json:"embedding"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -78,6 +81,42 @@ type ObservationalMemoryConfig struct {
 
 	// Max token budget for recent messages in context (default: 8000)
 	MaxMessageTokenBudget int `mapstructure:"maxMessageTokenBudget" json:"maxMessageTokenBudget"`
+}
+
+// EmbeddingConfig defines embedding and RAG settings.
+type EmbeddingConfig struct {
+	// Provider selects the embedding backend: "openai", "google", or "local".
+	Provider string `mapstructure:"provider" json:"provider"`
+
+	// Model is the embedding model identifier.
+	Model string `mapstructure:"model" json:"model"`
+
+	// Dimensions is the embedding vector dimensionality.
+	Dimensions int `mapstructure:"dimensions" json:"dimensions"`
+
+	// Local holds settings for the local (Ollama) provider.
+	Local LocalEmbeddingConfig `mapstructure:"local" json:"local"`
+
+	// RAG holds retrieval-augmented generation settings.
+	RAG RAGConfig `mapstructure:"rag" json:"rag"`
+}
+
+// LocalEmbeddingConfig defines settings for a local embedding provider.
+type LocalEmbeddingConfig struct {
+	// BaseURL is the Ollama endpoint (default: http://localhost:11434/v1).
+	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
+	// Model overrides the embedding model for local provider.
+	Model string `mapstructure:"model" json:"model"`
+}
+
+// RAGConfig defines retrieval-augmented generation settings.
+type RAGConfig struct {
+	// Enabled activates RAG context injection.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	// MaxResults is the maximum number of results to inject.
+	MaxResults int `mapstructure:"maxResults" json:"maxResults"`
+	// Collections to search (empty means all).
+	Collections []string `mapstructure:"collections" json:"collections"`
 }
 
 // AuthConfig defines authentication settings

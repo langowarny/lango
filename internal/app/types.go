@@ -8,6 +8,7 @@ import (
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
@@ -45,6 +46,10 @@ type App struct {
 	// Observational Memory Components (optional)
 	MemoryStore  *memory.Store
 	MemoryBuffer *memory.Buffer
+
+	// Embedding / RAG Components (optional)
+	EmbeddingBuffer *embedding.EmbeddingBuffer
+	RAGService      *embedding.RAGService
 
 	// Channels
 	Channels []Channel

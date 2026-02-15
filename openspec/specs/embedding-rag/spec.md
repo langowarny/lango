@@ -1,0 +1,51 @@
+# Embedding & RAG Specification
+
+## Requirements
+
+### REQ-EMB-001: Embedding Provider Interface
+The system SHALL provide an `EmbeddingProvider` interface supporting batch text-to-vector conversion with provider ID, embed, and dimensions methods.
+
+**Scenarios:**
+- Given OpenAI API key and model, when Embed is called with texts, then float32 vectors of configured dimensions are returned
+- Given Google API key and model, when Embed is called, then vectors matching configured dimensions are returned
+- Given local Ollama endpoint, when Embed is called, then vectors from the local model are returned
+- Given an unknown provider type, when creating via registry, then an error is returned
+
+### REQ-EMB-002: Vector Store
+The system SHALL provide a `VectorStore` interface supporting Upsert, Search (by collection + cosine similarity), and Delete operations.
+
+**Scenarios:**
+- Given a VectorRecord with ID, collection, embedding, and metadata, when Upsert is called, then the record is stored and retrievable
+- Given an existing record ID, when Upsert is called again, then the previous record is replaced
+- Given stored vectors, when Search is called with a query vector, then results are returned sorted by distance ascending
+- Given stored records, when Delete is called with IDs, then those records are removed
+
+### REQ-EMB-003: sqlite-vec Integration
+The system SHALL use sqlite-vec virtual tables within the shared SQLite database for vector storage. Dimensions are determined at init time from the provider.
+
+### REQ-EMB-004: Async Embedding Buffer
+The system SHALL process embedding requests asynchronously via a background goroutine with batched provider calls and graceful shutdown.
+
+**Scenarios:**
+- Given embedding buffer is started, when Enqueue is called, then the request is processed in the background
+- Given multiple enqueued requests, when batch timeout or size threshold is reached, then they are sent to the provider in one batch
+- Given buffer is stopped, when Stop is called, then remaining queued items are drained before exit
+
+### REQ-EMB-005: Store Integration
+Knowledge, Memory (Observation/Reflection), and Learning stores SHALL emit embed callbacks on save operations. Callbacks are optional; nil means no embedding (backward compatible).
+
+### REQ-EMB-006: RAG Service
+The system SHALL provide a RAGService that:
+1. Embeds a query string
+2. Searches across configurable collections
+3. Resolves original content from source stores
+4. Returns results sorted by distance
+
+### REQ-EMB-007: Agent Context Injection
+When RAG is enabled, the ContextAwareModelAdapter SHALL inject a "Semantic Context (RAG)" section into the system prompt before each LLM call.
+
+### REQ-EMB-008: Configuration
+Embedding settings SHALL be configurable via the `embedding` section in config, including provider, model, dimensions, local endpoint, and RAG options.
+
+### REQ-EMB-009: Doctor Check
+The doctor command SHALL include an Embedding/RAG check that validates provider configuration and API key availability.

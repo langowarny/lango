@@ -10,6 +10,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 
+	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
 )
@@ -27,6 +28,8 @@ type ContextAwareModelAdapter struct {
 	inner          *ModelAdapter
 	retriever      *knowledge.ContextRetriever
 	memoryProvider MemoryProvider
+	ragService     *embedding.RAGService
+	ragOpts        embedding.RetrieveOptions
 	runtimeAdapter *RuntimeContextAdapter
 	sessionKey     string
 	basePrompt     string
@@ -58,6 +61,13 @@ func (m *ContextAwareModelAdapter) WithMemory(provider MemoryProvider, sessionKe
 // WithRuntimeAdapter adds runtime context support to the adapter.
 func (m *ContextAwareModelAdapter) WithRuntimeAdapter(adapter *RuntimeContextAdapter) *ContextAwareModelAdapter {
 	m.runtimeAdapter = adapter
+	return m
+}
+
+// WithRAG adds RAG (retrieval-augmented generation) support.
+func (m *ContextAwareModelAdapter) WithRAG(svc *embedding.RAGService, opts embedding.RetrieveOptions) *ContextAwareModelAdapter {
+	m.ragService = svc
+	m.ragOpts = opts
 	return m
 }
 
@@ -94,6 +104,14 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 			m.logger.Warnw("context retrieval error", "error", err)
 		} else if retrieved != nil && retrieved.TotalItems > 0 {
 			prompt = m.retriever.AssemblePrompt(prompt, retrieved)
+		}
+	}
+
+	// Retrieve RAG context (semantic search across all collections).
+	if m.ragService != nil && userQuery != "" {
+		ragSection := m.assembleRAGSection(ctx, userQuery)
+		if ragSection != "" {
+			prompt = fmt.Sprintf("%s\n\n%s", prompt, ragSection)
 		}
 	}
 
@@ -154,6 +172,30 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context) st
 		}
 	}
 
+	return b.String()
+}
+
+// assembleRAGSection builds a "Semantic Context" section from RAG retrieval results.
+func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query string) string {
+	results, err := m.ragService.Retrieve(ctx, query, m.ragOpts)
+	if err != nil {
+		m.logger.Warnw("rag retrieval error", "error", err)
+		return ""
+	}
+	if len(results) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString("## Semantic Context (RAG)\n")
+	for _, r := range results {
+		if r.Content == "" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("\n### [%s] %s\n", r.Collection, r.SourceID))
+		b.WriteString(r.Content)
+		b.WriteString("\n")
+	}
 	return b.String()
 }
 

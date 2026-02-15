@@ -19,10 +19,17 @@ import (
 	entskill "github.com/langowarny/lango/internal/ent/skill"
 )
 
+// EmbedCallback is an optional hook called when content is saved, enabling
+// asynchronous embedding without importing the embedding package.
+type EmbedCallback func(id, collection, content string, metadata map[string]string)
+
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
 	client *ent.Client
 	logger *zap.SugaredLogger
+
+	// Optional embedding hook (nil = disabled).
+	onEmbed EmbedCallback
 
 	// Rate limiting per session
 	mu              sync.Mutex
@@ -57,6 +64,11 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger, maxKnowledge, maxLe
 	}
 }
 
+// SetEmbedCallback sets the optional embedding hook.
+func (s *Store) SetEmbedCallback(cb EmbedCallback) {
+	s.onEmbed = cb
+}
+
 // SaveKnowledge creates or updates a knowledge entry by key.
 func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry KnowledgeEntry) error {
 	if err := s.reserveKnowledgeSlot(sessionKey); err != nil {
@@ -85,6 +97,11 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 			return fmt.Errorf("create knowledge: %w", err)
 		}
 
+		if s.onEmbed != nil {
+			s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
+				"category": entry.Category,
+			})
+		}
 		return nil
 	}
 	if err != nil {
@@ -105,6 +122,12 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	_, err = updater.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("update knowledge: %w", err)
+	}
+
+	if s.onEmbed != nil {
+		s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
+			"category": entry.Category,
+		})
 	}
 	return nil
 }
@@ -225,12 +248,38 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 		builder.SetTags(entry.Tags)
 	}
 
-	_, err := builder.Save(ctx)
+	created, err := builder.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("create learning: %w", err)
 	}
 
+	if s.onEmbed != nil {
+		content := entry.Trigger
+		if entry.Fix != "" {
+			content += "\n" + entry.Fix
+		}
+		s.onEmbed(created.ID.String(), "learning", content, map[string]string{
+			"category": entry.Category,
+		})
+	}
+
 	return nil
+}
+
+// GetLearning retrieves a learning entry by its UUID.
+func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, error) {
+	l, err := s.client.Learning.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get learning: %w", err)
+	}
+	return &LearningEntry{
+		Trigger:      l.Trigger,
+		ErrorPattern: l.ErrorPattern,
+		Diagnosis:    l.Diagnosis,
+		Fix:          l.Fix,
+		Category:     string(l.Category),
+		Tags:         l.Tags,
+	}, nil
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.

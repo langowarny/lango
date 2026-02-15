@@ -6,10 +6,13 @@ import (
 	"os"
 	"strings"
 
+	"database/sql"
+
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
@@ -293,6 +296,111 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 	}
 }
 
+// embeddingComponents holds optional embedding/RAG components.
+type embeddingComponents struct {
+	buffer     *embedding.EmbeddingBuffer
+	ragService *embedding.RAGService
+}
+
+// initEmbedding creates the embedding pipeline and RAG service if configured.
+func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents) *embeddingComponents {
+	if cfg.Embedding.Provider == "" {
+		logger().Info("embedding system disabled (no provider configured)")
+		return nil
+	}
+
+	// Resolve API key from providers map.
+	apiKey := ""
+	switch cfg.Embedding.Provider {
+	case "openai":
+		if p, ok := cfg.Providers["openai"]; ok {
+			apiKey = p.APIKey
+		}
+	case "google":
+		if p, ok := cfg.Providers["google"]; ok {
+			apiKey = p.APIKey
+		}
+		if p, ok := cfg.Providers["gemini"]; ok && apiKey == "" {
+			apiKey = p.APIKey
+		}
+	}
+
+	providerCfg := embedding.ProviderConfig{
+		Provider:   cfg.Embedding.Provider,
+		Model:      cfg.Embedding.Model,
+		Dimensions: cfg.Embedding.Dimensions,
+		APIKey:     apiKey,
+		BaseURL:    cfg.Embedding.Local.BaseURL,
+	}
+	if cfg.Embedding.Provider == "local" && cfg.Embedding.Local.Model != "" {
+		providerCfg.Model = cfg.Embedding.Local.Model
+	}
+
+	registry, err := embedding.NewRegistry(providerCfg, nil, logger())
+	if err != nil {
+		logger().Warnw("embedding provider init failed, skipping", "error", err)
+		return nil
+	}
+
+	provider := registry.Provider()
+	dimensions := provider.Dimensions()
+
+	// Create vector store using the shared database.
+	if rawDB == nil {
+		logger().Warn("embedding requires raw DB handle, skipping")
+		return nil
+	}
+	vecStore, err := embedding.NewSQLiteVecStore(rawDB, dimensions)
+	if err != nil {
+		logger().Warnw("sqlite-vec store init failed, skipping", "error", err)
+		return nil
+	}
+
+	embLogger := logger()
+
+	// Create buffer.
+	buffer := embedding.NewEmbeddingBuffer(provider, vecStore, embLogger)
+
+	// Create resolver and RAG service.
+	var ks *knowledge.Store
+	var ms *memory.Store
+	if kc != nil {
+		ks = kc.store
+	}
+	if mc != nil {
+		ms = mc.store
+	}
+	resolver := embedding.NewStoreResolver(ks, ms)
+	ragService := embedding.NewRAGService(provider, vecStore, resolver, embLogger)
+
+	// Wire embed callbacks into stores so saves trigger async embedding.
+	embedCB := func(id, collection, content string, metadata map[string]string) {
+		buffer.Enqueue(embedding.EmbedRequest{
+			ID:         id,
+			Collection: collection,
+			Content:    content,
+			Metadata:   metadata,
+		})
+	}
+	if kc != nil {
+		kc.store.SetEmbedCallback(embedCB)
+	}
+	if mc != nil {
+		mc.store.SetEmbedCallback(embedCB)
+	}
+
+	logger().Infow("embedding system initialized",
+		"provider", cfg.Embedding.Provider,
+		"dimensions", dimensions,
+		"ragEnabled", cfg.Embedding.RAG.Enabled,
+	)
+
+	return &embeddingComponents{
+		buffer:     buffer,
+		ragService: ragService,
+	}
+}
+
 // initAuth creates the auth manager if OIDC providers are configured.
 func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 	if len(cfg.Auth.Providers) == 0 {
@@ -310,7 +418,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -369,11 +477,36 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ctxAdapter.WithMemory(mc.store, "")
 		}
 
+		// Wire in RAG if available and enabled
+		if ec != nil && cfg.Embedding.RAG.Enabled {
+			ragOpts := embedding.RetrieveOptions{
+				Limit:       cfg.Embedding.RAG.MaxResults,
+				Collections: cfg.Embedding.RAG.Collections,
+			}
+			if ragOpts.Limit <= 0 {
+				ragOpts.Limit = 5
+			}
+			ctxAdapter.WithRAG(ec.ragService, ragOpts)
+		}
+
 		llm = ctxAdapter
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, systemPrompt, logger())
 		ctxAdapter.WithMemory(mc.store, "")
+
+		// Wire in RAG if available and enabled
+		if ec != nil && cfg.Embedding.RAG.Enabled {
+			ragOpts := embedding.RetrieveOptions{
+				Limit:       cfg.Embedding.RAG.MaxResults,
+				Collections: cfg.Embedding.RAG.Collections,
+			}
+			if ragOpts.Limit <= 0 {
+				ragOpts.Limit = 5
+			}
+			ctxAdapter.WithRAG(ec.ragService, ragOpts)
+		}
+
 		llm = ctxAdapter
 	}
 

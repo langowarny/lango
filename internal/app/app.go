@@ -125,6 +125,13 @@ func New(boot *bootstrap.Result) (*App, error) {
 		app.MemoryBuffer = mc.buffer
 	}
 
+	// 5c. Embedding / RAG (optional)
+	ec := initEmbedding(cfg, boot.RawDB, kc, mc)
+	if ec != nil {
+		app.EmbeddingBuffer = ec.buffer
+		app.RAGService = ec.ragService
+	}
+
 	// 6. Auth
 	auth := initAuth(cfg, store)
 
@@ -145,7 +152,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, scanner)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, scanner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
@@ -180,6 +187,12 @@ func (a *App) Start(ctx context.Context) error {
 		logger().Info("observational memory buffer started")
 	}
 
+	// Start embedding buffer if enabled
+	if a.EmbeddingBuffer != nil {
+		a.EmbeddingBuffer.Start(&a.wg)
+		logger().Info("embedding buffer started")
+	}
+
 	logger().Info("starting channels...")
 	for _, ch := range a.Channels {
 		a.wg.Add(1)
@@ -211,6 +224,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.MemoryBuffer != nil {
 		a.MemoryBuffer.Stop()
 		logger().Info("observational memory buffer stopped")
+	}
+
+	// Stop embedding buffer
+	if a.EmbeddingBuffer != nil {
+		a.EmbeddingBuffer.Stop()
+		logger().Info("embedding buffer stopped")
 	}
 
 	// Wait for all background goroutines to finish

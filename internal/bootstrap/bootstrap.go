@@ -28,6 +28,8 @@ type Result struct {
 	Config *config.Config
 	// DBClient is the shared ent.Client for the application database.
 	DBClient *ent.Client
+	// RawDB is the underlying *sql.DB for direct SQL operations (e.g., sqlite-vec).
+	RawDB *sql.DB
 	// Crypto is the initialized CryptoProvider for the session.
 	Crypto security.CryptoProvider
 	// ConfigStore provides encrypted profile CRUD operations.
@@ -158,6 +160,7 @@ func Run(opts Options) (*Result, error) {
 	return &Result{
 		Config:      cfg,
 		DBClient:    client,
+		RawDB:       rawDB,
 		Crypto:      provider,
 		ConfigStore: store,
 		ProfileName: profileName,

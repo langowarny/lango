@@ -116,5 +116,7 @@ func AllChecks() []Check {
 		// Memory & Scanning Checks
 		&ObservationalMemoryCheck{},
 		&OutputScanningCheck{},
+		// Embedding / RAG
+		&EmbeddingCheck{},
 	}
 }

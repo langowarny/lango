@@ -12,10 +12,15 @@ import (
 	"github.com/langowarny/lango/internal/ent/reflection"
 )
 
+// EmbedCallback is an optional hook called when content is saved, enabling
+// asynchronous embedding without importing the embedding package.
+type EmbedCallback func(id, collection, content string, metadata map[string]string)
+
 // Store provides CRUD operations for observations and reflections.
 type Store struct {
-	client *ent.Client
-	logger *zap.SugaredLogger
+	client  *ent.Client
+	logger  *zap.SugaredLogger
+	onEmbed EmbedCallback
 }
 
 // NewStore creates a new observational memory store.
@@ -24,6 +29,11 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 		client: client,
 		logger: logger,
 	}
+}
+
+// SetEmbedCallback sets the optional embedding hook.
+func (s *Store) SetEmbedCallback(cb EmbedCallback) {
+	s.onEmbed = cb
 }
 
 // SaveObservation persists an observation to the database.
@@ -39,9 +49,15 @@ func (s *Store) SaveObservation(ctx context.Context, obs Observation) error {
 		builder.SetID(obs.ID)
 	}
 
-	_, err := builder.Save(ctx)
+	saved, err := builder.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("save observation: %w", err)
+	}
+
+	if s.onEmbed != nil {
+		s.onEmbed(saved.ID.String(), "observation", obs.Content, map[string]string{
+			"session_key": obs.SessionKey,
+		})
 	}
 	return nil
 }
@@ -70,6 +86,23 @@ func (s *Store) ListObservations(ctx context.Context, sessionKey string) ([]Obse
 		})
 	}
 	return result, nil
+}
+
+// GetObservation retrieves a single observation by its ID.
+func (s *Store) GetObservation(ctx context.Context, id uuid.UUID) (*Observation, error) {
+	e, err := s.client.Observation.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get observation: %w", err)
+	}
+	return &Observation{
+		ID:               e.ID,
+		SessionKey:       e.SessionKey,
+		Content:          e.Content,
+		TokenCount:       e.TokenCount,
+		SourceStartIndex: e.SourceStartIndex,
+		SourceEndIndex:   e.SourceEndIndex,
+		CreatedAt:        e.CreatedAt,
+	}, nil
 }
 
 // DeleteObservations deletes observations by their IDs.
@@ -108,11 +141,33 @@ func (s *Store) SaveReflection(ctx context.Context, ref Reflection) error {
 		builder.SetID(ref.ID)
 	}
 
-	_, err := builder.Save(ctx)
+	saved, err := builder.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("save reflection: %w", err)
 	}
+
+	if s.onEmbed != nil {
+		s.onEmbed(saved.ID.String(), "reflection", ref.Content, map[string]string{
+			"session_key": ref.SessionKey,
+		})
+	}
 	return nil
+}
+
+// GetReflection retrieves a single reflection by its ID.
+func (s *Store) GetReflection(ctx context.Context, id uuid.UUID) (*Reflection, error) {
+	e, err := s.client.Reflection.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get reflection: %w", err)
+	}
+	return &Reflection{
+		ID:         e.ID,
+		SessionKey: e.SessionKey,
+		Content:    e.Content,
+		TokenCount: e.TokenCount,
+		Generation: e.Generation,
+		CreatedAt:  e.CreatedAt,
+	}, nil
 }
 
 // DeleteReflections deletes reflections by their IDs.
