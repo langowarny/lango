@@ -7,17 +7,20 @@ import (
 
 	"github.com/langowarny/lango/internal/provider"
 	"google.golang.org/adk/model"
+	"google.golang.org/genai"
 )
 
 type mockProvider struct {
-	id     string
-	events []provider.StreamEvent
-	err    error
+	id         string
+	events     []provider.StreamEvent
+	err        error
+	lastParams provider.GenerateParams
 }
 
 func (m *mockProvider) ID() string { return m.id }
 
-func (m *mockProvider) Generate(_ context.Context, _ provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error) {
+func (m *mockProvider) Generate(_ context.Context, params provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error) {
+	m.lastParams = params
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -178,5 +181,87 @@ func TestModelAdapter_GenerateContent_StreamError(t *testing.T) {
 	}
 	if !gotError {
 		t.Error("expected error event to propagate")
+	}
+}
+
+func TestModelAdapter_GenerateContent_SystemInstruction(t *testing.T) {
+	p := &mockProvider{
+		id: "test",
+		events: []provider.StreamEvent{
+			{Type: provider.StreamEventPlainText, Text: "response"},
+			{Type: provider.StreamEventDone},
+		},
+	}
+	adapter := NewModelAdapter(p)
+
+	req := &model.LLMRequest{
+		Model: "test-model",
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{{Text: "hello"}}},
+		},
+		Config: &genai.GenerateContentConfig{
+			SystemInstruction: &genai.Content{
+				Parts: []*genai.Part{
+					{Text: "You are a helpful assistant."},
+					{Text: "Always be concise."},
+				},
+			},
+		},
+	}
+	seq := adapter.GenerateContent(context.Background(), req, false)
+
+	for _, err := range seq {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	// Verify system message is prepended to messages
+	msgs := p.lastParams.Messages
+	if len(msgs) < 2 {
+		t.Fatalf("expected at least 2 messages (system + user), got %d", len(msgs))
+	}
+	if msgs[0].Role != "system" {
+		t.Errorf("expected first message role 'system', got %q", msgs[0].Role)
+	}
+	if msgs[0].Content != "You are a helpful assistant.\nAlways be concise." {
+		t.Errorf("unexpected system content: %q", msgs[0].Content)
+	}
+	if msgs[1].Role != "user" {
+		t.Errorf("expected second message role 'user', got %q", msgs[1].Role)
+	}
+}
+
+func TestModelAdapter_GenerateContent_NoSystemInstruction(t *testing.T) {
+	p := &mockProvider{
+		id: "test",
+		events: []provider.StreamEvent{
+			{Type: provider.StreamEventPlainText, Text: "response"},
+			{Type: provider.StreamEventDone},
+		},
+	}
+	adapter := NewModelAdapter(p)
+
+	req := &model.LLMRequest{
+		Model: "test-model",
+		Contents: []*genai.Content{
+			{Role: "user", Parts: []*genai.Part{{Text: "hello"}}},
+		},
+	}
+	seq := adapter.GenerateContent(context.Background(), req, false)
+
+	for _, err := range seq {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	// Without system instruction, only the user message should be present
+	msgs := p.lastParams.Messages
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Role != "user" {
+		t.Errorf("expected role 'user', got %q", msgs[0].Role)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"iter"
+	"strings"
 
 	"github.com/langowarny/lango/internal/provider"
 	"google.golang.org/adk/model"
@@ -34,6 +35,15 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 		if err != nil {
 			yield(nil, err)
 			return
+		}
+
+		// Forward ADK system instruction as a system message for the provider.
+		if req.Config != nil && req.Config.SystemInstruction != nil {
+			sysText := extractSystemText(req.Config.SystemInstruction)
+			if sysText != "" {
+				sysMsg := provider.Message{Role: "system", Content: sysText}
+				msgs = append([]provider.Message{sysMsg}, msgs...)
+			}
 		}
 
 		params := provider.GenerateParams{
@@ -150,6 +160,20 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 		msgs = append(msgs, msg)
 	}
 	return msgs, nil
+}
+
+// extractSystemText concatenates all text parts from a genai.Content into a single string.
+func extractSystemText(content *genai.Content) string {
+	var parts []string
+	for _, p := range content.Parts {
+		if p.Text != "" {
+			parts = append(parts, p.Text)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n")
 }
 
 func convertTools(cfg *genai.GenerateContentConfig) ([]provider.Tool, error) {

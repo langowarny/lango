@@ -13,10 +13,14 @@ import (
 
 type mockStore struct {
 	sessions map[string]*internal.Session
+	messages map[string][]internal.Message // DB-only message storage
 }
 
 func newMockStore() *mockStore {
-	return &mockStore{sessions: make(map[string]*internal.Session)}
+	return &mockStore{
+		sessions: make(map[string]*internal.Session),
+		messages: make(map[string][]internal.Message),
+	}
 }
 
 func (m *mockStore) Create(s *internal.Session) error {
@@ -39,10 +43,8 @@ func (m *mockStore) Delete(key string) error {
 	return nil
 }
 func (m *mockStore) AppendMessage(key string, msg internal.Message) error {
-	s, ok := m.sessions[key]
-	if ok {
-		s.History = append(s.History, msg)
-	}
+	// Store in separate messages map (simulates DB-only storage, not in-memory History)
+	m.messages[key] = append(m.messages[key], msg)
 	return nil
 }
 func (m *mockStore) Close() error                           { return nil }

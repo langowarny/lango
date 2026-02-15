@@ -142,5 +142,15 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 		}
 	}
 
-	return s.store.AppendMessage(sess.ID(), msg)
+	if err := s.store.AppendMessage(sess.ID(), msg); err != nil {
+		return err
+	}
+
+	// Update in-memory history so subsequent reads see the new event.
+	// The ADK runner reads events from the same session object after appending.
+	if sa, ok := sess.(*SessionAdapter); ok {
+		sa.sess.History = append(sa.sess.History, msg)
+	}
+
+	return nil
 }
