@@ -219,6 +219,66 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 	}
 }
 
+// UpdateAuthProviderFromForm updates a specific OIDC provider config from the form.
+func (s *ConfigState) UpdateAuthProviderFromForm(id string, form *FormModel) {
+	if form == nil {
+		return
+	}
+
+	if s.Current.Auth.Providers == nil {
+		s.Current.Auth.Providers = make(map[string]config.OIDCProviderConfig)
+	}
+
+	// If id is empty, look for "oidc_id" field in form
+	if id == "" {
+		for _, f := range form.Fields {
+			if f.Key == "oidc_id" {
+				id = f.Value
+				break
+			}
+		}
+	}
+
+	if id == "" {
+		return
+	}
+
+	p, ok := s.Current.Auth.Providers[id]
+	if !ok {
+		p = config.OIDCProviderConfig{}
+	}
+
+	for _, f := range form.Fields {
+		val := f.Value
+		switch f.Key {
+		case "oidc_issuer":
+			p.IssuerURL = val
+		case "oidc_client_id":
+			p.ClientID = val
+		case "oidc_client_secret":
+			p.ClientSecret = val
+		case "oidc_redirect":
+			p.RedirectURL = val
+		case "oidc_scopes":
+			if val != "" {
+				parts := strings.Split(val, ",")
+				scopes := make([]string, 0, len(parts))
+				for _, s := range parts {
+					if t := strings.TrimSpace(s); t != "" {
+						scopes = append(scopes, t)
+					}
+				}
+				p.Scopes = scopes
+			} else {
+				p.Scopes = nil
+			}
+		}
+	}
+
+	s.Current.Auth.Providers[id] = p
+	s.MarkDirty("auth")
+}
+
 // UpdateProviderFromForm updates a specific provider config from the form.
 func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 	if form == nil {

@@ -31,6 +31,7 @@ func NewMenuModel() MenuModel {
 			{"tools", "🛠️ Tools", "Exec, Browser, Filesystem"},
 			{"session", "📂 Session", "Database, TTL, History"},
 			{"security", "🔒 Security", "PII, Approval, Encryption"},
+			{"auth", "🔑 Auth", "OIDC provider configuration"},
 			{"knowledge", "🧠 Knowledge", "Learning, Skills, Context limits"},
 			{"observational_memory", "🔬 Observational Memory", "Observer, Reflector, Thresholds"},
 			{"embedding", "🔗 Embedding & RAG", "Provider, Model, RAG settings"},

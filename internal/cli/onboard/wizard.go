@@ -18,6 +18,7 @@ const (
 	StepMenu
 	StepForm
 	StepProvidersList
+	StepAuthProvidersList
 	StepComplete
 )
 
@@ -27,10 +28,12 @@ type Wizard struct {
 	state *ConfigState
 
 	// Sub-models
-	menu             MenuModel
-	providersList    ProvidersListModel
-	activeForm       *FormModel
-	activeProviderID string // Track which provider is being edited
+	menu                 MenuModel
+	providersList        ProvidersListModel
+	authProvidersList    AuthProvidersListModel
+	activeForm           *FormModel
+	activeProviderID     string // Track which provider is being edited
+	activeAuthProviderID string // Track which OIDC provider is being edited
 
 	// UI State
 	width  int
@@ -90,25 +93,33 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case StepProvidersList:
 				w.step = StepMenu
 				return w, nil
+			case StepAuthProvidersList:
+				w.step = StepMenu
+				return w, nil
 			case StepForm:
 				// Save form state to config
 				if w.activeForm != nil {
-					if w.activeProviderID != "" || w.isProviderForm() {
+					if w.activeAuthProviderID != "" || w.isAuthProviderForm() {
+						w.state.UpdateAuthProviderFromForm(w.activeAuthProviderID, w.activeForm)
+					} else if w.activeProviderID != "" || w.isProviderForm() {
 						w.state.UpdateProviderFromForm(w.activeProviderID, w.activeForm)
 					} else {
 						w.state.UpdateConfigFromForm(w.activeForm)
 					}
 				}
-				// Go back to menu or providers list
-				if w.activeProviderID != "" || w.isProviderForm() {
+				// Go back to the appropriate list or menu
+				if w.activeAuthProviderID != "" || w.isAuthProviderForm() {
+					w.step = StepAuthProvidersList
+					w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
+				} else if w.activeProviderID != "" || w.isProviderForm() {
 					w.step = StepProvidersList
-					// Refresh list
 					w.providersList = NewProvidersListModel(w.state.Current)
 				} else {
 					w.step = StepMenu
 				}
 				w.activeForm = nil
 				w.activeProviderID = ""
+				w.activeAuthProviderID = ""
 				return w, nil
 			}
 		}
@@ -174,6 +185,34 @@ func (w *Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			w.step = StepForm
 			w.providersList.Selected = ""
 		}
+
+	case StepAuthProvidersList:
+		var aplCmd tea.Cmd
+		w.authProvidersList, aplCmd = w.authProvidersList.Update(msg)
+		cmd = aplCmd
+
+		if w.authProvidersList.Deleted != "" {
+			delete(w.state.Current.Auth.Providers, w.authProvidersList.Deleted)
+			w.state.MarkDirty("auth")
+			w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
+		} else if w.authProvidersList.Exit {
+			w.authProvidersList.Exit = false
+			w.step = StepMenu
+		} else if w.authProvidersList.Selected != "" {
+			id := w.authProvidersList.Selected
+			if id == "NEW" {
+				w.activeAuthProviderID = ""
+				w.activeForm = NewOIDCProviderForm("", config.OIDCProviderConfig{})
+			} else {
+				w.activeAuthProviderID = id
+				if p, ok := w.state.Current.Auth.Providers[id]; ok {
+					w.activeForm = NewOIDCProviderForm(id, p)
+				}
+			}
+			w.activeForm.Focus = true
+			w.step = StepForm
+			w.authProvidersList.Selected = ""
+		}
 	}
 
 	return w, cmd
@@ -217,6 +256,9 @@ func (w *Wizard) handleMenuSelection(id string) tea.Cmd {
 		w.activeForm = NewEmbeddingForm(w.state.Current)
 		w.activeForm.Focus = true
 		w.step = StepForm
+	case "auth":
+		w.authProvidersList = NewAuthProvidersListModel(w.state.Current)
+		w.step = StepAuthProvidersList
 	case "providers":
 		w.providersList = NewProvidersListModel(w.state.Current)
 		w.step = StepProvidersList
@@ -257,6 +299,9 @@ func (w *Wizard) View() string {
 
 	case StepProvidersList:
 		b.WriteString(w.providersList.View())
+
+	case StepAuthProvidersList:
+		b.WriteString(w.authProvidersList.View())
 	}
 
 	// Global Footer (if needed)
@@ -273,6 +318,13 @@ func (w *Wizard) isProviderForm() bool {
 	if w.activeForm == nil {
 		return false
 	}
-	// Heuristic: check if title contains "Provider"
-	return strings.Contains(w.activeForm.Title, "Provider")
+	// Heuristic: check if title contains "Provider" but not "OIDC"
+	return strings.Contains(w.activeForm.Title, "Provider") && !strings.Contains(w.activeForm.Title, "OIDC")
+}
+
+func (w *Wizard) isAuthProviderForm() bool {
+	if w.activeForm == nil {
+		return false
+	}
+	return strings.Contains(w.activeForm.Title, "OIDC")
 }

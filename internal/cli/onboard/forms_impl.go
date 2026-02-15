@@ -435,6 +435,54 @@ func NewEmbeddingForm(cfg *config.Config) *FormModel {
 	return &form
 }
 
+// Helper to create OIDC Provider configuration form
+func NewOIDCProviderForm(id string, cfg config.OIDCProviderConfig) *FormModel {
+	title := "Edit OIDC Provider: " + id
+	if id == "" {
+		title = "Add New OIDC Provider"
+	}
+	form := NewFormModel(title)
+
+	if id == "" {
+		form.AddField(&Field{
+			Key: "oidc_id", Label: "Provider Name", Type: InputText,
+			Placeholder: "e.g. google, github",
+		})
+	}
+
+	form.AddField(&Field{
+		Key: "oidc_issuer", Label: "Issuer URL", Type: InputText,
+		Value:       cfg.IssuerURL,
+		Placeholder: "https://accounts.google.com",
+	})
+
+	form.AddField(&Field{
+		Key: "oidc_client_id", Label: "Client ID", Type: InputPassword,
+		Value:       cfg.ClientID,
+		Placeholder: "${ENV_VAR} or value",
+	})
+
+	form.AddField(&Field{
+		Key: "oidc_client_secret", Label: "Client Secret", Type: InputPassword,
+		Value:       cfg.ClientSecret,
+		Placeholder: "${ENV_VAR} or value",
+	})
+
+	form.AddField(&Field{
+		Key: "oidc_redirect", Label: "Redirect URL", Type: InputText,
+		Value:       cfg.RedirectURL,
+		Placeholder: "http://localhost:18789/auth/callback/<name>",
+	})
+
+	form.AddField(&Field{
+		Key: "oidc_scopes", Label: "Scopes", Type: InputText,
+		Value:       strings.Join(cfg.Scopes, ","),
+		Placeholder: "openid,email,profile",
+	})
+
+	return &form
+}
+
 // Helper to create Provider configuration form
 func NewProviderForm(id string, cfg config.ProviderConfig) *FormModel {
 	title := "Edit Provider: " + id

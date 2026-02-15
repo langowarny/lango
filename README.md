@@ -334,7 +334,7 @@ Lango supports optional companion apps for hardware-backed security. Companion d
 
 ### Authentication
 
-Lango supports OIDC authentication for the gateway. Configure OIDC providers via `lango onboard` or `lango config` CLI.
+Lango supports OIDC authentication for the gateway. Configure OIDC providers via `lango onboard` > Auth menu, or include them in a JSON config file and import with `lango config import`.
 
 #### Auth Endpoints
 

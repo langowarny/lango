@@ -50,7 +50,11 @@ The onboarding tool MUST support editing the following configuration sections:
     - Set RPC URL
     - Set Key ID
 
-7.  **Knowledge**:
+7.  **Auth**:
+    - Add, edit, and delete OIDC provider configurations
+    - Each OIDC provider: Issuer URL, Client ID, Client Secret, Redirect URL, Scopes
+
+8.  **Knowledge**:
     - Toggle Knowledge System Enabled (boolean)
     - Set Max Learnings (integer)
     - Set Max Knowledge (integer)
@@ -58,7 +62,7 @@ The onboarding tool MUST support editing the following configuration sections:
     - Toggle Auto Approve Skills (boolean)
     - Set Max Skills Per Day (integer)
 
-8.  **Providers**:
+9.  **Providers**:
     - Add, edit, and delete multi-provider configurations
 
 #### Scenario: Agent fallback configuration
@@ -105,7 +109,7 @@ The onboarding tool MUST support editing the following configuration sections:
 - **Navigation**:
     - Users MUST be able to navigate between configuration categories freely.
     - Uses a menu-based system (e.g., Main Menu -> Category -> Form).
-    - The menu SHALL include categories in this order: Providers, Agent, Server, Channels, Tools, Session, Security, Knowledge, Observational Memory, Embedding & RAG, Save & Exit, Cancel.
+    - The menu SHALL include categories in this order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Observational Memory, Embedding & RAG, Save & Exit, Cancel.
     - Form cursor navigation SHALL NOT panic when navigating past the first or last field.
 
 #### Scenario: Providers category appears first
@@ -122,7 +126,11 @@ The onboarding tool MUST support editing the following configuration sections:
 
 #### Scenario: Knowledge category in menu
 - **WHEN** user views the configuration menu
-- **THEN** "Knowledge" category SHALL be listed after "Security" and before "Observational Memory"
+- **THEN** "Knowledge" category SHALL be listed after "Auth" and before "Observational Memory"
+
+#### Scenario: Auth category in menu
+- **WHEN** user views the configuration menu
+- **THEN** "Auth" category SHALL be listed after "Security" and before "Knowledge"
 
 #### Scenario: Provider creation field order
 - **WHEN** user selects "Add New Provider" from the Providers list
@@ -157,6 +165,51 @@ The `lango onboard` command SHALL save configuration via `configstore.Store.Save
 #### Scenario: Existing profile not re-activated
 - **WHEN** a profile with the given name already exists before onboard
 - **THEN** the profile's active status SHALL remain unchanged after save
+
+### Requirement: Auth OIDC provider management in onboard TUI
+The onboard wizard SHALL include an "Auth" menu category for managing OIDC provider configurations. The Auth menu SHALL open an OIDC provider list view that allows users to add, edit, and delete OIDC providers. Each OIDC provider form SHALL include fields for: Provider Name (text, new providers only), Issuer URL (text), Client ID (password), Client Secret (password), Redirect URL (text), and Scopes (text, comma-separated).
+
+#### Scenario: Auth category in menu
+- **WHEN** user views the configuration menu
+- **THEN** an "Auth" category SHALL appear after "Security" with description "OIDC provider configuration"
+
+#### Scenario: Navigate to OIDC provider list
+- **WHEN** user selects "Auth" from the configuration menu
+- **THEN** the wizard SHALL display the "Manage OIDC Providers" list view
+- **AND** the list SHALL show existing OIDC providers with their ID and Issuer URL
+
+#### Scenario: Add new OIDC provider
+- **WHEN** user selects "+ Add New OIDC Provider" from the auth providers list
+- **THEN** the wizard SHALL display a form titled "Add New OIDC Provider"
+- **AND** the form SHALL include a "Provider Name" text field
+
+#### Scenario: Edit existing OIDC provider
+- **WHEN** user selects an existing OIDC provider from the auth providers list
+- **THEN** the wizard SHALL display a form titled "Edit OIDC Provider: <id>"
+- **AND** the form SHALL be pre-populated with the provider's current values
+- **AND** the form SHALL NOT include a "Provider Name" field
+
+#### Scenario: Delete OIDC provider
+- **WHEN** user presses `d` on an OIDC provider in the list
+- **THEN** the provider SHALL be removed from the in-memory auth config
+- **AND** the list SHALL refresh to reflect the deletion
+
+#### Scenario: Cannot delete Add New option
+- **WHEN** user presses `d` while the cursor is on "+ Add New OIDC Provider"
+- **THEN** no deletion SHALL occur
+
+#### Scenario: OIDC scopes stored as string slice
+- **WHEN** user enters scopes as "openid,email,profile" in the OIDC provider form
+- **THEN** the scopes SHALL be stored as `["openid", "email", "profile"]` in config
+
+#### Scenario: ESC from OIDC form saves and returns to list
+- **WHEN** user presses ESC while in an OIDC provider form
+- **THEN** the form values SHALL be saved to the in-memory config
+- **AND** the wizard SHALL return to the OIDC provider list view
+
+#### Scenario: ESC from OIDC provider list returns to menu
+- **WHEN** user presses ESC while in the OIDC provider list
+- **THEN** the wizard SHALL return to the configuration menu
 
 ### Persistence
 - Passwords/Secrets (API Keys, Tokens) MUST be handled securely (though typically stored in env vars, the config references them).
