@@ -39,10 +39,10 @@ func (m *mockProvider) ListModels(_ context.Context) ([]provider.ModelInfo, erro
 
 func TestModelAdapter_Name(t *testing.T) {
 	p := &mockProvider{id: "test-provider"}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
-	if adapter.Name() != "test-provider" {
-		t.Errorf("expected 'test-provider', got %q", adapter.Name())
+	if adapter.Name() != "test-model" {
+		t.Errorf("expected 'test-model', got %q", adapter.Name())
 	}
 }
 
@@ -55,7 +55,7 @@ func TestModelAdapter_GenerateContent_TextDelta(t *testing.T) {
 			{Type: provider.StreamEventDone},
 		},
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{Model: "test-model"}
 	seq := adapter.GenerateContent(context.Background(), req, true)
@@ -94,7 +94,7 @@ func TestModelAdapter_GenerateContent_ProviderError(t *testing.T) {
 		id:  "test",
 		err: context.DeadlineExceeded,
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{Model: "test-model"}
 	seq := adapter.GenerateContent(context.Background(), req, false)
@@ -123,7 +123,7 @@ func TestModelAdapter_GenerateContent_ToolCall(t *testing.T) {
 			{Type: provider.StreamEventDone},
 		},
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{Model: "test-model"}
 	seq := adapter.GenerateContent(context.Background(), req, false)
@@ -167,7 +167,7 @@ func TestModelAdapter_GenerateContent_StreamError(t *testing.T) {
 			{Type: provider.StreamEventError, Error: context.Canceled},
 		},
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{Model: "test-model"}
 	seq := adapter.GenerateContent(context.Background(), req, true)
@@ -192,7 +192,7 @@ func TestModelAdapter_GenerateContent_SystemInstruction(t *testing.T) {
 			{Type: provider.StreamEventDone},
 		},
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{
 		Model: "test-model",
@@ -240,7 +240,7 @@ func TestModelAdapter_GenerateContent_NoSystemInstruction(t *testing.T) {
 			{Type: provider.StreamEventDone},
 		},
 	}
-	adapter := NewModelAdapter(p)
+	adapter := NewModelAdapter(p, "test-model")
 
 	req := &model.LLMRequest{
 		Model: "test-model",

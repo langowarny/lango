@@ -443,7 +443,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	}
 
 	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model, proxyOpts...)
-	modelAdapter := adk.NewModelAdapter(proxy)
+	modelAdapter := adk.NewModelAdapter(proxy, cfg.Agent.Model)
 
 	// Load system prompt (from file or default)
 	systemPrompt := loadSystemPrompt(cfg.Agent.SystemPromptPath)

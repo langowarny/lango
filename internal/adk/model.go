@@ -12,15 +12,16 @@ import (
 )
 
 type ModelAdapter struct {
-	p provider.Provider
+	p     provider.Provider
+	model string
 }
 
-func NewModelAdapter(p provider.Provider) *ModelAdapter {
-	return &ModelAdapter{p: p}
+func NewModelAdapter(p provider.Provider, model string) *ModelAdapter {
+	return &ModelAdapter{p: p, model: model}
 }
 
 func (m *ModelAdapter) Name() string {
-	return m.p.ID()
+	return m.model
 }
 
 func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
