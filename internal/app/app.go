@@ -66,6 +66,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if cfg.Tools.Browser.Enabled {
 		bt, err := browser.New(browser.Config{
 			Headless:       cfg.Tools.Browser.Headless,
+			BrowserBin:     cfg.Tools.Browser.BrowserBin,
 			SessionTimeout: cfg.Tools.Browser.SessionTimeout,
 		})
 		if err != nil {
@@ -141,7 +142,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 8. Build composite approval provider and tool approval wrapper
 	composite := approval.NewCompositeProvider()
 	composite.Register(approval.NewGatewayProvider(app.Gateway))
-	composite.SetTTYFallback(&approval.TTYProvider{})
+	if cfg.Security.Interceptor.HeadlessAutoApprove {
+		composite.SetTTYFallback(&approval.HeadlessProvider{})
+		logger().Warn("headless auto-approve enabled — all tool executions will be auto-approved")
+	} else {
+		composite.SetTTYFallback(&approval.TTYProvider{})
+	}
 	app.ApprovalProvider = composite
 
 	if cfg.Security.Interceptor.ApprovalRequired && len(cfg.Security.Interceptor.SensitiveTools) > 0 {

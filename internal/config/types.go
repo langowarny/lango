@@ -144,13 +144,14 @@ type SecurityConfig struct {
 
 // InterceptorConfig defines AI Privacy Interceptor settings
 type InterceptorConfig struct {
-	Enabled            bool     `mapstructure:"enabled" json:"enabled"`
-	RedactPII          bool     `mapstructure:"redactPii" json:"redactPii"`
-	ApprovalRequired   bool     `mapstructure:"approvalRequired" json:"approvalRequired"`
-	NotifyChannel      string   `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
-	SensitiveTools     []string `mapstructure:"sensitiveTools" json:"sensitiveTools"`
-	PIIRegexPatterns   []string `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
-	ApprovalTimeoutSec int      `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"` // default 30
+	Enabled             bool     `mapstructure:"enabled" json:"enabled"`
+	RedactPII           bool     `mapstructure:"redactPii" json:"redactPii"`
+	ApprovalRequired    bool     `mapstructure:"approvalRequired" json:"approvalRequired"`
+	HeadlessAutoApprove bool     `mapstructure:"headlessAutoApprove" json:"headlessAutoApprove"`
+	NotifyChannel       string   `mapstructure:"notifyChannel" json:"notifyChannel"` // e.g. "discord", "telegram"
+	SensitiveTools      []string `mapstructure:"sensitiveTools" json:"sensitiveTools"`
+	PIIRegexPatterns    []string `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
+	ApprovalTimeoutSec  int      `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"` // default 30
 }
 
 // SignerConfig defines Secure Signer settings
@@ -324,6 +325,9 @@ type BrowserToolConfig struct {
 
 	// Run headless
 	Headless bool `mapstructure:"headless" json:"headless"`
+
+	// Path to browser binary (empty = auto-detect via launcher.LookPath)
+	BrowserBin string `mapstructure:"browserBin" json:"browserBin"`
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`

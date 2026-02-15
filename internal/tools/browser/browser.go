@@ -18,6 +18,7 @@ var logger = logging.SubsystemSugar("tool.browser")
 // Config holds browser tool configuration
 type Config struct {
 	Headless       bool
+	BrowserBin     string
 	SessionTimeout time.Duration
 }
 
@@ -74,17 +75,28 @@ func (t *Tool) ensureBrowser() error {
 	}
 
 	l := launcher.New().Headless(t.config.Headless)
+
+	bin := t.config.BrowserBin
+	if bin == "" {
+		if found, has := launcher.LookPath(); has {
+			bin = found
+		}
+	}
+	if bin != "" {
+		l = l.Bin(bin)
+	}
+
 	url, err := l.Launch()
 	if err != nil {
-		return fmt.Errorf("failed to launch browser: %w", err)
+		return fmt.Errorf("launch browser: %w", err)
 	}
 
 	t.browser = rod.New().ControlURL(url)
 	if err := t.browser.Connect(); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("connect browser: %w", err)
 	}
 
-	logger.Infow("browser launched", "headless", t.config.Headless)
+	logger.Infow("browser launched", "headless", t.config.Headless, "bin", bin)
 	return nil
 }
 
