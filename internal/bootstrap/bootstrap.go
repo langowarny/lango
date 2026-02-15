@@ -46,6 +46,9 @@ type Options struct {
 	KeyfilePath string
 	// ForceProfile overrides the active profile selection.
 	ForceProfile string
+	// KeepKeyfile prevents the keyfile from being shredded after crypto initialization.
+	// Default (false) shreds the keyfile for security.
+	KeepKeyfile bool
 }
 
 // Run executes the full bootstrap sequence:
@@ -87,7 +90,7 @@ func Run(opts Options) (*Result, error) {
 	}
 
 	// 4. Acquire passphrase.
-	pass, _, err := passphrase.Acquire(passphrase.Options{
+	pass, source, err := passphrase.Acquire(passphrase.Options{
 		KeyfilePath:   opts.KeyfilePath,
 		AllowCreation: firstRun,
 	})
@@ -123,6 +126,13 @@ func Run(opts Options) (*Result, error) {
 				client.Close()
 				return nil, fmt.Errorf("passphrase checksum mismatch: incorrect passphrase")
 			}
+		}
+	}
+
+	// 5b. Shred keyfile after successful crypto initialization.
+	if source == passphrase.SourceKeyfile && !opts.KeepKeyfile {
+		if err := passphrase.ShredKeyfile(opts.KeyfilePath); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: shred keyfile: %v\n", err)
 		}
 	}
 

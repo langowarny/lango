@@ -186,3 +186,24 @@ func TestValidatePermissions_NotFound(t *testing.T) {
 	err := ValidatePermissions("/nonexistent/path/keyfile")
 	assert.Error(t, err)
 }
+
+func TestShredKeyfile(t *testing.T) {
+	t.Run("shreds existing file", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "keyfile")
+		content := "super-secret-passphrase"
+
+		require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+
+		err := ShredKeyfile(path)
+		require.NoError(t, err)
+
+		_, statErr := os.Stat(path)
+		assert.True(t, os.IsNotExist(statErr))
+	})
+
+	t.Run("returns nil for nonexistent file", func(t *testing.T) {
+		err := ShredKeyfile("/nonexistent/path/keyfile")
+		assert.NoError(t, err)
+	})
+}

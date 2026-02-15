@@ -45,6 +45,42 @@ func WriteKeyfile(path, passphrase string) error {
 	return nil
 }
 
+// ShredKeyfile overwrites the keyfile content with zeros, syncs to disk, and removes it.
+// Returns nil if the file does not exist (idempotent).
+func ShredKeyfile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat keyfile for shred: %w", err)
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("open keyfile for shred: %w", err)
+	}
+
+	zeros := make([]byte, info.Size())
+	if _, err := f.Write(zeros); err != nil {
+		f.Close()
+		return fmt.Errorf("overwrite keyfile: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("sync keyfile: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close keyfile: %w", err)
+	}
+
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove keyfile: %w", err)
+	}
+
+	return nil
+}
+
 // ValidatePermissions checks that the file has exactly 0600 permissions.
 func ValidatePermissions(path string) error {
 	info, err := os.Stat(path)

@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Passphrase acquisition priority chain
 The system SHALL acquire a passphrase using the following priority: (1) keyfile at `~/.lango/keyfile`, (2) interactive terminal prompt, (3) stdin pipe. The system SHALL return an error if no source is available.
@@ -28,7 +28,7 @@ The system SHALL acquire a passphrase using the following priority: (1) keyfile 
 - **THEN** the system returns an error
 
 ### Requirement: Keyfile management
-The system SHALL read and write keyfiles with strict 0600 permission enforcement.
+The system SHALL read, write, and securely shred keyfiles with strict 0600 permission enforcement.
 
 #### Scenario: Write keyfile
 - **WHEN** a keyfile is written
@@ -41,3 +41,11 @@ The system SHALL read and write keyfiles with strict 0600 permission enforcement
 #### Scenario: Read keyfile with invalid permissions
 - **WHEN** a keyfile exists with permissions other than 0600
 - **THEN** the system returns a permission validation error
+
+#### Scenario: Shred keyfile
+- **WHEN** `ShredKeyfile()` is called on an existing keyfile
+- **THEN** the file content is overwritten with zero bytes, synced, and removed
+
+#### Scenario: Shred nonexistent keyfile
+- **WHEN** `ShredKeyfile()` is called on a nonexistent file
+- **THEN** nil is returned without error
