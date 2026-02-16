@@ -149,7 +149,11 @@ func (c *Channel) Start(ctx context.Context) error {
 					continue
 				}
 
-				c.handleUpdate(ctx, update)
+				c.wg.Add(1)
+				go func() {
+					defer c.wg.Done()
+					c.handleUpdate(ctx, update)
+				}()
 			}
 		}
 	}()
