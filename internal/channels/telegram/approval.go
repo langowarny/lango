@@ -154,7 +154,9 @@ func (p *ApprovalProvider) CanHandle(sessionKey string) bool {
 
 // editApprovalMessage edits a message with new text and removes inline keyboard buttons.
 func (p *ApprovalProvider) editApprovalMessage(chatID int64, messageID int, newText string) {
-	emptyMarkup := tgbotapi.NewInlineKeyboardMarkup()
+	emptyMarkup := tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
+	}
 	edit := tgbotapi.NewEditMessageTextAndMarkup(chatID, messageID, newText, emptyMarkup)
 	if _, err := p.bot.Send(edit); err != nil {
 		if !isMessageNotModifiedErr(err) {
