@@ -6,6 +6,7 @@ import (
 	"iter"
 	"strings"
 
+	"go.uber.org/zap"
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -14,8 +15,11 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
+	"github.com/langowarny/lango/internal/logging"
 	internal "github.com/langowarny/lango/internal/session"
 )
+
+func logger() *zap.SugaredLogger { return logging.Agent() }
 
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
@@ -109,6 +113,21 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 		if err != nil {
 			return "", fmt.Errorf("agent error: %w", err)
 		}
+
+		// Log agent event for multi-agent observability.
+		if event.Author != "" {
+			if event.Actions.TransferToAgent != "" {
+				logger().Debugw("agent delegation",
+					"from", event.Author,
+					"to", event.Actions.TransferToAgent,
+					"session", sessionID)
+			} else if hasText(event) {
+				logger().Debugw("agent response",
+					"agent", event.Author,
+					"session", sessionID)
+			}
+		}
+
 		if event.Content != nil {
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -119,4 +138,17 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	}
 
 	return b.String(), nil
+}
+
+// hasText reports whether the event contains any non-empty text part.
+func hasText(e *session.Event) bool {
+	if e.Content == nil {
+		return false
+	}
+	for _, p := range e.Content.Parts {
+		if p.Text != "" {
+			return true
+		}
+	}
+	return false
 }
