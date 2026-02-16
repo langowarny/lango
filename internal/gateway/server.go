@@ -47,6 +47,7 @@ type Config struct {
 	HTTPEnabled      bool
 	WebSocketEnabled bool
 	AllowedOrigins   []string
+	ApprovalTimeout  time.Duration
 }
 
 // Client represents a connected WebSocket client
@@ -265,12 +266,17 @@ func (s *Server) RequestApproval(ctx context.Context, message string) (bool, err
 	s.BroadcastToCompanions("approval.request", req)
 
 	// 4. Wait for response or timeout
+	timeout := s.config.ApprovalTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	select {
 	case approved := <-respChan:
 		return approved, nil
 	case <-ctx.Done():
 		return false, ctx.Err()
-	case <-time.After(30 * time.Second): // Default timeout
+	case <-time.After(timeout):
 		return false, fmt.Errorf("approval timeout")
 	}
 }
@@ -303,6 +309,9 @@ func (s *Server) handleApprovalResponse(_ *Client, params json.RawMessage) (inte
 
 	s.pendingApprovalsMu.Lock()
 	ch, exists := s.pendingApprovals[req.RequestID]
+	if exists {
+		delete(s.pendingApprovals, req.RequestID)
+	}
 	s.pendingApprovalsMu.Unlock()
 
 	if exists {

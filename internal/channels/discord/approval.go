@@ -11,10 +11,17 @@ import (
 	"github.com/langowarny/lango/internal/approval"
 )
 
+// approvalPending holds the response channel and message metadata for a pending approval.
+type approvalPending struct {
+	ch        chan bool
+	channelID string
+	messageID string
+}
+
 // ApprovalProvider implements approval.Provider for Discord using Button components.
 type ApprovalProvider struct {
 	session Session
-	pending sync.Map // map[requestID]chan bool
+	pending sync.Map // map[requestID]*approvalPending
 	timeout time.Duration
 }
 
@@ -39,14 +46,12 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	}
 
 	respChan := make(chan bool, 1)
-	p.pending.Store(req.ID, respChan)
-	defer p.pending.Delete(req.ID)
 
 	content := fmt.Sprintf("🔐 Tool **%s** requires approval", req.ToolName)
 	if req.Summary != "" {
 		content += "\n```\n" + req.Summary + "\n```"
 	}
-	_, err = p.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	sentMsg, err := p.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Content: content,
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
@@ -75,12 +80,21 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 		return false, fmt.Errorf("send approval message: %w", err)
 	}
 
+	p.pending.Store(req.ID, &approvalPending{
+		ch:        respChan,
+		channelID: channelID,
+		messageID: sentMsg.ID,
+	})
+	defer p.pending.Delete(req.ID)
+
 	select {
 	case approved := <-respChan:
 		return approved, nil
 	case <-ctx.Done():
+		p.editExpiredMessage(channelID, sentMsg.ID)
 		return false, ctx.Err()
 	case <-time.After(p.timeout):
+		p.editExpiredMessage(channelID, sentMsg.ID)
 		return false, fmt.Errorf("approval timeout")
 	}
 }
@@ -125,14 +139,14 @@ func (p *ApprovalProvider) HandleInteraction(i *discordgo.InteractionCreate) {
 	}
 
 	// Send result to waiting goroutine
-	if ch, ok := p.pending.LoadAndDelete(requestID); ok {
-		respChan, ok := ch.(chan bool)
+	if val, ok := p.pending.LoadAndDelete(requestID); ok {
+		pending, ok := val.(*approvalPending)
 		if !ok {
 			logger.Warnw("unexpected pending type", "requestId", requestID)
 			return
 		}
 		select {
-		case respChan <- approved:
+		case pending.ch <- approved:
 		default:
 		}
 	}
@@ -141,6 +155,21 @@ func (p *ApprovalProvider) HandleInteraction(i *discordgo.InteractionCreate) {
 // CanHandle returns true for session keys starting with "discord:".
 func (p *ApprovalProvider) CanHandle(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "discord:")
+}
+
+// editExpiredMessage updates the approval message to show expired status and removes buttons.
+func (p *ApprovalProvider) editExpiredMessage(channelID, messageID string) {
+	content := "🔐 Tool approval — ⏱ Expired"
+	emptyComponents := []discordgo.MessageComponent{}
+	_, err := p.session.ChannelMessageEditComplex(&discordgo.MessageEdit{
+		Channel:    channelID,
+		ID:         messageID,
+		Content:    &content,
+		Components: &emptyComponents,
+	})
+	if err != nil {
+		logger.Warnw("edit expired approval message error", "error", err)
+	}
 }
 
 // parseDiscordChannelID extracts the channelID from a session key like "discord:<channelID>:<userID>".

@@ -88,8 +88,10 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	case approved := <-respChan:
 		return approved, nil
 	case <-ctx.Done():
+		p.editExpiredMessage(channelID, ts)
 		return false, ctx.Err()
 	case <-time.After(p.timeout):
+		p.editExpiredMessage(channelID, ts)
 		return false, fmt.Errorf("approval timeout")
 	}
 }
@@ -109,42 +111,52 @@ func (p *ApprovalProvider) HandleInteractive(actionID string) {
 		return
 	}
 
+	// LoadAndDelete first to prevent TOCTOU race
+	val, ok := p.pending.LoadAndDelete(requestID)
+	if !ok {
+		return // already processed or expired
+	}
+
+	pending, ok := val.(*approvalPending)
+	if !ok {
+		logger.Warnw("unexpected pending type", "requestId", requestID)
+		return
+	}
+
 	// Update the original message to remove buttons
-	if val, ok := p.pending.Load(requestID); ok {
-		pending, ok := val.(*approvalPending)
-		if !ok {
-			logger.Warnw("unexpected pending type", "requestId", requestID)
-			return
-		}
-		status := "❌ Denied"
-		if approved {
-			status = "✅ Approved"
-		}
-		_, _, _, err := p.api.UpdateMessage(pending.channelID, pending.timestamp,
-			slackapi.MsgOptionText(fmt.Sprintf("🔐 Tool approval — %s", status), false),
-		)
-		if err != nil {
-			logger.Warnw("update approval message error", "error", err)
-		}
+	status := "❌ Denied"
+	if approved {
+		status = "✅ Approved"
+	}
+	_, _, _, err := p.api.UpdateMessage(pending.channelID, pending.timestamp,
+		slackapi.MsgOptionText(fmt.Sprintf("🔐 Tool approval — %s", status), false),
+		slackapi.MsgOptionBlocks(), // empty blocks = remove action buttons
+	)
+	if err != nil {
+		logger.Warnw("update approval message error", "error", err)
 	}
 
 	// Send result to waiting goroutine
-	if val, ok := p.pending.LoadAndDelete(requestID); ok {
-		pending, ok := val.(*approvalPending)
-		if !ok {
-			logger.Warnw("unexpected pending type", "requestId", requestID)
-			return
-		}
-		select {
-		case pending.ch <- approved:
-		default:
-		}
+	select {
+	case pending.ch <- approved:
+	default:
 	}
 }
 
 // CanHandle returns true for session keys starting with "slack:".
 func (p *ApprovalProvider) CanHandle(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "slack:")
+}
+
+// editExpiredMessage updates the approval message to show expired status and removes buttons.
+func (p *ApprovalProvider) editExpiredMessage(channelID, timestamp string) {
+	_, _, _, err := p.api.UpdateMessage(channelID, timestamp,
+		slackapi.MsgOptionText("🔐 Tool approval — ⏱ Expired", false),
+		slackapi.MsgOptionBlocks(), // remove action buttons
+	)
+	if err != nil {
+		logger.Warnw("edit expired approval message error", "error", err)
+	}
 }
 
 // parseSlackChannelID extracts the channelID from a session key like "slack:<channelID>:<userID>".

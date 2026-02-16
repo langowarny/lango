@@ -167,3 +167,120 @@ func TestChatMessage_AuthenticatedUsesOwnSession(t *testing.T) {
 		t.Error("expected error (nil agent), got nil")
 	}
 }
+
+func TestApprovalResponse_AtomicDelete(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Create a pending approval
+	respChan := make(chan bool, 1)
+	server.pendingApprovalsMu.Lock()
+	server.pendingApprovals["req-1"] = respChan
+	server.pendingApprovalsMu.Unlock()
+
+	// First response — should succeed
+	params := json.RawMessage(`{"requestId":"req-1","approved":true}`)
+	result, err := server.handleApprovalResponse(nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+
+	// Verify the approval was received
+	select {
+	case approved := <-respChan:
+		if !approved {
+			t.Error("expected approved=true")
+		}
+	default:
+		t.Error("expected approval result on channel")
+	}
+
+	// Verify entry was deleted
+	server.pendingApprovalsMu.Lock()
+	_, exists := server.pendingApprovals["req-1"]
+	server.pendingApprovalsMu.Unlock()
+	if exists {
+		t.Error("expected pending approval to be deleted after response")
+	}
+}
+
+func TestApprovalResponse_DuplicateResponse(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Create a pending approval
+	respChan := make(chan bool, 1)
+	server.pendingApprovalsMu.Lock()
+	server.pendingApprovals["req-dup"] = respChan
+	server.pendingApprovalsMu.Unlock()
+
+	// First response
+	params := json.RawMessage(`{"requestId":"req-dup","approved":true}`)
+	_, err := server.handleApprovalResponse(nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error on first response: %v", err)
+	}
+
+	// Second response — should not send to channel again (entry already deleted)
+	_, err = server.handleApprovalResponse(nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error on second response: %v", err)
+	}
+
+	// Only one value should be on the channel
+	select {
+	case <-respChan:
+		// Good — first response
+	default:
+		t.Error("expected one approval result on channel")
+	}
+
+	// Channel should be empty now
+	select {
+	case <-respChan:
+		t.Error("unexpected second value on channel — duplicate response was not blocked")
+	default:
+		// Good — no duplicate
+	}
+}
+
+func TestApprovalTimeout_UsesConfigTimeout(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+		ApprovalTimeout:  50 * time.Millisecond,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Add a fake companion so RequestApproval doesn't fail early
+	server.clientsMu.Lock()
+	server.clients["companion-1"] = &Client{
+		ID:   "companion-1",
+		Type: "companion",
+		Send: make(chan []byte, 256),
+	}
+	server.clientsMu.Unlock()
+
+	_, err := server.RequestApproval(t.Context(), "test approval")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "approval timeout") {
+		t.Errorf("expected 'approval timeout' error, got: %v", err)
+	}
+}

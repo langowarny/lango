@@ -89,6 +89,18 @@ func TestApprovalProvider_Approve(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for approval")
 	}
+
+	// Verify keyboard was removed: edit message should have been sent
+	hasEdit := false
+	for _, msg := range bot.SentMessages {
+		if _, ok := msg.(tgbotapi.EditMessageTextConfig); ok {
+			hasEdit = true
+			break
+		}
+	}
+	if !hasEdit {
+		t.Error("expected edit message to remove keyboard")
+	}
 }
 
 func TestApprovalProvider_Deny(t *testing.T) {
@@ -154,6 +166,19 @@ func TestApprovalProvider_Timeout(t *testing.T) {
 	if approved {
 		t.Error("expected approved=false on timeout")
 	}
+
+	// Verify expired message was edited
+	hasEdit := false
+	for _, msg := range bot.SentMessages {
+		if edit, ok := msg.(tgbotapi.EditMessageTextConfig); ok {
+			if edit.Text == "🔐 Tool approval — ⏱ Expired" {
+				hasEdit = true
+			}
+		}
+	}
+	if !hasEdit {
+		t.Error("expected expired message edit on timeout")
+	}
 }
 
 func TestApprovalProvider_ContextCancellation(t *testing.T) {
@@ -184,6 +209,18 @@ func TestApprovalProvider_ContextCancellation(t *testing.T) {
 	case <-done:
 		if err == nil {
 			t.Fatal("expected context cancelled error")
+		}
+		// Verify expired message was edited
+		hasEdit := false
+		for _, msg := range bot.SentMessages {
+			if edit, ok := msg.(tgbotapi.EditMessageTextConfig); ok {
+				if edit.Text == "🔐 Tool approval — ⏱ Expired" {
+					hasEdit = true
+				}
+			}
+		}
+		if !hasEdit {
+			t.Error("expected expired message edit on context cancellation")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for cancellation")
@@ -219,4 +256,51 @@ func TestApprovalProvider_UnknownCallback(t *testing.T) {
 
 	// Should not panic on nil
 	p.HandleCallback(nil)
+}
+
+func TestApprovalProvider_DuplicateCallback(t *testing.T) {
+	bot := &MockApprovalBotAPI{}
+	p := NewApprovalProvider(bot, 5*time.Second)
+
+	req := approval.ApprovalRequest{
+		ID:         "test-req-dup",
+		ToolName:   "exec",
+		SessionKey: "telegram:123:456",
+		CreatedAt:  time.Now(),
+	}
+
+	done := make(chan struct{})
+	var approved bool
+	var err error
+
+	go func() {
+		approved, err = p.RequestApproval(context.Background(), req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// First callback — should succeed
+	p.HandleCallback(&tgbotapi.CallbackQuery{
+		ID:   "cb-dup-1",
+		Data: "approve:test-req-dup",
+	})
+
+	// Second callback — should be silently ignored (LoadAndDelete already removed it)
+	p.HandleCallback(&tgbotapi.CallbackQuery{
+		ID:   "cb-dup-2",
+		Data: "deny:test-req-dup",
+	})
+
+	select {
+	case <-done:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !approved {
+			t.Error("expected approved=true from first callback")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
 }

@@ -2,6 +2,7 @@ package discord
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,12 +10,14 @@ import (
 	"github.com/langowarny/lango/internal/approval"
 )
 
-// MockApprovalSession extends MockSession with InteractionRespond and ChannelMessageEditComplex.
+// MockApprovalSession extends MockSession with InteractionRespond and ChannelMessageEditComplex tracking.
 type MockApprovalSession struct {
 	MockSession
-	InteractionRespondFunc          func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse, options ...discordgo.RequestOption) error
-	ChannelMessageEditComplexFunc   func(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error)
-	SentComplexMessages             []*discordgo.MessageSend
+	InteractionRespondFunc        func(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse, options ...discordgo.RequestOption) error
+	ChannelMessageEditComplexFunc func(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error)
+	SentComplexMessages           []*discordgo.MessageSend
+	EditedMessages                []*discordgo.MessageEdit
+	mu                            sync.Mutex
 }
 
 func (m *MockApprovalSession) InteractionRespond(interaction *discordgo.Interaction, resp *discordgo.InteractionResponse, options ...discordgo.RequestOption) error {
@@ -25,6 +28,10 @@ func (m *MockApprovalSession) InteractionRespond(interaction *discordgo.Interact
 }
 
 func (m *MockApprovalSession) ChannelMessageEditComplex(edit *discordgo.MessageEdit, options ...discordgo.RequestOption) (*discordgo.Message, error) {
+	m.mu.Lock()
+	m.EditedMessages = append(m.EditedMessages, edit)
+	m.mu.Unlock()
+
 	if m.ChannelMessageEditComplexFunc != nil {
 		return m.ChannelMessageEditComplexFunc(edit, options...)
 	}
@@ -175,5 +182,56 @@ func TestDiscordApprovalProvider_Timeout(t *testing.T) {
 	}
 	if approved {
 		t.Error("expected approved=false on timeout")
+	}
+
+	// Verify ChannelMessageEditComplex was called on timeout
+	sess.mu.Lock()
+	editCount := len(sess.EditedMessages)
+	sess.mu.Unlock()
+	if editCount == 0 {
+		t.Error("expected ChannelMessageEditComplex to be called on timeout")
+	}
+}
+
+func TestDiscordApprovalProvider_ContextCancellation(t *testing.T) {
+	state := &discordgo.State{}
+	state.User = &discordgo.User{ID: "bot-1"}
+	sess := &MockApprovalSession{MockSession: MockSession{State: state}}
+	p := NewApprovalProvider(sess, 30*time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	req := approval.ApprovalRequest{
+		ID:         "test-req-4",
+		ToolName:   "exec",
+		SessionKey: "discord:chan-1:user-1",
+		CreatedAt:  time.Now(),
+	}
+
+	done := make(chan struct{})
+	var err error
+
+	go func() {
+		_, err = p.RequestApproval(ctx, req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		if err == nil {
+			t.Fatal("expected context cancelled error")
+		}
+		// Verify expired message was edited
+		sess.mu.Lock()
+		editCount := len(sess.EditedMessages)
+		sess.mu.Unlock()
+		if editCount == 0 {
+			t.Error("expected ChannelMessageEditComplex to be called on context cancellation")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for cancellation")
 	}
 }

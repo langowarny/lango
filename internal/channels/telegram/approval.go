@@ -3,8 +3,8 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,10 +12,17 @@ import (
 	"github.com/langowarny/lango/internal/approval"
 )
 
+// approvalPending holds the response channel and message metadata for a pending approval.
+type approvalPending struct {
+	ch        chan bool
+	chatID    int64
+	messageID int
+}
+
 // ApprovalProvider implements approval.Provider for Telegram using InlineKeyboard buttons.
 type ApprovalProvider struct {
 	bot     BotAPI
-	pending sync.Map // map[requestID]chan bool
+	pending sync.Map // map[requestID]*approvalPending
 	timeout time.Duration
 }
 
@@ -40,8 +47,6 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	}
 
 	respChan := make(chan bool, 1)
-	p.pending.Store(req.ID, respChan)
-	defer p.pending.Delete(req.ID)
 
 	// Build inline keyboard
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -58,16 +63,26 @@ func (p *ApprovalProvider) RequestApproval(ctx context.Context, req approval.App
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 
-	if _, err := p.bot.Send(msg); err != nil {
+	sentMsg, err := p.bot.Send(msg)
+	if err != nil {
 		return false, fmt.Errorf("send approval message: %w", err)
 	}
+
+	p.pending.Store(req.ID, &approvalPending{
+		ch:        respChan,
+		chatID:    chatID,
+		messageID: sentMsg.MessageID,
+	})
+	defer p.pending.Delete(req.ID)
 
 	select {
 	case approved := <-respChan:
 		return approved, nil
 	case <-ctx.Done():
+		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
 		return false, ctx.Err()
 	case <-time.After(p.timeout):
+		p.editApprovalMessage(chatID, sentMsg.MessageID, "🔐 Tool approval — ⏱ Expired")
 		return false, fmt.Errorf("approval timeout")
 	}
 }
@@ -91,45 +106,69 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 		return
 	}
 
+	// LoadAndDelete first to prevent duplicate clicks (TOCTOU)
+	val, ok := p.pending.LoadAndDelete(requestID)
+	if !ok {
+		// Already processed or expired — answer callback silently
+		callback := tgbotapi.NewCallback(query.ID, "")
+		if _, err := p.bot.Request(callback); err != nil {
+			if !isCallbackExpiredErr(err) {
+				logger().Debugw("answer expired callback error", "error", err)
+			}
+		}
+		return
+	}
+
+	pending, ok := val.(*approvalPending)
+	if !ok {
+		logger().Warnw("unexpected pending type", "requestId", requestID)
+		return
+	}
+
 	// Answer callback to dismiss the loading indicator
 	callback := tgbotapi.NewCallback(query.ID, "")
 	if _, err := p.bot.Request(callback); err != nil {
-		logger().Warnw("answer callback error", "error", err)
+		if !isCallbackExpiredErr(err) {
+			logger().Debugw("answer callback error", "error", err)
+		}
 	}
 
 	// Edit original message to remove the keyboard
-	if query.Message != nil {
-		status := "❌ Denied"
-		if approved {
-			status = "✅ Approved"
-		}
-		edit := tgbotapi.NewEditMessageText(
-			query.Message.Chat.ID,
-			query.Message.MessageID,
-			fmt.Sprintf("%s — %s", query.Message.Text, status),
-		)
-		if _, err := p.bot.Send(edit); err != nil {
-			logger().Warnw("edit approval message error", "error", err)
-		}
+	status := "❌ Denied"
+	if approved {
+		status = "✅ Approved"
 	}
+	p.editApprovalMessage(pending.chatID, pending.messageID, fmt.Sprintf("🔐 Tool approval — %s", status))
 
 	// Send result to waiting goroutine
-	if ch, ok := p.pending.LoadAndDelete(requestID); ok {
-		respChan, ok := ch.(chan bool)
-		if !ok {
-			logger().Warnw("unexpected pending type", "requestId", requestID)
-			return
-		}
-		select {
-		case respChan <- approved:
-		default:
-		}
+	select {
+	case pending.ch <- approved:
+	default:
 	}
 }
 
 // CanHandle returns true for session keys starting with "telegram:".
 func (p *ApprovalProvider) CanHandle(sessionKey string) bool {
 	return strings.HasPrefix(sessionKey, "telegram:")
+}
+
+// editApprovalMessage edits a message with new text and removes inline keyboard buttons.
+func (p *ApprovalProvider) editApprovalMessage(chatID int64, messageID int, newText string) {
+	emptyMarkup := tgbotapi.NewInlineKeyboardMarkup()
+	edit := tgbotapi.NewEditMessageTextAndMarkup(chatID, messageID, newText, emptyMarkup)
+	if _, err := p.bot.Send(edit); err != nil {
+		if !isMessageNotModifiedErr(err) {
+			logger().Warnw("edit approval message error", "error", err)
+		}
+	}
+}
+
+func isCallbackExpiredErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "query is too old")
+}
+
+func isMessageNotModifiedErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "message is not modified")
 }
 
 // parseTelegramChatID extracts the chatID from a session key like "telegram:<chatID>:<userID>".

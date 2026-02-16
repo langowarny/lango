@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,13 +10,27 @@ import (
 	"github.com/langowarny/lango/internal/approval"
 )
 
-// MockApprovalClient extends MockClient with UpdateMessage.
+// MockApprovalClient extends MockClient with UpdateMessage tracking.
 type MockApprovalClient struct {
 	MockClient
 	UpdateMessageFunc func(channelID, timestamp string, options ...slackapi.MsgOption) (string, string, string, error)
+	UpdateMessages    []struct {
+		ChannelID string
+		Timestamp string
+		Options   []slackapi.MsgOption
+	}
+	mu sync.Mutex
 }
 
 func (m *MockApprovalClient) UpdateMessage(channelID, timestamp string, options ...slackapi.MsgOption) (string, string, string, error) {
+	m.mu.Lock()
+	m.UpdateMessages = append(m.UpdateMessages, struct {
+		ChannelID string
+		Timestamp string
+		Options   []slackapi.MsgOption
+	}{ChannelID: channelID, Timestamp: timestamp, Options: options})
+	m.mu.Unlock()
+
 	if m.UpdateMessageFunc != nil {
 		return m.UpdateMessageFunc(channelID, timestamp, options...)
 	}
@@ -86,6 +101,14 @@ func TestSlackApprovalProvider_Approve(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
+
+	// Verify UpdateMessage was called to remove buttons
+	client.mu.Lock()
+	updateCount := len(client.UpdateMessages)
+	client.mu.Unlock()
+	if updateCount == 0 {
+		t.Error("expected UpdateMessage to be called to remove buttons")
+	}
 }
 
 func TestSlackApprovalProvider_Deny(t *testing.T) {
@@ -155,6 +178,14 @@ func TestSlackApprovalProvider_Timeout(t *testing.T) {
 	if approved {
 		t.Error("expected approved=false on timeout")
 	}
+
+	// Verify expired message was sent via UpdateMessage
+	client.mu.Lock()
+	updateCount := len(client.UpdateMessages)
+	client.mu.Unlock()
+	if updateCount == 0 {
+		t.Error("expected UpdateMessage to be called on timeout for expired message")
+	}
 }
 
 func TestSlackApprovalProvider_UnknownAction(t *testing.T) {
@@ -162,4 +193,59 @@ func TestSlackApprovalProvider_UnknownAction(t *testing.T) {
 
 	// Should not panic on unknown action
 	p.HandleInteractive("unknown:action")
+}
+
+func TestSlackApprovalProvider_DuplicateAction(t *testing.T) {
+	client := &MockApprovalClient{
+		MockClient: MockClient{
+			PostMessageFunc: func(channelID string, options ...slackapi.MsgOption) (string, string, error) {
+				return "ts-dup", channelID, nil
+			},
+		},
+	}
+	p := NewApprovalProvider(client, 5*time.Second)
+
+	req := approval.ApprovalRequest{
+		ID:         "test-req-dup",
+		ToolName:   "exec",
+		SessionKey: "slack:C123:U456",
+		CreatedAt:  time.Now(),
+	}
+
+	done := make(chan struct{})
+	var approved bool
+	var err error
+
+	go func() {
+		approved, err = p.RequestApproval(context.Background(), req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// First action — should succeed
+	p.HandleInteractive("approve:test-req-dup")
+
+	// Second action — should be silently ignored (LoadAndDelete already removed it)
+	p.HandleInteractive("deny:test-req-dup")
+
+	select {
+	case <-done:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !approved {
+			t.Error("expected approved=true from first action")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+
+	// Only one UpdateMessage call (from the first action)
+	client.mu.Lock()
+	updateCount := len(client.UpdateMessages)
+	client.mu.Unlock()
+	if updateCount != 1 {
+		t.Errorf("expected 1 UpdateMessage call, got %d", updateCount)
+	}
 }
