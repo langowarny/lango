@@ -19,7 +19,8 @@ import (
 
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
-	runner *runner.Runner
+	runner   *runner.Runner
+	adkAgent adk_agent.Agent
 }
 
 // NewAgent creates a new Agent instance.
@@ -54,8 +55,33 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	}
 
 	return &Agent{
-		runner: r,
+		runner:   r,
+		adkAgent: adkAgent,
 	}, nil
+}
+
+// NewAgentFromADK creates a Lango Agent wrapping a pre-built ADK agent.
+// Used for multi-agent orchestration where the agent tree is built externally.
+func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, error) {
+	sessService := NewSessionServiceAdapter(store)
+
+	runnerCfg := runner.Config{
+		AppName:        "lango",
+		Agent:          adkAgent,
+		SessionService: sessService,
+	}
+
+	r, err := runner.New(runnerCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create runner: %w", err)
+	}
+
+	return &Agent{runner: r, adkAgent: adkAgent}, nil
+}
+
+// ADKAgent returns the underlying ADK agent, or nil if not available.
+func (a *Agent) ADKAgent() adk_agent.Agent {
+	return a.adkAgent
 }
 
 // Run executes the agent for a given session and returns an event iterator.

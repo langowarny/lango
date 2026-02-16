@@ -23,6 +23,10 @@ import (
 // asynchronous embedding without importing the embedding package.
 type EmbedCallback func(id, collection, content string, metadata map[string]string)
 
+// GraphCallback is an optional hook called when content is saved, enabling
+// asynchronous graph relationship updates without importing the graph package.
+type GraphCallback func(id, collection, content string, metadata map[string]string)
+
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
 	client *ent.Client
@@ -30,6 +34,8 @@ type Store struct {
 
 	// Optional embedding hook (nil = disabled).
 	onEmbed EmbedCallback
+	// Optional graph relationship hook (nil = disabled).
+	onGraph GraphCallback
 
 	// Rate limiting per session
 	mu              sync.Mutex
@@ -69,6 +75,11 @@ func (s *Store) SetEmbedCallback(cb EmbedCallback) {
 	s.onEmbed = cb
 }
 
+// SetGraphCallback sets the optional graph relationship hook.
+func (s *Store) SetGraphCallback(cb GraphCallback) {
+	s.onGraph = cb
+}
+
 // SaveKnowledge creates or updates a knowledge entry by key.
 func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry KnowledgeEntry) error {
 	if err := s.reserveKnowledgeSlot(sessionKey); err != nil {
@@ -97,10 +108,12 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 			return fmt.Errorf("create knowledge: %w", err)
 		}
 
+		meta := map[string]string{"category": entry.Category}
 		if s.onEmbed != nil {
-			s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
-				"category": entry.Category,
-			})
+			s.onEmbed(entry.Key, "knowledge", entry.Content, meta)
+		}
+		if s.onGraph != nil {
+			s.onGraph(entry.Key, "knowledge", entry.Content, meta)
 		}
 		return nil
 	}

@@ -359,6 +359,11 @@ func (s *Server) setupRoutes() {
 	}
 }
 
+// Router returns the underlying chi.Router for mounting additional routes.
+func (s *Server) Router() chi.Router {
+	return s.router
+}
+
 // SetAgent sets the agent on the server (used for deferred wiring).
 func (s *Server) SetAgent(agent *adk.Agent) {
 	s.agent = agent

@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -16,24 +17,45 @@ import (
 // asynchronous embedding without importing the embedding package.
 type EmbedCallback func(id, collection, content string, metadata map[string]string)
 
+// ContentCallback is an optional hook called when content is saved, enabling
+// asynchronous processing without importing external packages.
+type ContentCallback func(id, collection, content string, metadata map[string]string)
+
 // Store provides CRUD operations for observations and reflections.
 type Store struct {
-	client  *ent.Client
-	logger  *zap.SugaredLogger
-	onEmbed EmbedCallback
+	client     *ent.Client
+	logger     *zap.SugaredLogger
+	onEmbed    EmbedCallback
+	onGraph    ContentCallback
+	graphHooks *GraphHooks
+
+	// lastObsMu protects lastObsIDs for concurrent SaveObservation calls.
+	lastObsMu  sync.Mutex
+	lastObsIDs map[string]string // session_key → last observation ID
 }
 
 // NewStore creates a new observational memory store.
 func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 	return &Store{
-		client: client,
-		logger: logger,
+		client:     client,
+		logger:     logger,
+		lastObsIDs: make(map[string]string),
 	}
 }
 
 // SetEmbedCallback sets the optional embedding hook.
 func (s *Store) SetEmbedCallback(cb EmbedCallback) {
 	s.onEmbed = cb
+}
+
+// SetGraphCallback sets the optional graph relationship hook.
+func (s *Store) SetGraphCallback(cb ContentCallback) {
+	s.onGraph = cb
+}
+
+// SetGraphHooks sets the graph hooks for temporal/session triple generation.
+func (s *Store) SetGraphHooks(hooks *GraphHooks) {
+	s.graphHooks = hooks
 }
 
 // SaveObservation persists an observation to the database.
@@ -54,11 +76,27 @@ func (s *Store) SaveObservation(ctx context.Context, obs Observation) error {
 		return fmt.Errorf("save observation: %w", err)
 	}
 
+	savedID := saved.ID.String()
+
+	meta := map[string]string{"session_key": obs.SessionKey}
 	if s.onEmbed != nil {
-		s.onEmbed(saved.ID.String(), "observation", obs.Content, map[string]string{
-			"session_key": obs.SessionKey,
-		})
+		s.onEmbed(savedID, "observation", obs.Content, meta)
 	}
+	if s.onGraph != nil {
+		s.onGraph(savedID, "observation", obs.Content, meta)
+	}
+
+	// Graph hooks: temporal ordering and session membership.
+	if s.graphHooks != nil {
+		s.lastObsMu.Lock()
+		previousID := s.lastObsIDs[obs.SessionKey]
+		s.lastObsIDs[obs.SessionKey] = savedID
+		s.lastObsMu.Unlock()
+
+		obs.ID = saved.ID
+		s.graphHooks.OnObservation(obs, previousID)
+	}
+
 	return nil
 }
 
@@ -146,11 +184,30 @@ func (s *Store) SaveReflection(ctx context.Context, ref Reflection) error {
 		return fmt.Errorf("save reflection: %w", err)
 	}
 
+	savedID := saved.ID.String()
+
+	meta := map[string]string{"session_key": ref.SessionKey}
 	if s.onEmbed != nil {
-		s.onEmbed(saved.ID.String(), "reflection", ref.Content, map[string]string{
-			"session_key": ref.SessionKey,
-		})
+		s.onEmbed(savedID, "reflection", ref.Content, meta)
 	}
+	if s.onGraph != nil {
+		s.onGraph(savedID, "reflection", ref.Content, meta)
+	}
+
+	// Graph hooks: reflection-observation links.
+	if s.graphHooks != nil {
+		ref.ID = saved.ID
+		// Collect recent observation IDs for this session.
+		var obsIDs []string
+		observations, listErr := s.ListObservations(ctx, ref.SessionKey)
+		if listErr == nil {
+			for _, obs := range observations {
+				obsIDs = append(obsIDs, obs.ID.String())
+			}
+		}
+		s.graphHooks.OnReflection(ref, obsIDs)
+	}
+
 	return nil
 }
 

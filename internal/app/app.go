@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langowarny/lango/internal/a2a"
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/bootstrap"
@@ -97,17 +98,24 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("secrets tools registered")
 	}
 
+	// 5d. Graph Store (optional) — initialized before knowledge so GraphEngine can be wired.
+	gc := initGraphStore(cfg)
+	if gc != nil {
+		app.GraphStore = gc.store
+		app.GraphBuffer = gc.buffer
+	}
+
 	// 5. Knowledge system (optional, non-blocking)
-	kc := initKnowledge(cfg, store, tools)
+	kc := initKnowledge(cfg, store, tools, gc)
 	if kc != nil {
 		app.KnowledgeStore = kc.store
 		app.LearningEngine = kc.engine
 		app.SkillRegistry = kc.registry
 
-		// Wrap base tools with learning engine
+		// Wrap base tools with learning observer (Engine or GraphEngine)
 		wrapped := make([]*agent.Tool, len(tools))
 		for i, t := range tools {
-			wrapped[i] = wrapWithLearning(t, kc.engine)
+			wrapped[i] = wrapWithLearning(t, kc.observer)
 		}
 		tools = wrapped
 
@@ -131,6 +139,28 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if ec != nil {
 		app.EmbeddingBuffer = ec.buffer
 		app.RAGService = ec.ragService
+	}
+
+	// 5d'. Wire graph callbacks into knowledge and memory stores.
+	if gc != nil {
+		wireGraphCallbacks(gc, kc, mc, sv, cfg)
+		// Initialize Graph RAG hybrid retrieval.
+		initGraphRAG(cfg, gc, ec)
+	}
+
+	// 5e. Graph tools (optional)
+	if gc != nil {
+		tools = append(tools, buildGraphTools(gc.store)...)
+	}
+
+	// 5f. RAG tools (optional)
+	if ec != nil && ec.ragService != nil {
+		tools = append(tools, buildRAGTools(ec.ragService)...)
+	}
+
+	// 5g. Memory agent tools (optional)
+	if mc != nil {
+		tools = append(tools, buildMemoryAgentTools(mc.store)...)
 	}
 
 	// 6. Auth
@@ -162,7 +192,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 	}
 
 	// 9. ADK Agent (scanner is passed for output-side secret scanning)
-	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, scanner)
+	adkAgent, err := initAgent(context.Background(), sv, cfg, store, tools, kc, mc, ec, gc, scanner)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
 	}
@@ -170,6 +200,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// Update gateway with the created agent
 	app.Gateway.SetAgent(adkAgent)
+
+	// 9b. A2A Server (if multi-agent and A2A enabled)
+	if cfg.A2A.Enabled && cfg.Agent.MultiAgent && adkAgent.ADKAgent() != nil {
+		a2aServer := a2a.NewServer(cfg.A2A, adkAgent.ADKAgent(), logger())
+		a2aServer.RegisterRoutes(app.Gateway.Router())
+	}
 
 	// 10. Channels
 	if err := app.initChannels(); err != nil {
@@ -201,6 +237,12 @@ func (a *App) Start(ctx context.Context) error {
 	if a.EmbeddingBuffer != nil {
 		a.EmbeddingBuffer.Start(&a.wg)
 		logger().Info("embedding buffer started")
+	}
+
+	// Start graph buffer if enabled
+	if a.GraphBuffer != nil {
+		a.GraphBuffer.Start(&a.wg)
+		logger().Info("graph buffer started")
 	}
 
 	logger().Info("starting channels...")
@@ -242,6 +284,12 @@ func (a *App) Stop(ctx context.Context) error {
 		logger().Info("embedding buffer stopped")
 	}
 
+	// Stop graph buffer
+	if a.GraphBuffer != nil {
+		a.GraphBuffer.Stop()
+		logger().Info("graph buffer stopped")
+	}
+
 	// Wait for all background goroutines to finish
 	done := make(chan struct{})
 	go func() {
@@ -265,6 +313,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
 			logger().Errorw("session store close error", "error", err)
+		}
+	}
+
+	if a.GraphStore != nil {
+		if err := a.GraphStore.Close(); err != nil {
+			logger().Errorw("graph store close error", "error", err)
 		}
 	}
 

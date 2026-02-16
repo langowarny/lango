@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/gateway"
+	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
@@ -50,6 +51,10 @@ type App struct {
 	// Embedding / RAG Components (optional)
 	EmbeddingBuffer *embedding.EmbeddingBuffer
 	RAGService      *embedding.RAGService
+
+	// Graph Components (optional)
+	GraphStore  graph.Store
+	GraphBuffer *graph.GraphBuffer
 
 	// Channels
 	Channels []Channel
