@@ -56,7 +56,13 @@ func NewAgentForm(cfg *config.Config) *FormModel {
 	})
 
 	form.AddField(&Field{
-		Key: "system_prompt_path", Label: "System Prompt Path", Type: InputText,
+		Key: "prompts_dir", Label: "Prompts Directory", Type: InputText,
+		Value:       cfg.Agent.PromptsDir,
+		Placeholder: "~/.lango/prompts (directory of .md files)",
+	})
+
+	form.AddField(&Field{
+		Key: "system_prompt_path", Label: "System Prompt Path (legacy)", Type: InputText,
 		Value:       cfg.Agent.SystemPromptPath,
 		Placeholder: "path/to/system_prompt.txt",
 	})

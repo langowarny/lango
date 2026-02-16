@@ -27,7 +27,7 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 
 	wantKeys := []string{
 		"provider", "model", "maxtokens", "temp",
-		"system_prompt_path", "fallback_provider", "fallback_model",
+		"prompts_dir", "system_prompt_path", "fallback_provider", "fallback_model",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -158,12 +158,16 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 func TestUpdateConfigFromForm_AgentAdvancedFields(t *testing.T) {
 	state := NewConfigState()
 	form := NewFormModel("test")
+	form.AddField(&Field{Key: "prompts_dir", Type: InputText, Value: "~/.lango/prompts"})
 	form.AddField(&Field{Key: "system_prompt_path", Type: InputText, Value: "/path/to/prompt.txt"})
 	form.AddField(&Field{Key: "fallback_provider", Type: InputSelect, Value: "openai"})
 	form.AddField(&Field{Key: "fallback_model", Type: InputText, Value: "gpt-4o"})
 
 	state.UpdateConfigFromForm(&form)
 
+	if state.Current.Agent.PromptsDir != "~/.lango/prompts" {
+		t.Errorf("PromptsDir: want %q, got %q", "~/.lango/prompts", state.Current.Agent.PromptsDir)
+	}
 	if state.Current.Agent.SystemPromptPath != "/path/to/prompt.txt" {
 		t.Errorf("SystemPromptPath: want %q, got %q", "/path/to/prompt.txt", state.Current.Agent.SystemPromptPath)
 	}

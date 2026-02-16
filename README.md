@@ -137,6 +137,7 @@ lango/
 │   ├── skill/              # Skill registry, executor, builder
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   └── tools/              # browser, crypto, exec, filesystem, secrets
+├── prompts/                # Default prompt .md files (embedded via go:embed)
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -173,7 +174,8 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `agent.fallbackModel` | string | - | Fallback model ID |
 | `agent.maxTokens` | int | `4096` | Max tokens |
 | `agent.temperature` | float | `0.7` | Generation temperature |
-| `agent.systemPromptPath` | string | - | Custom system prompt template path |
+| `agent.systemPromptPath` | string | - | Legacy: single file to override the Identity section only |
+| `agent.promptsDir` | string | - | Directory of `.md` files to override default prompt sections (takes precedence over `systemPromptPath`) |
 | **Providers** | | | |
 | `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
 | `providers.<id>.apiKey` | string | - | Provider API key |
@@ -234,6 +236,43 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `embedding.rag.enabled` | bool | `false` | Enable RAG context injection |
 | `embedding.rag.maxResults` | int | - | Max results to inject into context |
 | `embedding.rag.collections` | []string | - | Collections to search (empty = all) |
+
+## System Prompts
+
+Lango ships with production-quality default prompts embedded in the binary. No configuration is needed — the agent works out of the box with prompts covering identity, safety, conversation rules, and tool usage guidelines.
+
+### Prompt Sections
+
+| File | Section | Priority | Description |
+|------|---------|----------|-------------|
+| `AGENTS.md` | Identity | 100 | Agent name, role, tool capabilities, knowledge system |
+| `SAFETY.md` | Safety | 200 | Secret protection, destructive op confirmation, PII |
+| `CONVERSATION_RULES.md` | Conversation Rules | 300 | Anti-repetition rules, channel limits, consistency |
+| `TOOL_USAGE.md` | Tool Usage | 400 | Per-tool guidelines for exec, filesystem, browser, crypto, secrets |
+
+### Customizing Prompts
+
+Create a directory with `.md` files matching the section names above and set `agent.promptsDir`:
+
+```bash
+mkdir -p ~/.lango/prompts
+# Override just the identity section
+echo "You are a helpful coding assistant." > ~/.lango/prompts/AGENTS.md
+```
+
+Then configure the path via `lango onboard` > Agent Configuration > Prompts Directory, or set it in a config JSON:
+
+```json
+{
+  "agent": {
+    "promptsDir": "~/.lango/prompts"
+  }
+}
+```
+
+**Precedence:** `promptsDir` (directory) > `systemPromptPath` (legacy single file) > built-in defaults.
+
+Unknown `.md` files in the directory are added as custom sections with priority 900+, appearing after the default sections.
 
 ## Embedding & RAG
 

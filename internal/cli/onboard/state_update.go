@@ -37,6 +37,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if f, err := strconv.ParseFloat(val, 64); err == nil {
 				s.Current.Agent.Temperature = f
 			}
+		case "prompts_dir":
+			s.Current.Agent.PromptsDir = val
 		case "system_prompt_path":
 			s.Current.Agent.SystemPromptPath = val
 		case "fallback_provider":
