@@ -261,18 +261,26 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 		"userId", userID,
 	)
 
-	response, err := c.handler(ctx, incoming)
-	if err != nil {
-		logger.Errorw("handler error", "error", err)
-		c.sendError(channelID, threadTS, err)
-		return
-	}
+	// Run handler in a separate goroutine to avoid blocking the event loop.
+	// Without this, a blocking handler (e.g. waiting for approval) would prevent
+	// interactive events (button clicks) from being processed, causing a deadlock.
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
 
-	if response != nil {
-		if err := c.Send(channelID, response); err != nil {
-			logger.Errorw("send error", "error", err)
+		response, err := c.handler(ctx, incoming)
+		if err != nil {
+			logger.Errorw("handler error", "error", err)
+			c.sendError(channelID, threadTS, err)
+			return
 		}
-	}
+
+		if response != nil {
+			if err := c.Send(channelID, response); err != nil {
+				logger.Errorw("send error", "error", err)
+			}
+		}
+	}()
 }
 
 // Send sends a message
