@@ -13,6 +13,7 @@ import (
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/prompt"
 )
 
 // MemoryProvider retrieves observations and reflections for a session.
@@ -37,16 +38,18 @@ type ContextAwareModelAdapter struct {
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
+// The builder is used to produce the base system prompt; dynamic context
+// (knowledge, memory, RAG) is still appended at call time.
 func NewContextAwareModelAdapter(
 	inner *ModelAdapter,
 	retriever *knowledge.ContextRetriever,
-	basePrompt string,
+	builder *prompt.Builder,
 	logger *zap.SugaredLogger,
 ) *ContextAwareModelAdapter {
 	return &ContextAwareModelAdapter{
 		inner:      inner,
 		retriever:  retriever,
-		basePrompt: basePrompt,
+		basePrompt: builder.Build(),
 		logger:     logger,
 	}
 }

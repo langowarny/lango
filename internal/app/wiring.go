@@ -17,6 +17,7 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/prompt"
 	"github.com/langowarny/lango/internal/provider"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
@@ -26,24 +27,33 @@ import (
 	adk_tool "google.golang.org/adk/tool"
 )
 
-const _defaultSystemPrompt = "You are Lango, a powerful AI assistant. You have access to tools for shell command execution and file system operations. Use them when appropriate to help the user."
+// buildPromptBuilder returns a prompt.Builder configured from the agent settings.
+// Priority: PromptsDir (directory of .md files) > SystemPromptPath (legacy single file) > defaults.
+func buildPromptBuilder(cfg *config.AgentConfig) *prompt.Builder {
+	// 1. Directory-based prompts
+	if cfg.PromptsDir != "" {
+		return prompt.LoadFromDir(cfg.PromptsDir, logger())
+	}
 
-// loadSystemPrompt returns the system prompt from file or the default.
-func loadSystemPrompt(path string) string {
-	if path == "" {
-		return _defaultSystemPrompt
+	// 2. Legacy: single system prompt file → replace Identity section only
+	if cfg.SystemPromptPath != "" {
+		data, err := os.ReadFile(cfg.SystemPromptPath)
+		if err != nil {
+			logger().Warnw("system prompt file not found, using defaults", "path", cfg.SystemPromptPath, "error", err)
+			return prompt.DefaultBuilder()
+		}
+		content := strings.TrimSpace(string(data))
+		if content == "" {
+			return prompt.DefaultBuilder()
+		}
+		logger().Infow("loaded custom system prompt", "path", cfg.SystemPromptPath)
+		b := prompt.DefaultBuilder()
+		b.Add(prompt.NewStaticSection(prompt.SectionIdentity, 100, "", content))
+		return b
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		logger().Warnw("system prompt file not found, using default", "path", path, "error", err)
-		return _defaultSystemPrompt
-	}
-	prompt := string(data)
-	if prompt == "" {
-		return _defaultSystemPrompt
-	}
-	logger().Infow("loaded custom system prompt", "path", path)
-	return prompt
+
+	// 3. Built-in defaults
+	return prompt.DefaultBuilder()
 }
 
 // initSupervisor creates and initializes the Supervisor.
@@ -445,8 +455,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	proxy := supervisor.NewProviderProxy(sv, cfg.Agent.Provider, cfg.Agent.Model, proxyOpts...)
 	modelAdapter := adk.NewModelAdapter(proxy, cfg.Agent.Model)
 
-	// Load system prompt (from file or default)
-	systemPrompt := loadSystemPrompt(cfg.Agent.SystemPromptPath)
+	// Build structured system prompt
+	builder := buildPromptBuilder(&cfg.Agent)
+	systemPrompt := builder.Build()
 
 	// If knowledge is enabled, wrap with context-aware adapter
 	var llm model.LLM = modelAdapter
@@ -469,7 +480,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		)
 		retriever.WithRuntimeContext(runtimeAdapter)
 
-		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, systemPrompt, logger())
+		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
 
 		// Wire in observational memory if available
@@ -492,7 +503,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		llm = ctxAdapter
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
-		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, systemPrompt, logger())
+		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store, "")
 
 		// Wire in RAG if available and enabled

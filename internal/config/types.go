@@ -196,6 +196,10 @@ type AgentConfig struct {
 	// System prompt template path
 	SystemPromptPath string `mapstructure:"systemPromptPath" json:"systemPromptPath"`
 
+	// PromptsDir is the directory containing section .md files (AGENTS.md, SAFETY.md, etc.)
+	// If empty, built-in default sections are used.
+	PromptsDir string `mapstructure:"promptsDir" json:"promptsDir"`
+
 	// Fallback provider ID
 	FallbackProvider string `mapstructure:"fallbackProvider" json:"fallbackProvider"`
 
