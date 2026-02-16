@@ -70,7 +70,7 @@ func TestLoadFromDir_OverridesMultipleSections(t *testing.T) {
 	assert.Contains(t, result, "My safety rules")
 	assert.NotContains(t, result, "You are Lango")
 	// Conversation rules should still be default
-	assert.Contains(t, result, "Focus exclusively on the current question")
+	assert.Contains(t, result, "Answer only the current question")
 }
 
 func TestLoadFromDir_CustomSectionPriorityAfterDefaults(t *testing.T) {

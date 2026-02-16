@@ -35,7 +35,7 @@ The system SHALL provide a Builder that collects PromptSection instances, sorts 
 - **THEN** Build() SHALL not include that section in the output
 
 ### Requirement: Default sections included
-The system SHALL provide a `DefaultBuilder()` that returns a Builder with four built-in sections: Identity (priority 100), Safety (priority 200), Conversation Rules (priority 300), and Tool Usage (priority 400).
+The system SHALL provide a `DefaultBuilder()` that returns a Builder with four built-in sections: Identity (priority 100), Safety (priority 200), Conversation Rules (priority 300), and Tool Usage (priority 400). Section content SHALL be read from embedded `.md` files in the `prompts` package via `prompts.FS.ReadFile()`. If an embedded file read fails, the system SHALL use a minimal fallback string for that section.
 
 #### Scenario: Default builder includes conversation rules
 - **WHEN** DefaultBuilder().Build() is called
@@ -44,6 +44,13 @@ The system SHALL provide a `DefaultBuilder()` that returns a Builder with four b
 #### Scenario: Default builder section order
 - **WHEN** DefaultBuilder().Build() is called
 - **THEN** Identity SHALL appear before Safety, Safety before Conversation Rules, Conversation Rules before Tool Usage
+
+#### Scenario: Default builder uses embedded content
+- **WHEN** DefaultBuilder().Build() is called with a correctly built binary
+- **THEN** the Identity section SHALL contain content from AGENTS.md describing Lango's five tool categories
+- **AND** the Safety section SHALL contain content from SAFETY.md with security rules
+- **AND** the Conversation Rules section SHALL contain content from CONVERSATION_RULES.md
+- **AND** the Tool Usage section SHALL contain content from TOOL_USAGE.md with per-tool guidelines
 
 ### Requirement: Directory-based prompt loading
 The system SHALL provide a `LoadFromDir` function that reads `.md` files from a directory and overrides matching default sections. Known filenames (AGENTS.md, SAFETY.md, CONVERSATION_RULES.md, TOOL_USAGE.md) SHALL map to their respective section IDs. Unknown `.md` files SHALL be added as custom sections with priority 900+.

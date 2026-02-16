@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango
 
 COPY --from=builder /app/lango /usr/local/bin/lango
+COPY --from=builder /app/prompts/ /usr/share/lango/prompts/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

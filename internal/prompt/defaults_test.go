@@ -17,8 +17,8 @@ func TestDefaultBuilder_ContainsAllSections(t *testing.T) {
 
 func TestDefaultBuilder_IncludesConversationRules(t *testing.T) {
 	result := DefaultBuilder().Build()
-	assert.Contains(t, result, "Focus exclusively on the current question")
-	assert.Contains(t, result, "Do not repeat or summarize your previous answers")
+	assert.Contains(t, result, "Answer only the current question")
+	assert.Contains(t, result, "Do not repeat")
 }
 
 func TestDefaultBuilder_IncludesIdentity(t *testing.T) {
@@ -36,4 +36,12 @@ func TestDefaultBuilder_SectionOrder(t *testing.T) {
 	assert.Less(t, idxIdentity, idxSafety, "Identity should come before Safety")
 	assert.Less(t, idxSafety, idxConversation, "Safety should come before Conversation Rules")
 	assert.Less(t, idxConversation, idxTool, "Conversation Rules should come before Tool Usage")
+}
+
+func TestDefaultBuilder_UsesEmbeddedContent(t *testing.T) {
+	result := DefaultBuilder().Build()
+	// Verify embedded content is loaded (not fallbacks)
+	assert.Contains(t, result, "five tool categories")
+	assert.Contains(t, result, "Never expose secrets")
+	assert.Contains(t, result, "Exec Tool")
 }
