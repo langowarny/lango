@@ -136,14 +136,22 @@ func TestModelAdapter_GenerateContent_ToolCall(t *testing.T) {
 		responses = append(responses, resp)
 	}
 
-	if len(responses) != 2 {
-		t.Fatalf("expected 2 responses, got %d", len(responses))
+	// Non-streaming mode accumulates all events into a single response.
+	if len(responses) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(responses))
 	}
 
-	// First should have function call
-	parts := responses[0].Content.Parts
+	resp := responses[0]
+	if !resp.TurnComplete {
+		t.Error("expected response to be turn complete")
+	}
+	if resp.Partial {
+		t.Error("expected response to not be partial")
+	}
+
+	// Should have the function call part.
 	hasFuncCall := false
-	for _, p := range parts {
+	for _, p := range resp.Content.Parts {
 		if p.FunctionCall != nil {
 			hasFuncCall = true
 			if p.FunctionCall.Name != "exec" {

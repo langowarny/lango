@@ -134,8 +134,12 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 }
 
 // runAndCollectOnce executes a single agent run and collects text output.
+// It tracks whether partial (streaming) events were seen to avoid
+// double-counting text that appears in both partial chunks and the
+// final non-partial response.
 func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) (string, error) {
 	var b strings.Builder
+	var sawPartial bool
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
@@ -156,13 +160,29 @@ func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) 
 			}
 		}
 
-		if event.Content != nil {
+		if event.Content == nil {
+			continue
+		}
+
+		if event.Partial {
+			// Streaming text chunk — collect incrementally.
+			sawPartial = true
+			for _, part := range event.Content.Parts {
+				if part.Text != "" {
+					b.WriteString(part.Text)
+				}
+			}
+		} else if !sawPartial {
+			// Non-streaming mode: no partial events were seen,
+			// so collect from the final complete response.
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
 					b.WriteString(part.Text)
 				}
 			}
 		}
+		// If sawPartial && !event.Partial: this is the final done event
+		// in streaming mode. Its text duplicates partial chunks, so skip.
 	}
 
 	return b.String(), nil

@@ -74,49 +74,125 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 			return
 		}
 
-		for evt, err := range pSeq {
-			if err != nil {
-				yield(nil, err)
-				return
-			}
+		if stream {
+			// Streaming mode: yield partial text events for real-time UI,
+			// and include accumulated full text in the final done event
+			// so the ADK runner stores the complete response in the session.
+			var accumulated strings.Builder
+			var toolParts []*genai.Part
 
-			resp := &model.LLMResponse{
-				Content: &genai.Content{
-					Role:  "model",
-					Parts: []*genai.Part{},
-				},
-			}
-
-			switch evt.Type {
-			case provider.StreamEventPlainText:
-				resp.Content.Parts = append(resp.Content.Parts, &genai.Part{Text: evt.Text})
-				// For streaming, ADK usually expects partial responses?
-				// resp.Partial = true (for text delta)
-				// But ADK LLMResponse definition comment says:
-				// "Only used for streaming mode and when the content is plain text."
-				resp.Partial = true
-			case provider.StreamEventToolCall:
-				if evt.ToolCall != nil {
-					args := make(map[string]any)
-					_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
-					resp.Content.Parts = append(resp.Content.Parts, &genai.Part{
-						FunctionCall: &genai.FunctionCall{
-							Name: evt.ToolCall.Name,
-							Args: args,
-						},
-					})
+			for evt, err := range pSeq {
+				if err != nil {
+					yield(nil, err)
+					return
 				}
-			case provider.StreamEventDone:
-				resp.TurnComplete = true
-				resp.Partial = false
-			case provider.StreamEventError:
-				yield(nil, evt.Error)
-				return
+
+				switch evt.Type {
+				case provider.StreamEventPlainText:
+					accumulated.WriteString(evt.Text)
+					resp := &model.LLMResponse{
+						Content: &genai.Content{
+							Role:  "model",
+							Parts: []*genai.Part{{Text: evt.Text}},
+						},
+						Partial: true,
+					}
+					if !yield(resp, nil) {
+						return
+					}
+
+				case provider.StreamEventToolCall:
+					if evt.ToolCall != nil {
+						args := make(map[string]any)
+						_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
+						part := &genai.Part{
+							FunctionCall: &genai.FunctionCall{
+								Name: evt.ToolCall.Name,
+								Args: args,
+							},
+						}
+						toolParts = append(toolParts, part)
+						resp := &model.LLMResponse{
+							Content: &genai.Content{
+								Role:  "model",
+								Parts: []*genai.Part{part},
+							},
+						}
+						if !yield(resp, nil) {
+							return
+						}
+					}
+
+				case provider.StreamEventDone:
+					// Final event: include accumulated full text so ADK
+					// stores a complete assistant message in the session.
+					var finalParts []*genai.Part
+					if text := accumulated.String(); text != "" {
+						finalParts = append(finalParts, &genai.Part{Text: text})
+					}
+					finalParts = append(finalParts, toolParts...)
+					resp := &model.LLMResponse{
+						Content: &genai.Content{
+							Role:  "model",
+							Parts: finalParts,
+						},
+						TurnComplete: true,
+						Partial:      false,
+					}
+					if !yield(resp, nil) {
+						return
+					}
+
+				case provider.StreamEventError:
+					yield(nil, evt.Error)
+					return
+				}
+			}
+		} else {
+			// Non-streaming mode: accumulate all events internally and
+			// yield a single complete response for session storage.
+			var textAccum strings.Builder
+			var toolParts []*genai.Part
+
+			for evt, err := range pSeq {
+				if err != nil {
+					yield(nil, err)
+					return
+				}
+
+				switch evt.Type {
+				case provider.StreamEventPlainText:
+					textAccum.WriteString(evt.Text)
+				case provider.StreamEventToolCall:
+					if evt.ToolCall != nil {
+						args := make(map[string]any)
+						_ = json.Unmarshal([]byte(evt.ToolCall.Arguments), &args)
+						toolParts = append(toolParts, &genai.Part{
+							FunctionCall: &genai.FunctionCall{
+								Name: evt.ToolCall.Name,
+								Args: args,
+							},
+						})
+					}
+				case provider.StreamEventDone:
+					// Ignored — we build the final response below.
+				case provider.StreamEventError:
+					yield(nil, evt.Error)
+					return
+				}
 			}
 
-			if !yield(resp, nil) {
-				return
+			var parts []*genai.Part
+			if text := textAccum.String(); text != "" {
+				parts = append(parts, &genai.Part{Text: text})
 			}
+			parts = append(parts, toolParts...)
+
+			yield(&model.LLMResponse{
+				Content:      &genai.Content{Role: "model", Parts: parts},
+				TurnComplete: true,
+				Partial:      false,
+			}, nil)
 		}
 	}
 }
