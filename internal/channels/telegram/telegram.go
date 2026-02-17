@@ -214,10 +214,22 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 	}
 }
 
-// Send sends a message
+// Send sends a message.
+// When ParseMode is not set, standard Markdown is auto-converted to Telegram v1
+// and sent with ParseMode "Markdown". If the API rejects the formatted text,
+// the original text is re-sent as plain text.
 func (c *Channel) Send(chatID int64, msg *OutgoingMessage) error {
+	text := msg.Text
+	parseMode := msg.ParseMode
+
+	// Auto-format: standard Markdown → Telegram v1
+	if parseMode == "" {
+		text = FormatMarkdown(msg.Text)
+		parseMode = "Markdown"
+	}
+
 	// Split long messages (Telegram limit is 4096)
-	chunks := c.splitMessage(msg.Text, 4096)
+	chunks := c.splitMessage(text, 4096)
 
 	for i, chunk := range chunks {
 		tgMsg := tgbotapi.NewMessage(chatID, chunk)
@@ -226,14 +238,38 @@ func (c *Channel) Send(chatID int64, msg *OutgoingMessage) error {
 			tgMsg.ReplyToMessageID = msg.ReplyToID
 		}
 
-		if msg.ParseMode != "" {
-			tgMsg.ParseMode = msg.ParseMode
+		tgMsg.ParseMode = parseMode
+		tgMsg.DisableWebPagePreview = msg.DisablePreview
+
+		if _, err := c.bot.Send(tgMsg); err != nil {
+			// Fallback: re-send as plain text if Markdown parsing failed
+			logger().Warnw("markdown send failed, retrying as plain text", "error", err)
+			if fallbackErr := c.sendPlainText(chatID, msg, i); fallbackErr != nil {
+				return fmt.Errorf("send plain text fallback: %w", fallbackErr)
+			}
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// sendPlainText re-sends the original message text without any parse mode,
+// starting from the given chunk index.
+func (c *Channel) sendPlainText(chatID int64, msg *OutgoingMessage, fromChunk int) error {
+	chunks := c.splitMessage(msg.Text, 4096)
+
+	for i := fromChunk; i < len(chunks); i++ {
+		tgMsg := tgbotapi.NewMessage(chatID, chunks[i])
+
+		if i == 0 && msg.ReplyToID > 0 {
+			tgMsg.ReplyToMessageID = msg.ReplyToID
 		}
 
 		tgMsg.DisableWebPagePreview = msg.DisablePreview
 
 		if _, err := c.bot.Send(tgMsg); err != nil {
-			return fmt.Errorf("failed to send: %w", err)
+			return fmt.Errorf("send chunk %d: %w", i, err)
 		}
 	}
 

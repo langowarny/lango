@@ -32,15 +32,27 @@ The system SHALL receive and process incoming messages from Telegram chats. Mess
 - **THEN** the system SHALL wait for all active handler goroutines to complete before returning from Stop()
 
 ### Requirement: Message sending
-The system SHALL send agent responses back to Telegram chats.
+The Telegram channel SHALL auto-convert standard Markdown to Telegram v1 format in the Send() method when ParseMode is not explicitly set. On API parse failure, the system SHALL fallback to sending plain text without ParseMode. Messages with explicit ParseMode SHALL be sent as-is.
 
 #### Scenario: Send text response
 - **WHEN** the agent generates a text response
 - **THEN** the response SHALL be sent to the originating chat
 
-#### Scenario: Long message chunking
-- **WHEN** a response exceeds Telegram's 4096 character limit
-- **THEN** the response SHALL be split into multiple messages
+#### Scenario: Auto-format standard Markdown
+- **WHEN** Send() is called with an OutgoingMessage where ParseMode is empty
+- **THEN** the system converts the text via FormatMarkdown() and sends with ParseMode "Markdown"
+
+#### Scenario: Plain text fallback on parse error
+- **WHEN** the Telegram API rejects a message due to Markdown parse error
+- **THEN** the system re-sends the original unformatted text without ParseMode
+
+#### Scenario: Explicit ParseMode preserved
+- **WHEN** Send() is called with ParseMode "HTML"
+- **THEN** the system sends the text with ParseMode "HTML" without Markdown conversion
+
+#### Scenario: Long message chunking preserved
+- **WHEN** a formatted message exceeds 4096 characters
+- **THEN** the system splits the message into chunks and sends each with Markdown formatting
 
 ### Requirement: Media handling
 The system SHALL process media attachments from Telegram messages.

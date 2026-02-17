@@ -31,15 +31,23 @@ The system SHALL process incoming Slack events using the Events API. Message han
 - **THEN** the system SHALL wait for all active handlers to complete before shutting down
 
 ### Requirement: Message sending
-The system SHALL send agent responses back to Slack channels.
+The Slack channel SHALL auto-convert standard Markdown to Slack mrkdwn format in the Send() method before posting messages. The conversion SHALL apply to the text content passed via MsgOptionText.
 
 #### Scenario: Send to channel
 - **WHEN** the agent generates a response to a channel message
 - **THEN** the response SHALL be posted to that channel
 
-#### Scenario: Thread reply
-- **WHEN** the original message was in a thread
-- **THEN** the response SHALL be posted as a thread reply
+#### Scenario: Auto-format standard Markdown
+- **WHEN** Send() is called with an OutgoingMessage
+- **THEN** the system converts the text via FormatMrkdwn() before creating MsgOptionText
+
+#### Scenario: Thread reply preserved
+- **WHEN** Send() is called with ThreadTS set
+- **THEN** the system applies mrkdwn conversion and replies in the specified thread
+
+#### Scenario: Block Kit content unaffected
+- **WHEN** Send() is called with Blocks specified
+- **THEN** the system converts the text field but Block Kit content is sent as-is
 
 ### Requirement: Block Kit formatting
 The system SHALL format rich responses using Slack Block Kit.

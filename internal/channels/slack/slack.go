@@ -283,10 +283,13 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 	}()
 }
 
-// Send sends a message
+// Send sends a message.
+// Standard Markdown in msg.Text is auto-converted to Slack mrkdwn before sending.
 func (c *Channel) Send(channelID string, msg *OutgoingMessage) error {
+	formattedText := FormatMrkdwn(msg.Text)
+
 	options := []slack.MsgOption{
-		slack.MsgOptionText(msg.Text, false),
+		slack.MsgOptionText(formattedText, false),
 	}
 
 	// Reply in thread if specified
