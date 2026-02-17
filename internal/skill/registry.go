@@ -22,17 +22,13 @@ type Registry struct {
 }
 
 // NewRegistry creates a new skill registry.
-func NewRegistry(store *knowledge.Store, baseTools []*agent.Tool, logger *zap.SugaredLogger) (*Registry, error) {
-	executor, err := NewExecutor(store, logger)
-	if err != nil {
-		return nil, fmt.Errorf("new executor: %w", err)
-	}
+func NewRegistry(store *knowledge.Store, baseTools []*agent.Tool, logger *zap.SugaredLogger) *Registry {
 	return &Registry{
 		store:     store,
-		executor:  executor,
+		executor:  NewExecutor(store, logger),
 		baseTools: baseTools,
 		logger:    logger,
-	}, nil
+	}
 }
 
 // LoadSkills loads active skills from DB and converts them to agent tools.

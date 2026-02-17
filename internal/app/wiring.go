@@ -171,11 +171,7 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 		logger().Info("graph-enhanced learning engine initialized")
 	}
 
-	registry, err := skill.NewRegistry(kStore, baseTools, kLogger)
-	if err != nil {
-		logger().Warnw("skill registry init error, skipping knowledge system", "error", err)
-		return nil
-	}
+	registry := skill.NewRegistry(kStore, baseTools, kLogger)
 
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
