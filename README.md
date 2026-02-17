@@ -13,6 +13,9 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (executor, researcher, planner, memory-manager)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 auto-pay protocol, spending limits
+- ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
+- ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
+- 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔒 **Secure** - AES-256-GCM encryption, key registry, secret management, output scanning
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server for control plane
@@ -102,6 +105,19 @@ lango payment history [--json] [--limit N] Show payment transaction history
 lango payment limits [--json]    Show spending limits and daily usage
 lango payment info [--json]      Show wallet and payment system info
 lango payment send [flags]       Send USDC payment (--to, --amount, --purpose required; --force, --json)
+
+lango cron add [flags]           Add a cron job (--name, --schedule/--every/--at, --prompt, --deliver, --timezone)
+lango cron list                  List all cron jobs
+lango cron delete <id-or-name>   Delete a cron job
+lango cron pause <id-or-name>    Pause a cron job
+lango cron resume <id-or-name>   Resume a paused job
+lango cron history [id-or-name]  Show cron execution history
+
+lango workflow run <file.yaml>   Execute a workflow YAML file
+lango workflow list              List workflow runs
+lango workflow status <run-id>   Show workflow run status with step details
+lango workflow cancel <run-id>   Cancel a running workflow
+lango workflow history           Show workflow execution history
 ```
 
 ### Diagnostics
@@ -139,6 +155,9 @@ lango/
 │   │   ├── memory/         #   lango memory list/status/clear
 │   │   ├── onboard/        #   lango onboard (TUI wizard)
 │   │   ├── payment/        #   lango payment balance/history/limits/info/send
+│   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
+│   │   ├── bg/             #   lango bg list/status/cancel/result
+│   │   ├── workflow/       #   lango workflow run/list/status/cancel/history
 │   │   ├── prompt/         #   interactive prompt utilities
 │   │   ├── security/       #   lango security status/secrets/migrate-passphrase
 │   │   └── tui/            #   TUI components and views
@@ -162,6 +181,9 @@ lango/
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery
 │   ├── session/            # Ent-based SQLite session store
 │   ├── skill/              # Skill registry, executor, builder
+│   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
+│   ├── background/         # Background task manager, notifications, monitoring
+│   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains)
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
@@ -292,6 +314,21 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `payment.limits.autoApproveBelow` | string | - | Auto-approve amount threshold |
 | `payment.x402.autoIntercept` | bool | `false` | Auto-intercept HTTP 402 responses |
 | `payment.x402.maxAutoPayAmount` | string | - | Max amount for X402 auto-pay |
+| **Cron Scheduling** | | | |
+| `cron.enabled` | bool | `false` | Enable cron job scheduling |
+| `cron.timezone` | string | `UTC` | Default timezone for cron expressions |
+| `cron.maxConcurrentJobs` | int | `5` | Max concurrent job executions |
+| `cron.defaultSessionMode` | string | `isolated` | Default session mode (`isolated` or `main`) |
+| `cron.historyRetention` | duration | `720h` | How long to retain execution history |
+| **Background Execution** | | | |
+| `background.enabled` | bool | `false` | Enable background task execution |
+| `background.yieldMs` | int | `30000` | Auto-yield threshold in milliseconds |
+| `background.maxConcurrentTasks` | int | `3` | Max concurrent background tasks |
+| **Workflow Engine** | | | |
+| `workflow.enabled` | bool | `false` | Enable workflow engine |
+| `workflow.maxConcurrentSteps` | int | `4` | Max concurrent workflow steps per run |
+| `workflow.defaultTimeout` | duration | `10m` | Default timeout per workflow step |
+| `workflow.stateDir` | string | `~/.lango/workflows/` | Directory for workflow state files |
 
 ## System Prompts
 
@@ -473,6 +510,116 @@ lango payment balance --json
 ### Configuration
 
 Configure via `lango onboard` or import JSON with `lango config import`. Requires `security.signer` to be configured for wallet key management.
+
+## Cron Scheduling
+
+Lango includes a persistent cron scheduling system powered by `robfig/cron/v3` with Ent ORM storage. Jobs survive server restarts and deliver results to configured channels.
+
+### Schedule Types
+
+| Type | Flag | Example | Description |
+|------|------|---------|-------------|
+| `cron` | `--schedule` | `"0 9 * * *"` | Standard cron expression |
+| `every` | `--every` | `1h` | Interval-based repetition |
+| `at` | `--at` | `2026-02-20T15:00:00` | One-time execution |
+
+### CLI Usage
+
+```bash
+# Add a daily news summary delivered to Slack
+lango cron add --name "news" --schedule "0 9 * * *" --prompt "Summarize today's news" --deliver slack
+
+# Add hourly server check with timezone
+lango cron add --name "health" --every 1h --prompt "Check server status" --timezone "Asia/Seoul"
+
+# Add one-time reminder
+lango cron add --name "meeting" --at "2026-02-20T15:00:00" --prompt "Prepare meeting notes"
+
+# Manage jobs
+lango cron list
+lango cron pause news
+lango cron resume news
+lango cron delete news
+lango cron history news
+```
+
+Each job runs in an isolated session (`cron:<name>:<timestamp>`) by default. Use `--isolated=false` for shared session mode.
+
+## Background Execution
+
+Lango provides an in-memory background task manager for async agent operations with concurrency control.
+
+### Features
+
+- **Concurrency Limiting** — configurable max concurrent tasks via semaphore
+- **Task State Machine** — Pending -> Running -> Done/Failed/Cancelled with mutex-protected transitions
+- **Completion Notifications** — results delivered to the origin channel automatically
+- **Monitoring** — active task count and summary tracking
+
+Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
+
+## Workflow Engine
+
+Lango includes a DAG-based workflow engine that executes multi-step workflows defined in YAML. Steps run in parallel when dependencies allow, with results flowing between steps via template variables.
+
+### Workflow YAML Format
+
+```yaml
+name: code-review-pipeline
+description: "Automated PR code review"
+deliver_to: [slack]
+
+steps:
+  - id: fetch-changes
+    agent: executor
+    prompt: "Get git diff main...HEAD"
+
+  - id: security-scan
+    agent: researcher
+    prompt: "Analyze security in: {{fetch-changes.result}}"
+    depends_on: [fetch-changes]
+
+  - id: quality-review
+    agent: researcher
+    prompt: "Review code quality: {{fetch-changes.result}}"
+    depends_on: [fetch-changes]
+
+  - id: summary
+    agent: planner
+    prompt: |
+      Security: {{security-scan.result}}
+      Quality: {{quality-review.result}}
+      Write a review report.
+    depends_on: [security-scan, quality-review]
+    deliver_to: [slack]
+```
+
+### Features
+
+- **DAG Execution** — topological sort produces parallel layers; independent steps run concurrently
+- **Template Variables** — `{{step-id.result}}` substitution using Go templates
+- **State Persistence** — Ent ORM-backed WorkflowRun/WorkflowStepRun for resume capability
+- **Step-Level Delivery** — individual steps can deliver results to channels
+- **Cycle Detection** — DFS-based validation prevents circular dependencies
+
+### CLI Usage
+
+```bash
+# Run a workflow
+lango workflow run code-review.flow.yaml
+
+# Monitor execution
+lango workflow list
+lango workflow status <run-id>
+
+# Cancel and inspect history
+lango workflow cancel <run-id>
+lango workflow history
+```
+
+### Supported Agents
+
+Steps specify which sub-agent to use: `executor`, `researcher`, `planner`, or `memory-manager`. These map to the multi-agent orchestration system when `agent.multiAgent` is enabled.
 
 ## Self-Learning System
 
