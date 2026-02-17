@@ -1278,7 +1278,7 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 		parts = append(parts, `### Cron Scheduling
 - Use cron_add to create scheduled jobs (e.g., "매일 아침 9시에 뉴스 요약" → cron_add with schedule_type=cron, schedule="0 9 * * *")
 - Schedule types: cron (crontab expression), every (interval like "1h"), at (one-time RFC3339 datetime)
-- deliver_to is optional — if omitted, the current channel is auto-detected from session context
+- deliver_to is optional — if omitted, the current channel is auto-detected as channel:id (e.g. telegram:CHAT_ID)
 - Use cron_list to show all jobs, cron_pause/cron_resume to toggle, cron_remove to delete
 - Use cron_history to check execution history
 `)
@@ -1287,7 +1287,7 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 	if cfg.Background.Enabled {
 		parts = append(parts, `### Background Tasks
 - Use bg_submit to run a prompt asynchronously (returns immediately with task_id)
-- channel is optional — if omitted, the current channel is auto-detected from session context
+- channel is optional — if omitted, the current channel is auto-detected as channel:id (e.g. telegram:CHAT_ID)
 - Use bg_status/bg_result to check progress and retrieve results
 - Use bg_list to see all tasks, bg_cancel to stop a task
 `)
@@ -1296,7 +1296,7 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 	if cfg.Workflow.Enabled {
 		parts = append(parts, `### Workflow Pipelines
 - Use workflow_run to execute a multi-step workflow from YAML (file path or inline content)
-- deliver_to in YAML is optional — if omitted, the current channel is auto-detected from session context
+- deliver_to in YAML is optional — if omitted, the current channel is auto-detected as channel:id (e.g. telegram:CHAT_ID)
 - Use workflow_status to monitor progress, workflow_list for recent runs
 - Use workflow_cancel to stop a running workflow
 - Use workflow_save to persist a workflow YAML for future use

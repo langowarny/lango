@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/langowarny/lango/internal/channels/discord"
@@ -20,31 +21,54 @@ func newChannelSender(a *App) *channelSender {
 	return &channelSender{app: a}
 }
 
-// SendMessage sends a text message to the specified channel type.
-// For telegram: sends to the first allowlisted chat ID.
-// For discord/slack: sends to the general/first available channel.
+// parseDeliveryTarget splits "channel:id" into channel name and optional target ID.
+func parseDeliveryTarget(target string) (channelName, targetID string) {
+	target = strings.TrimSpace(target)
+	if idx := strings.IndexByte(target, ':'); idx >= 0 {
+		return strings.ToLower(target[:idx]), target[idx+1:]
+	}
+	return strings.ToLower(target), ""
+}
+
+// SendMessage sends a text message to the specified delivery target.
+// Target format: "channel" (bare name) or "channel:id" (with routing ID).
+// For telegram: uses chatID from target, falls back to first allowlisted chat ID.
+// For discord/slack: uses channelID from target, returns error if not provided.
 func (s *channelSender) SendMessage(_ context.Context, channel, message string) error {
-	ch := strings.ToLower(strings.TrimSpace(channel))
+	chName, targetID := parseDeliveryTarget(channel)
 
 	for _, c := range s.app.Channels {
-		switch ch {
+		switch chName {
 		case "telegram":
 			if tg, ok := c.(*telegram.Channel); ok {
-				// Use the first allowlisted chat ID for delivery.
-				chatID := s.firstTelegramChatID()
-				if chatID == 0 {
-					return fmt.Errorf("telegram delivery requires at least one allowlisted chat ID")
+				var chatID int64
+				if targetID != "" {
+					parsed, err := strconv.ParseInt(targetID, 10, 64)
+					if err != nil {
+						return fmt.Errorf("parse telegram chat ID %q: %w", targetID, err)
+					}
+					chatID = parsed
+				} else {
+					chatID = s.firstTelegramChatID()
+					if chatID == 0 {
+						return fmt.Errorf("telegram delivery requires a chat ID (use telegram:CHAT_ID) or at least one allowlisted chat ID")
+					}
 				}
 				return tg.Send(chatID, &telegram.OutgoingMessage{Text: message})
 			}
 		case "discord":
 			if dc, ok := c.(*discord.Channel); ok {
-				// Empty channelID lets the adapter use a default channel.
-				return dc.Send("", &discord.OutgoingMessage{Content: message})
+				if targetID == "" {
+					return fmt.Errorf("discord delivery requires a channel ID (use discord:CHANNEL_ID)")
+				}
+				return dc.Send(targetID, &discord.OutgoingMessage{Content: message})
 			}
 		case "slack":
 			if sl, ok := c.(*slack.Channel); ok {
-				return sl.Send("", &slack.OutgoingMessage{Text: message})
+				if targetID == "" {
+					return fmt.Errorf("slack delivery requires a channel ID (use slack:CHANNEL_ID)")
+				}
+				return sl.Send(targetID, &slack.OutgoingMessage{Text: message})
 			}
 		}
 	}

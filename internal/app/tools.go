@@ -905,18 +905,22 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 	}
 }
 
-// detectChannelFromContext extracts the channel name from the session key in context.
-// Returns "" if no known channel prefix is found.
+// detectChannelFromContext extracts the delivery target from the session key in context.
+// Returns "channel:targetID" (e.g. "telegram:123456789") or "" if no known channel prefix is found.
 func detectChannelFromContext(ctx context.Context) string {
 	sessionKey := session.SessionKeyFromContext(ctx)
 	if sessionKey == "" {
 		return ""
 	}
-	parts := strings.SplitN(sessionKey, ":", 2)
+	// Session key format: "channel:targetID:userID"
+	parts := strings.SplitN(sessionKey, ":", 3)
+	if len(parts) < 2 {
+		return ""
+	}
 	ch := parts[0]
 	switch ch {
 	case "telegram", "discord", "slack":
-		return ch
+		return ch + ":" + parts[1]
 	default:
 		return ""
 	}
@@ -937,7 +941,7 @@ func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*
 					"schedule":      map[string]interface{}{"type": "string", "description": "Schedule value: crontab expr for cron, Go duration for every (e.g. 1h30m), RFC3339 datetime for at"},
 					"prompt":        map[string]interface{}{"type": "string", "description": "The prompt to execute on each run"},
 					"session_mode":  map[string]interface{}{"type": "string", "description": "Session mode: isolated (new session each run) or main (shared session)", "enum": []string{"isolated", "main"}},
-					"deliver_to":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Channels to deliver results to (e.g. telegram, discord, slack)"},
+					"deliver_to":    map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Channels to deliver results to (e.g. telegram:CHAT_ID, discord:CHANNEL_ID, slack:CHANNEL_ID)"},
 				},
 				"required": []string{"name", "schedule_type", "schedule", "prompt"},
 			},
@@ -1124,7 +1128,7 @@ func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []
 				"type": "object",
 				"properties": map[string]interface{}{
 					"prompt":  map[string]interface{}{"type": "string", "description": "The prompt to execute in the background"},
-					"channel": map[string]interface{}{"type": "string", "description": "Channel to deliver results to (e.g. telegram, discord, slack)"},
+					"channel": map[string]interface{}{"type": "string", "description": "Channel to deliver results to (e.g. telegram:CHAT_ID, discord:CHANNEL_ID, slack:CHANNEL_ID)"},
 				},
 				"required": []string{"prompt"},
 			},
