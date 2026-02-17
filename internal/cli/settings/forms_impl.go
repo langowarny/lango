@@ -313,6 +313,24 @@ func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
+// NewSkillForm creates the Skill configuration form.
+func NewSkillForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Skill Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Skill.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_dir", Label: "Skills Directory", Type: tuicore.InputText,
+		Value:       cfg.Skill.SkillsDir,
+		Placeholder: "~/.lango/skills",
+	})
+
+	return &form
+}
+
 // NewObservationalMemoryForm creates the Observational Memory configuration form.
 func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Observational Memory")

@@ -146,6 +146,13 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Knowledge.MaxContextPerLayer = i
 			}
+
+		// Skill
+		case "skill_enabled":
+			s.Current.Skill.Enabled = f.Checked
+		case "skill_dir":
+			s.Current.Skill.SkillsDir = val
+
 			// Observational Memory
 		case "om_enabled":
 			s.Current.ObservationalMemory.Enabled = f.Checked

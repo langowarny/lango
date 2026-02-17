@@ -8,7 +8,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
-- 🧠 **Self-Learning** - Knowledge store, learning engine, skill system, observational memory
+- 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system, observational memory
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
@@ -39,7 +39,7 @@ go install github.com/langowarny/lango/cmd/lango@latest
 
 All configuration is stored in an encrypted SQLite database (`~/.lango/lango.db`), protected by a passphrase (AES-256-GCM). No plaintext config files are stored on disk.
 
-Use the interactive onboard wizard for first-time setup:
+Use the guided onboard wizard for first-time setup:
 
 ```bash
 lango onboard
@@ -54,24 +54,22 @@ lango serve
 lango config validate
 ```
 
-The onboard wizard guides you through:
-1. AI provider configuration (API keys, models)
-2. Server and channel setup (Telegram, Discord, Slack)
-3. Security settings (encryption, signer mode, approval workflows)
-4. Tool configuration
-5. Knowledge and observational memory settings
-6. Embedding & RAG configuration (provider, model, RAG toggle)
-7. Graph Store configuration (backend, database path, traversal depth)
-8. Multi-Agent mode (single vs hierarchical orchestration)
-9. A2A Protocol settings (agent card, remote agents)
-10. Payment configuration (blockchain, wallet, spending limits)
+The onboard wizard guides you through 5 steps:
+1. **Provider Setup** — Choose an AI provider and enter API credentials
+2. **Agent Config** — Select model, max tokens, and temperature
+3. **Channel Setup** — Configure Telegram, Discord, or Slack
+4. **Security & Auth** — Enable privacy interceptor and PII protection
+5. **Test Config** — Validate your configuration
+
+For the full configuration editor with all options, use `lango settings`.
 
 ### CLI Commands
 
 ```
 lango serve                      Start the gateway server
 lango version                    Print version and build info
-lango onboard                    Interactive TUI configuration wizard
+lango onboard                    Guided 5-step setup wizard for first-time configuration
+lango settings                   Full interactive configuration editor (all options)
 lango doctor [--fix] [--json]    Diagnostics and health checks
 
 lango config list                List all configuration profiles
@@ -153,7 +151,8 @@ lango/
 │   │   ├── doctor/         #   lango doctor (diagnostics)
 │   │   ├── graph/          #   lango graph status/query/stats/clear
 │   │   ├── memory/         #   lango memory list/status/clear
-│   │   ├── onboard/        #   lango onboard (TUI wizard)
+│   │   ├── onboard/        #   lango onboard (5-step guided wizard)
+│   │   ├── settings/       #   lango settings (full configuration editor)
 │   │   ├── payment/        #   lango payment balance/history/limits/info/send
 │   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history
 │   │   ├── bg/             #   lango bg list/status/cancel/result
@@ -180,7 +179,7 @@ lango/
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery
 │   ├── session/            # Ent-based SQLite session store
-│   ├── skill/              # Skill registry, executor, builder
+│   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor)
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
@@ -190,6 +189,7 @@ lango/
 │   ├── x402/               # X402 payment protocol middleware
 │   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
+├── skills/                 # 30 embedded default skills (go:embed SKILL.md files)
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -205,11 +205,11 @@ Lango supports multiple AI providers with a unified interface. Provider aliases 
 
 ### Setup
 
-Use `lango onboard` to interactively configure providers, models, security settings, embedding & RAG, knowledge, and observational memory. The TUI allows you to manage multiple providers and set up local encryption.
+Use `lango onboard` for guided first-time setup (5-step wizard), or `lango settings` for the full interactive configuration editor with free navigation across all options.
 
 ## Configuration Reference
 
-All settings are managed via `lango onboard` or `lango config` and stored encrypted in the profile database.
+All settings are managed via `lango onboard` (guided wizard), `lango settings` (full editor), or `lango config` CLI and stored encrypted in the profile database.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -270,8 +270,9 @@ All settings are managed via `lango onboard` or `lango config` and stored encryp
 | `knowledge.maxLearnings` | int | - | Max learning entries per session |
 | `knowledge.maxKnowledge` | int | - | Max knowledge entries per session |
 | `knowledge.maxContextPerLayer` | int | - | Max context items per layer in retrieval |
-| `knowledge.autoApproveSkills` | bool | `false` | Auto-approve new skills |
-| `knowledge.maxSkillsPerDay` | int | - | Rate limit for skill creation |
+| **Skill System** | | | |
+| `skill.enabled` | bool | `false` | Enable file-based skill system |
+| `skill.skillsDir` | string | `~/.lango/skills` | Directory containing skill files (`<name>/SKILL.md`) |
 | **Observational Memory** | | | |
 | `observationalMemory.enabled` | bool | `false` | Enable observational memory system |
 | `observationalMemory.provider` | string | - | LLM provider for observer/reflector (empty = agent default) |
@@ -629,7 +630,7 @@ Lango includes a self-learning knowledge system that improves agent performance 
 
 - **Knowledge Store** - Persistent storage for facts, patterns, and external references
 - **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies
-- **Skill System** - Agents can create reusable composite/script/template skills with safety validation
+- **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports script (shell), template (Go template), and composite (multi-step) skill types. Ships with 30 embedded default skills deployed on first run. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:
   1. Tool Registry — available tools and capabilities
   2. User Knowledge — rules, preferences, definitions, facts

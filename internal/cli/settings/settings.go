@@ -33,7 +33,8 @@ gives you free navigation across every configuration section:
   - Auth:       OIDC providers, JWT settings
   - Security:   PII interceptor, Signer
   - Session:    Session DB, TTL
-  - Knowledge:  Learning limits, Skills, Context per layer
+  - Knowledge:  Learning limits, Context per layer
+  - Skill:      File-based skill system, Skills directory
   - Embedding:  Provider, Model, RAG settings
   - Graph:      Knowledge graph and GraphRAG
   - Payment:    Blockchain wallet, spending limits, X402

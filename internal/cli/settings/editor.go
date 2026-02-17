@@ -236,6 +236,10 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewKnowledgeForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "skill":
+		e.activeForm = NewSkillForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "observational_memory":
 		e.activeForm = NewObservationalMemoryForm(e.state.Current)
 		e.activeForm.Focus = true

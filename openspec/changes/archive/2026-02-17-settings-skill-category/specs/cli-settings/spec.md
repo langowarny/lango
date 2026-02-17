@@ -1,9 +1,4 @@
-# CLI Settings Spec
-
-## Goal
-The `lango settings` command provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Configuration Coverage
 The settings editor SHALL support editing all configuration sections previously handled by `lango onboard`:
@@ -24,17 +19,13 @@ The settings editor SHALL support editing all configuration sections previously 
 15. **A2A Protocol** — Enabled, base URL, agent name/description
 16. **Payment** — Wallet, chain ID, RPC URL, USDC contract, limits, X402
 
-### User Interface
-- Menu-based navigation with 18 categories (16 sections + Save & Exit + Cancel)
-- Free navigation between categories
-- Uses shared `tuicore.FormModel` for all forms
-- Provider and OIDC provider list views for managing collections
-
 #### Scenario: Menu categories
 - **WHEN** user launches `lango settings`
 - **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Save & Exit, Cancel
 
-### Skill configuration form
+## ADDED Requirements
+
+### Requirement: Skill configuration form
 The settings editor SHALL provide a Skill configuration form with the following fields:
 - **Enabled** (`skill_enabled`) — Boolean toggle for enabling the file-based skill system
 - **Skills Directory** (`skill_dir`) — Text input for the directory path containing SKILL.md files
@@ -46,19 +37,3 @@ The settings editor SHALL provide a Skill configuration form with the following 
 #### Scenario: Save skill settings
 - **WHEN** user edits skill fields and navigates back (Esc)
 - **THEN** the changes SHALL be applied to `config.Skill.Enabled` and `config.Skill.SkillsDir`
-
-### Command
-```
-lango settings [--profile <name>]
-```
-- Default profile: "default"
-- Loads existing profile or creates new with defaults
-- Saves via `configstore.Store.Save()` to encrypted profile
-
-#### Scenario: Launch settings
-- **WHEN** user runs `lango settings`
-- **THEN** the editor SHALL display a welcome screen followed by the configuration menu
-
-#### Scenario: Save from settings
-- **WHEN** user selects "Save & Exit" from the menu
-- **THEN** the configuration SHALL be saved as an encrypted profile
