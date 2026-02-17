@@ -11,6 +11,7 @@ import (
 	"google.golang.org/genai"
 
 	"github.com/langowarny/lango/internal/embedding"
+	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/prompt"
@@ -31,6 +32,7 @@ type ContextAwareModelAdapter struct {
 	memoryProvider MemoryProvider
 	ragService     *embedding.RAGService
 	ragOpts        embedding.RetrieveOptions
+	graphRAG       *graph.GraphRAGService
 	runtimeAdapter *RuntimeContextAdapter
 	sessionKey     string
 	basePrompt     string
@@ -74,6 +76,13 @@ func (m *ContextAwareModelAdapter) WithRAG(svc *embedding.RAGService, opts embed
 	return m
 }
 
+// WithGraphRAG adds graph-enhanced RAG support. When set, graph expansion
+// is performed on vector search results to discover structurally connected context.
+func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *ContextAwareModelAdapter {
+	m.graphRAG = svc
+	return m
+}
+
 // Name delegates to the inner adapter.
 func (m *ContextAwareModelAdapter) Name() string {
 	return m.inner.Name()
@@ -110,8 +119,13 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		}
 	}
 
-	// Retrieve RAG context (semantic search across all collections).
-	if m.ragService != nil && userQuery != "" {
+	// Retrieve RAG context — prefer graph-enhanced RAG if available.
+	if m.graphRAG != nil && userQuery != "" {
+		graphRAGSection := m.assembleGraphRAGSection(ctx, userQuery)
+		if graphRAGSection != "" {
+			prompt = fmt.Sprintf("%s\n\n%s", prompt, graphRAGSection)
+		}
+	} else if m.ragService != nil && userQuery != "" {
 		ragSection := m.assembleRAGSection(ctx, userQuery)
 		if ragSection != "" {
 			prompt = fmt.Sprintf("%s\n\n%s", prompt, ragSection)
@@ -178,9 +192,32 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context) st
 	return b.String()
 }
 
+// assembleGraphRAGSection builds a combined section from vector search + graph expansion.
+func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, query string) string {
+	opts := graph.VectorRetrieveOptions{
+		Collections: m.ragOpts.Collections,
+		Limit:       m.ragOpts.Limit,
+		SessionKey:  m.ragOpts.SessionKey,
+		MaxDistance:  m.ragOpts.MaxDistance,
+	}
+	if m.sessionKey != "" {
+		opts.SessionKey = m.sessionKey
+	}
+	result, err := m.graphRAG.Retrieve(ctx, query, opts)
+	if err != nil {
+		m.logger.Warnw("graph rag retrieval error", "error", err)
+		return ""
+	}
+	return m.graphRAG.AssembleSection(result)
+}
+
 // assembleRAGSection builds a "Semantic Context" section from RAG retrieval results.
 func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query string) string {
-	results, err := m.ragService.Retrieve(ctx, query, m.ragOpts)
+	opts := m.ragOpts
+	if m.sessionKey != "" {
+		opts.SessionKey = m.sessionKey
+	}
+	results, err := m.ragService.Retrieve(ctx, query, opts)
 	if err != nil {
 		m.logger.Warnw("rag retrieval error", "error", err)
 		return ""

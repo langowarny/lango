@@ -3,19 +3,23 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"database/sql"
 
+	"github.com/langowarny/lango/internal/a2a"
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/bootstrap"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/gateway"
+	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/orchestration"
 	"github.com/langowarny/lango/internal/prompt"
 	"github.com/langowarny/lango/internal/provider"
 	"github.com/langowarny/lango/internal/security"
@@ -126,11 +130,13 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 type knowledgeComponents struct {
 	store    *knowledge.Store
 	engine   *learning.Engine
+	observer learning.ToolResultObserver
 	registry *skill.Registry
 }
 
 // initKnowledge creates the self-learning components if enabled.
-func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.Tool) *knowledgeComponents {
+// When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
+func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.Tool, gc *graphComponents) *knowledgeComponents {
 	if !cfg.Knowledge.Enabled {
 		logger().Info("knowledge system disabled")
 		return nil
@@ -153,11 +159,19 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 	)
 
 	engine := learning.NewEngine(kStore, kLogger)
-	registry, err := skill.NewRegistry(kStore, baseTools, kLogger)
-	if err != nil {
-		logger().Warnw("skill registry init error, skipping knowledge system", "error", err)
-		return nil
+
+	// Select observer: GraphEngine when graph store is available, otherwise base Engine.
+	var observer learning.ToolResultObserver = engine
+	if gc != nil {
+		graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
+		graphEngine.SetGraphCallback(func(triples []graph.Triple) {
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+		})
+		observer = graphEngine
+		logger().Info("graph-enhanced learning engine initialized")
 	}
+
+	registry := skill.NewRegistry(kStore, baseTools, kLogger)
 
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
@@ -168,6 +182,7 @@ func initKnowledge(cfg *config.Config, store session.Store, baseTools []*agent.T
 	return &knowledgeComponents{
 		store:    kStore,
 		engine:   engine,
+		observer: observer,
 		registry: registry,
 	}
 }
@@ -282,6 +297,107 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 		observer:  observer,
 		reflector: reflector,
 		buffer:    buffer,
+	}
+}
+
+// initConversationAnalysis creates the conversation analysis pipeline if both
+// knowledge and observational memory are enabled.
+func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents) *learning.AnalysisBuffer {
+	if kc == nil {
+		return nil
+	}
+	if !cfg.ObservationalMemory.Enabled {
+		return nil
+	}
+
+	// Create LLM proxy reusing the observational memory provider/model.
+	omProvider := cfg.ObservationalMemory.Provider
+	if omProvider == "" {
+		omProvider = cfg.Agent.Provider
+	}
+	omModel := cfg.ObservationalMemory.Model
+	if omModel == "" {
+		omModel = cfg.Agent.Model
+	}
+
+	proxy := supervisor.NewProviderProxy(sv, omProvider, omModel)
+	generator := &providerTextGenerator{proxy: proxy}
+
+	aLogger := logger()
+
+	analyzer := learning.NewConversationAnalyzer(generator, kc.store, aLogger)
+	learner := learning.NewSessionLearner(generator, kc.store, aLogger)
+
+	// Wire graph callbacks if graph store is available.
+	if gc != nil && gc.buffer != nil {
+		graphCB := func(triples []graph.Triple) {
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+		}
+		analyzer.SetGraphCallback(graphCB)
+		learner.SetGraphCallback(graphCB)
+	}
+
+	// Message provider.
+	getMessages := func(sessionKey string) ([]session.Message, error) {
+		sess, err := store.Get(sessionKey)
+		if err != nil {
+			return nil, err
+		}
+		if sess == nil {
+			return nil, nil
+		}
+		return sess.History, nil
+	}
+
+	turnThreshold := cfg.Knowledge.AnalysisTurnThreshold
+	tokenThreshold := cfg.Knowledge.AnalysisTokenThreshold
+
+	buf := learning.NewAnalysisBuffer(analyzer, learner, getMessages, turnThreshold, tokenThreshold, aLogger)
+
+	logger().Infow("conversation analysis initialized",
+		"turnThreshold", turnThreshold,
+		"tokenThreshold", tokenThreshold,
+	)
+
+	return buf
+}
+
+// graphComponents holds optional graph store components.
+type graphComponents struct {
+	store      graph.Store
+	buffer     *graph.GraphBuffer
+	ragService *graph.GraphRAGService
+}
+
+// initGraphStore creates the graph store if enabled.
+func initGraphStore(cfg *config.Config) *graphComponents {
+	if !cfg.Graph.Enabled {
+		logger().Info("graph store disabled")
+		return nil
+	}
+
+	dbPath := cfg.Graph.DatabasePath
+	if dbPath == "" {
+		// Default: graph.db next to session database.
+		if cfg.Session.DatabasePath != "" {
+			dbPath = filepath.Join(filepath.Dir(cfg.Session.DatabasePath), "graph.db")
+		} else {
+			dbPath = "graph.db"
+		}
+	}
+
+	store, err := graph.NewBoltStore(dbPath)
+	if err != nil {
+		logger().Warnw("graph store init error, skipping", "error", err)
+		return nil
+	}
+
+	buffer := graph.NewGraphBuffer(store, logger())
+
+	logger().Infow("graph store initialized", "backend", "bolt", "path", dbPath)
+	return &graphComponents{
+		store:  store,
+		buffer: buffer,
 	}
 }
 
@@ -400,7 +516,7 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
-func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
+func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner) (*adk.Agent, error) {
 	// Adapt tools to ADK format
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
@@ -465,11 +581,17 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
+				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
 			}
 			ctxAdapter.WithRAG(ec.ragService, ragOpts)
+
+			// Wire in Graph RAG if graph store is available.
+			if gc != nil && gc.ragService != nil {
+				ctxAdapter.WithGraphRAG(gc.ragService)
+			}
 		}
 
 		llm = ctxAdapter
@@ -483,11 +605,17 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
+				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
 			}
 			ctxAdapter.WithRAG(ec.ragService, ragOpts)
+
+			// Wire in Graph RAG if graph store is available.
+			if gc != nil && gc.ragService != nil {
+				ctxAdapter.WithGraphRAG(gc.ragService)
+			}
 		}
 
 		llm = ctxAdapter
@@ -504,6 +632,54 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		logger().Info("PII redaction interceptor enabled")
 	}
 
+	// Multi-agent orchestration mode.
+	if cfg.Agent.MultiAgent {
+		logger().Info("initializing multi-agent orchestration...")
+
+		// Build orchestrator-specific prompt: strip tool-related sections that
+		// cause the LLM to hallucinate agent names like "browser" or "exec".
+		orchBuilder := buildPromptBuilder(&cfg.Agent)
+		orchBuilder.Remove(prompt.SectionToolUsage)
+		orchBuilder.Add(prompt.NewStaticSection(
+			prompt.SectionIdentity, 100, "",
+			"You are Lango, a production-grade AI assistant built for developers and teams.\n"+
+				"You coordinate specialized sub-agents to handle tasks. "+
+				"You do not have direct access to tools — delegate to sub-agents instead.",
+		))
+		orchestratorPrompt := orchBuilder.Build()
+
+		orchCfg := orchestration.Config{
+			Tools:               tools,
+			Model:               llm,
+			SystemPrompt:        orchestratorPrompt,
+			AdaptTool:           adk.AdaptTool,
+			MaxDelegationRounds: 5,
+		}
+
+		// Load remote A2A agents BEFORE building the tree so they are included.
+		if cfg.A2A.Enabled && len(cfg.A2A.RemoteAgents) > 0 {
+			remoteAgents, err := a2a.LoadRemoteAgents(cfg.A2A.RemoteAgents, logger())
+			if err != nil {
+				logger().Warnw("load remote A2A agents", "error", err)
+			}
+			if len(remoteAgents) > 0 {
+				orchCfg.RemoteAgents = remoteAgents
+			}
+		}
+
+		agentTree, err := orchestration.BuildAgentTree(orchCfg)
+		if err != nil {
+			return nil, fmt.Errorf("build agent tree: %w", err)
+		}
+
+		adkAgent, err := adk.NewAgentFromADK(agentTree, store)
+		if err != nil {
+			return nil, fmt.Errorf("adk multi-agent: %w", err)
+		}
+		return adkAgent, nil
+	}
+
+	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store)
 	if err != nil {
@@ -521,4 +697,119 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		WebSocketEnabled: cfg.Server.WebSocketEnabled,
 		AllowedOrigins:   cfg.Server.AllowedOrigins,
 	}, adkAgent, nil, store, auth)
+}
+
+// wireGraphCallbacks connects graph store callbacks to knowledge and memory stores.
+// It also creates the Entity Extractor pipeline and Memory GraphHooks.
+func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config) {
+	if gc == nil || gc.buffer == nil {
+		return
+	}
+
+	// Create Entity Extractor for async triple extraction from content.
+	var extractor *graph.Extractor
+	if sv != nil {
+		provider := cfg.Agent.Provider
+		mdl := cfg.Agent.Model
+		proxy := supervisor.NewProviderProxy(sv, provider, mdl)
+		generator := &providerTextGenerator{proxy: proxy}
+		extractor = graph.NewExtractor(generator, logger())
+		logger().Info("graph entity extractor initialized")
+	}
+
+	graphCB := func(id, collection, content string, metadata map[string]string) {
+		// Basic containment triple.
+		gc.buffer.Enqueue(graph.GraphRequest{
+			Triples: []graph.Triple{
+				{
+					Subject:   collection + ":" + id,
+					Predicate: graph.Contains,
+					Object:    "collection:" + collection,
+					Metadata:  metadata,
+				},
+			},
+		})
+
+		// Async entity extraction via LLM.
+		if extractor != nil && content != "" {
+			go func() {
+				ctx := context.Background()
+				triples, err := extractor.Extract(ctx, content, id)
+				if err != nil {
+					logger().Debugw("entity extraction error", "id", id, "error", err)
+					return
+				}
+				if len(triples) > 0 {
+					gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+				}
+			}()
+		}
+	}
+
+	if kc != nil {
+		kc.store.SetGraphCallback(graphCB)
+	}
+	if mc != nil {
+		mc.store.SetGraphCallback(graphCB)
+
+		// Wire Memory GraphHooks for temporal/session triples.
+		tripleCallback := func(triples []graph.Triple) {
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+		}
+		hooks := memory.NewGraphHooks(tripleCallback, logger())
+		mc.store.SetGraphHooks(hooks)
+		logger().Info("memory graph hooks wired")
+	}
+}
+
+// initGraphRAG creates the Graph RAG service if both graph store and vector RAG are available.
+func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponents) {
+	if gc == nil || ec == nil || ec.ragService == nil {
+		return
+	}
+
+	maxDepth := cfg.Graph.MaxTraversalDepth
+	if maxDepth <= 0 {
+		maxDepth = 2
+	}
+	maxExpand := cfg.Graph.MaxExpansionResults
+	if maxExpand <= 0 {
+		maxExpand = 10
+	}
+
+	// Create a VectorRetriever adapter from embedding.RAGService.
+	adapter := &ragServiceAdapter{inner: ec.ragService}
+
+	gc.ragService = graph.NewGraphRAGService(adapter, gc.store, maxDepth, maxExpand, logger())
+	logger().Info("graph RAG hybrid retrieval initialized")
+}
+
+// ragServiceAdapter adapts embedding.RAGService to graph.VectorRetriever interface.
+type ragServiceAdapter struct {
+	inner *embedding.RAGService
+}
+
+func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts graph.VectorRetrieveOptions) ([]graph.VectorResult, error) {
+	embOpts := embedding.RetrieveOptions{
+		Collections: opts.Collections,
+		Limit:       opts.Limit,
+		SessionKey:  opts.SessionKey,
+		MaxDistance:  opts.MaxDistance,
+	}
+
+	results, err := a.inner.Retrieve(ctx, query, embOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	graphResults := make([]graph.VectorResult, len(results))
+	for i, r := range results {
+		graphResults[i] = graph.VectorResult{
+			Collection: r.Collection,
+			SourceID:   r.SourceID,
+			Content:    r.Content,
+			Distance:   r.Distance,
+		}
+	}
+	return graphResults, nil
 }

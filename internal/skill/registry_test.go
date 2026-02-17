@@ -14,17 +14,12 @@ import (
 )
 
 func newTestRegistry(t *testing.T) *Registry {
-	t.Setenv("HOME", t.TempDir())
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
 	store := knowledge.NewStore(client, logger, 20, 10, 5)
 	baseTool := &agent.Tool{Name: "test_tool", Description: "a test tool"}
-	registry, err := NewRegistry(store, []*agent.Tool{baseTool}, logger)
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	return registry
+	return NewRegistry(store, []*agent.Tool{baseTool}, logger)
 }
 
 func TestRegistry_CreateSkill_Validation(t *testing.T) {

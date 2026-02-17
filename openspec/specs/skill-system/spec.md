@@ -66,9 +66,10 @@ The system SHALL safely execute skills of three types: composite, script, and te
 #### Scenario: Execute script skill
 - **WHEN** executing a script skill
 - **THEN** the system SHALL validate the script against dangerous patterns
-- **AND** write the script to a temporary file in the skills directory
+- **AND** create a temporary file via `os.CreateTemp` in the OS temp directory
+- **AND** write the script content to the temp file and close it before execution
 - **AND** execute it via `sh` with context-based timeout
-- **AND** clean up the temporary file after execution
+- **AND** clean up the temporary file after execution via `defer os.Remove`
 
 #### Scenario: Execute template skill
 - **WHEN** executing a template skill
@@ -96,10 +97,9 @@ The system SHALL provide a builder for constructing skill entries from tool exec
 - **THEN** the system SHALL construct a SkillEntry of type "script" with the script in the definition
 
 ### Requirement: Executor Initialization
-The system SHALL properly initialize the executor with error handling.
+The system SHALL initialize the executor without filesystem side-effects.
 
-#### Scenario: Skills directory creation
+#### Scenario: Infallible construction
 - **WHEN** `NewExecutor` is called
-- **THEN** the system SHALL resolve the user home directory and create `~/.lango/skills/`
-- **AND** if home directory resolution fails, SHALL return an error
-- **AND** if directory creation fails, SHALL return an error
+- **THEN** the system SHALL return an `*Executor` value directly (no error)
+- **AND** SHALL NOT create any directories or perform filesystem operations

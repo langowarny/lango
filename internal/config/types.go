@@ -37,6 +37,12 @@ type Config struct {
 	// Embedding / RAG configuration
 	Embedding EmbeddingConfig `mapstructure:"embedding" json:"embedding"`
 
+	// Graph store configuration
+	Graph GraphConfig `mapstructure:"graph" json:"graph"`
+
+	// A2A protocol configuration
+	A2A A2AConfig `mapstructure:"a2a" json:"a2a"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
 }
@@ -60,6 +66,12 @@ type KnowledgeConfig struct {
 
 	// Maximum new skills per day
 	MaxSkillsPerDay int `mapstructure:"maxSkillsPerDay" json:"maxSkillsPerDay"`
+
+	// AnalysisTurnThreshold is the number of new turns before triggering conversation analysis (default: 10).
+	AnalysisTurnThreshold int `mapstructure:"analysisTurnThreshold" json:"analysisTurnThreshold"`
+
+	// AnalysisTokenThreshold is the token count before triggering conversation analysis (default: 2000).
+	AnalysisTokenThreshold int `mapstructure:"analysisTokenThreshold" json:"analysisTokenThreshold"`
 }
 
 // ObservationalMemoryConfig defines Observational Memory settings
@@ -123,6 +135,8 @@ type RAGConfig struct {
 	MaxResults int `mapstructure:"maxResults" json:"maxResults"`
 	// Collections to search (empty means all).
 	Collections []string `mapstructure:"collections" json:"collections"`
+	// MaxDistance is the maximum cosine distance for RAG results (0.0 = disabled).
+	MaxDistance float32 `mapstructure:"maxDistance" json:"maxDistance"`
 }
 
 // AuthConfig defines authentication settings
@@ -223,6 +237,10 @@ type AgentConfig struct {
 
 	// Fallback model ID
 	FallbackModel string `mapstructure:"fallbackModel" json:"fallbackModel"`
+
+	// MultiAgent enables hierarchical sub-agent orchestration.
+	// When false (default), a single monolithic agent handles all tasks.
+	MultiAgent bool `mapstructure:"multiAgent" json:"multiAgent"`
 }
 
 // ProviderConfig defines AI provider settings
@@ -363,6 +381,53 @@ var ProviderTypeToEmbeddingType = map[string]string{
 	"google":    "google",
 	"anthropic": "",
 	"ollama":    "local",
+}
+
+// GraphConfig defines graph store settings for relationship-aware retrieval.
+type GraphConfig struct {
+	// Enable the graph store.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Backend type: "bolt" (default, embedded BoltDB) or "rocksdb".
+	Backend string `mapstructure:"backend" json:"backend"`
+
+	// DatabasePath is the file path for the graph database.
+	// Defaults to a "graph.db" file next to the session database.
+	DatabasePath string `mapstructure:"databasePath" json:"databasePath"`
+
+	// MaxTraversalDepth limits graph expansion depth (default: 2).
+	MaxTraversalDepth int `mapstructure:"maxTraversalDepth" json:"maxTraversalDepth"`
+
+	// MaxExpansionResults limits how many graph-expanded results to return (default: 10).
+	MaxExpansionResults int `mapstructure:"maxExpansionResults" json:"maxExpansionResults"`
+}
+
+// A2AConfig defines Agent-to-Agent protocol settings.
+type A2AConfig struct {
+	// Enable A2A protocol support.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// BaseURL is the external URL where this agent is reachable.
+	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
+
+	// AgentName is the name advertised in the Agent Card.
+	AgentName string `mapstructure:"agentName" json:"agentName"`
+
+	// AgentDescription is the description in the Agent Card.
+	AgentDescription string `mapstructure:"agentDescription" json:"agentDescription"`
+
+	// RemoteAgents is a list of external A2A agents to integrate as sub-agents.
+	RemoteAgents []RemoteAgentConfig `mapstructure:"remoteAgents" json:"remoteAgents"`
+}
+
+// RemoteAgentConfig defines an external A2A agent to connect to.
+type RemoteAgentConfig struct {
+	// Name is the local name for this remote agent.
+	Name string `mapstructure:"name" json:"name"`
+
+	// AgentCardURL is the URL to fetch the agent card from.
+	// Typically: https://host/.well-known/agent.json
+	AgentCardURL string `mapstructure:"agentCardUrl" json:"agentCardUrl"`
 }
 
 // ResolveEmbeddingProvider returns the embedding backend type and API key

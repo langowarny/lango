@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"regexp"
 	"strings"
 
+	"go.uber.org/zap"
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/model"
@@ -14,12 +16,16 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 
+	"github.com/langowarny/lango/internal/logging"
 	internal "github.com/langowarny/lango/internal/session"
 )
 
+func logger() *zap.SugaredLogger { return logging.Agent() }
+
 // Agent wraps the ADK runner for integration with Lango.
 type Agent struct {
-	runner *runner.Runner
+	runner   *runner.Runner
+	adkAgent adk_agent.Agent
 }
 
 // NewAgent creates a new Agent instance.
@@ -39,7 +45,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	}
 
 	// Create Session Service
-	sessService := NewSessionServiceAdapter(store)
+	sessService := NewSessionServiceAdapter(store, "lango-agent")
 
 	// Create Runner
 	runnerCfg := runner.Config{
@@ -54,8 +60,33 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 	}
 
 	return &Agent{
-		runner: r,
+		runner:   r,
+		adkAgent: adkAgent,
 	}, nil
+}
+
+// NewAgentFromADK creates a Lango Agent wrapping a pre-built ADK agent.
+// Used for multi-agent orchestration where the agent tree is built externally.
+func NewAgentFromADK(adkAgent adk_agent.Agent, store internal.Store) (*Agent, error) {
+	sessService := NewSessionServiceAdapter(store, adkAgent.Name())
+
+	runnerCfg := runner.Config{
+		AppName:        "lango",
+		Agent:          adkAgent,
+		SessionService: sessService,
+	}
+
+	r, err := runner.New(runnerCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create runner: %w", err)
+	}
+
+	return &Agent{runner: r, adkAgent: adkAgent}, nil
+}
+
+// ADKAgent returns the underlying ADK agent, or nil if not available.
+func (a *Agent) ADKAgent() adk_agent.Agent {
+	return a.adkAgent
 }
 
 // Run executes the agent for a given session and returns an event iterator.
@@ -76,13 +107,55 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 }
 
 // RunAndCollect executes the agent and returns the full text response.
+// If the agent encounters a "failed to find agent" error (hallucinated agent
+// name), it sends a correction message and retries once.
 func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (string, error) {
+	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
+	if err == nil {
+		return resp, nil
+	}
+
+	badAgent := extractMissingAgent(err)
+	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		return "", err
+	}
+
+	// Build correction message and retry once.
+	names := subAgentNames(a.adkAgent)
+	correction := fmt.Sprintf(
+		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
+		badAgent, strings.Join(names, ", "))
+	logger().Warnw("agent name hallucination detected, retrying",
+		"hallucinated", badAgent,
+		"valid_agents", names,
+		"session", sessionID)
+
+	return a.runAndCollectOnce(ctx, sessionID, correction)
+}
+
+// runAndCollectOnce executes a single agent run and collects text output.
+func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) (string, error) {
 	var b strings.Builder
 
 	for event, err := range a.Run(ctx, sessionID, input) {
 		if err != nil {
 			return "", fmt.Errorf("agent error: %w", err)
 		}
+
+		// Log agent event for multi-agent observability.
+		if event.Author != "" {
+			if event.Actions.TransferToAgent != "" {
+				logger().Debugw("agent delegation",
+					"from", event.Author,
+					"to", event.Actions.TransferToAgent,
+					"session", sessionID)
+			} else if hasText(event) {
+				logger().Debugw("agent response",
+					"agent", event.Author,
+					"session", sessionID)
+			}
+		}
+
 		if event.Content != nil {
 			for _, part := range event.Content.Parts {
 				if part.Text != "" {
@@ -93,4 +166,40 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	}
 
 	return b.String(), nil
+}
+
+// reAgentNotFound matches ADK's "failed to find agent: <name>" error.
+var reAgentNotFound = regexp.MustCompile(`failed to find agent: (\S+)`)
+
+// extractMissingAgent returns the hallucinated agent name from an error,
+// or an empty string if the error does not match the pattern.
+func extractMissingAgent(err error) string {
+	m := reAgentNotFound.FindStringSubmatch(err.Error())
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+// subAgentNames returns the names of all immediate sub-agents.
+func subAgentNames(a adk_agent.Agent) []string {
+	subs := a.SubAgents()
+	names := make([]string, len(subs))
+	for i, s := range subs {
+		names[i] = s.Name()
+	}
+	return names
+}
+
+// hasText reports whether the event contains any non-empty text part.
+func hasText(e *session.Event) bool {
+	if e.Content == nil {
+		return false
+	}
+	for _, p := range e.Content.Parts {
+		if p.Text != "" {
+			return true
+		}
+	}
+	return false
 }

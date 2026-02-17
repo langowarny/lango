@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"text/template"
 
@@ -26,22 +25,13 @@ var _dangerousPatterns = []*regexp.Regexp{
 
 // Executor safely executes skills.
 type Executor struct {
-	store     *knowledge.Store
-	logger    *zap.SugaredLogger
-	skillsDir string
+	store  *knowledge.Store
+	logger *zap.SugaredLogger
 }
 
 // NewExecutor creates a new skill executor.
-func NewExecutor(store *knowledge.Store, logger *zap.SugaredLogger) (*Executor, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("get user home dir: %w", err)
-	}
-	skillsDir := filepath.Join(home, ".lango", "skills")
-	if err := os.MkdirAll(skillsDir, 0700); err != nil {
-		return nil, fmt.Errorf("create skills dir: %w", err)
-	}
-	return &Executor{store: store, logger: logger, skillsDir: skillsDir}, nil
+func NewExecutor(store *knowledge.Store, logger *zap.SugaredLogger) *Executor {
+	return &Executor{store: store, logger: logger}
 }
 
 // Execute runs a skill with the given parameters.
@@ -118,13 +108,21 @@ func (e *Executor) executeScript(ctx context.Context, skill knowledge.SkillEntry
 		return nil, fmt.Errorf("script skill %q: %w", skill.Name, err)
 	}
 
-	tmpFile := filepath.Join(e.skillsDir, fmt.Sprintf("run_%s.sh", skill.Name))
-	if err := os.WriteFile(tmpFile, []byte(script), 0700); err != nil {
-		return nil, fmt.Errorf("write script file: %w", err)
+	f, err := os.CreateTemp("", fmt.Sprintf("lango-skill-%s-*.sh", skill.Name))
+	if err != nil {
+		return nil, fmt.Errorf("create temp script: %w", err)
 	}
-	defer os.Remove(tmpFile)
+	defer os.Remove(f.Name())
 
-	cmd := exec.CommandContext(ctx, "sh", tmpFile)
+	if _, err := f.Write([]byte(script)); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("write script: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("close script: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "sh", f.Name())
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

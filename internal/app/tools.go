@@ -9,8 +9,11 @@ import (
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/embedding"
+	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
+	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
@@ -696,8 +699,8 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 	}
 }
 
-// wrapWithLearning wraps a tool's handler to call the learning engine after each execution.
-func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
+// wrapWithLearning wraps a tool's handler to call the learning observer after each execution.
+func wrapWithLearning(t *agent.Tool, observer learning.ToolResultObserver) *agent.Tool {
 	original := t.Handler
 	return &agent.Tool{
 		Name:        t.Name,
@@ -707,7 +710,7 @@ func wrapWithLearning(t *agent.Tool, engine *learning.Engine) *agent.Tool {
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			result, err := original(ctx, params)
 			sessionKey := session.SessionKeyFromContext(ctx)
-			engine.OnToolResult(ctx, sessionKey, t.Name, params, result, err)
+			observer.OnToolResult(ctx, sessionKey, t.Name, params, result, err)
 			return result, err
 		},
 	}
@@ -964,6 +967,183 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 				return nil, fmt.Errorf("tool '%s' execution denied: user did not approve the action", t.Name)
 			}
 			return original(ctx, params)
+		},
+	}
+}
+
+// buildGraphTools creates tools for graph traversal and querying.
+func buildGraphTools(gs graph.Store) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "graph_traverse",
+			Description: "Traverse the knowledge graph from a start node using BFS. Returns related triples up to the specified depth.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"start_node": map[string]interface{}{"type": "string", "description": "The node ID to start traversal from"},
+					"max_depth":  map[string]interface{}{"type": "integer", "description": "Maximum traversal depth (default: 2)"},
+					"predicates": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Filter by predicate types (empty = all)"},
+				},
+				"required": []string{"start_node"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				startNode, _ := params["start_node"].(string)
+				if startNode == "" {
+					return nil, fmt.Errorf("missing start_node parameter")
+				}
+				maxDepth := 2
+				if d, ok := params["max_depth"].(float64); ok && d > 0 {
+					maxDepth = int(d)
+				}
+				var predicates []string
+				if raw, ok := params["predicates"].([]interface{}); ok {
+					for _, p := range raw {
+						if s, ok := p.(string); ok {
+							predicates = append(predicates, s)
+						}
+					}
+				}
+				triples, err := gs.Traverse(ctx, startNode, maxDepth, predicates)
+				if err != nil {
+					return nil, fmt.Errorf("graph traverse: %w", err)
+				}
+				return map[string]interface{}{"triples": triples, "count": len(triples)}, nil
+			},
+		},
+		{
+			Name:        "graph_query",
+			Description: "Query the knowledge graph by subject or object node. Returns matching triples.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"subject":   map[string]interface{}{"type": "string", "description": "Subject node to query by"},
+					"object":    map[string]interface{}{"type": "string", "description": "Object node to query by"},
+					"predicate": map[string]interface{}{"type": "string", "description": "Optional predicate filter (used with subject)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				subject, _ := params["subject"].(string)
+				object, _ := params["object"].(string)
+				predicate, _ := params["predicate"].(string)
+
+				if subject == "" && object == "" {
+					return nil, fmt.Errorf("either subject or object is required")
+				}
+
+				var triples []graph.Triple
+				var err error
+				if subject != "" && predicate != "" {
+					triples, err = gs.QueryBySubjectPredicate(ctx, subject, predicate)
+				} else if subject != "" {
+					triples, err = gs.QueryBySubject(ctx, subject)
+				} else {
+					triples, err = gs.QueryByObject(ctx, object)
+				}
+				if err != nil {
+					return nil, fmt.Errorf("graph query: %w", err)
+				}
+				return map[string]interface{}{"triples": triples, "count": len(triples)}, nil
+			},
+		},
+	}
+}
+
+// buildRAGTools creates tools for RAG retrieval.
+func buildRAGTools(ragSvc *embedding.RAGService) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "rag_retrieve",
+			Description: "Retrieve semantically similar content from the knowledge base using vector search.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query":       map[string]interface{}{"type": "string", "description": "The search query"},
+					"limit":       map[string]interface{}{"type": "integer", "description": "Maximum results to return (default: 5)"},
+					"collections": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Filter by collections (e.g., knowledge, observation)"},
+				},
+				"required": []string{"query"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				query, _ := params["query"].(string)
+				if query == "" {
+					return nil, fmt.Errorf("missing query parameter")
+				}
+				limit := 5
+				if l, ok := params["limit"].(float64); ok && l > 0 {
+					limit = int(l)
+				}
+				var collections []string
+				if raw, ok := params["collections"].([]interface{}); ok {
+					for _, c := range raw {
+						if s, ok := c.(string); ok {
+							collections = append(collections, s)
+						}
+					}
+				}
+				sessionKey := session.SessionKeyFromContext(ctx)
+				results, err := ragSvc.Retrieve(ctx, query, embedding.RetrieveOptions{
+					Limit:       limit,
+					Collections: collections,
+					SessionKey:  sessionKey,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("rag retrieve: %w", err)
+				}
+				return map[string]interface{}{"results": results, "count": len(results)}, nil
+			},
+		},
+	}
+}
+
+// buildMemoryAgentTools creates tools for observational memory management.
+func buildMemoryAgentTools(ms *memory.Store) []*agent.Tool {
+	return []*agent.Tool{
+		{
+			Name:        "memory_list_observations",
+			Description: "List observations for a session. Returns compressed notes from conversation history.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_key": map[string]interface{}{"type": "string", "description": "Session key to list observations for (uses current session if empty)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				sessionKey, _ := params["session_key"].(string)
+				if sessionKey == "" {
+					sessionKey = session.SessionKeyFromContext(ctx)
+				}
+				observations, err := ms.ListObservations(ctx, sessionKey)
+				if err != nil {
+					return nil, fmt.Errorf("list observations: %w", err)
+				}
+				return map[string]interface{}{"observations": observations, "count": len(observations)}, nil
+			},
+		},
+		{
+			Name:        "memory_list_reflections",
+			Description: "List reflections for a session. Reflections are condensed observations across time.",
+			SafetyLevel: agent.SafetyLevelSafe,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"session_key": map[string]interface{}{"type": "string", "description": "Session key to list reflections for (uses current session if empty)"},
+				},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				sessionKey, _ := params["session_key"].(string)
+				if sessionKey == "" {
+					sessionKey = session.SessionKeyFromContext(ctx)
+				}
+				reflections, err := ms.ListReflections(ctx, sessionKey)
+				if err != nil {
+					return nil, fmt.Errorf("list reflections: %w", err)
+				}
+				return map[string]interface{}{"reflections": reflections, "count": len(reflections)}, nil
+			},
 		},
 	}
 }

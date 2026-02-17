@@ -5,6 +5,7 @@ go 1.25.4
 require (
 	entgo.io/ent v0.14.5
 	github.com/anthropics/anthropic-sdk-go v1.21.0
+	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/bwmarrin/discordgo v0.28.1
 	github.com/charmbracelet/bubbles v0.21.1
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -23,6 +24,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.11.1
+	go.etcd.io/bbolt v1.4.3
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.45.0
 	golang.org/x/oauth2 v0.35.0
@@ -36,9 +38,9 @@ require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	github.com/a2aproject/a2a-go v0.3.3 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
@@ -108,8 +110,10 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20251014184007-4626949a642f // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251014184007-4626949a642f // indirect
 	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect

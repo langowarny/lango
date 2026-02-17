@@ -13,16 +13,11 @@ import (
 )
 
 func newTestExecutor(t *testing.T) *Executor {
-	t.Setenv("HOME", t.TempDir())
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
 	store := knowledge.NewStore(client, logger, 20, 10, 5)
-	executor, err := NewExecutor(store, logger)
-	if err != nil {
-		t.Fatalf("NewExecutor: %v", err)
-	}
-	return executor
+	return NewExecutor(store, logger)
 }
 
 func TestValidateScript(t *testing.T) {

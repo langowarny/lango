@@ -34,7 +34,7 @@ func TestSQLiteVecStore_UpsertAndSearch(t *testing.T) {
 	require.NoError(t, store.Upsert(ctx, records))
 
 	// Search knowledge collection — closest to [1,0,0,0] should be k1.
-	results, err := store.Search(ctx, "knowledge", []float32{0.9, 0.1, 0, 0}, 2)
+	results, err := store.Search(ctx, "knowledge", []float32{0.9, 0.1, 0, 0}, 2, nil)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
 	assert.Equal(t, "k1", results[0].ID)
@@ -42,7 +42,7 @@ func TestSQLiteVecStore_UpsertAndSearch(t *testing.T) {
 	assert.Equal(t, "fact", results[0].Metadata["category"])
 
 	// Search observation collection.
-	results, err = store.Search(ctx, "observation", []float32{0, 0, 0.8, 0.2}, 1)
+	results, err = store.Search(ctx, "observation", []float32{0, 0, 0.8, 0.2}, 1, nil)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "o1", results[0].ID)
@@ -65,7 +65,7 @@ func TestSQLiteVecStore_Upsert_Replaces(t *testing.T) {
 	}))
 
 	// Searching near [0,1,0,0] should still find k1 with updated embedding.
-	results, err := store.Search(ctx, "knowledge", []float32{0, 1, 0, 0}, 5)
+	results, err := store.Search(ctx, "knowledge", []float32{0, 1, 0, 0}, 5, nil)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "k1", results[0].ID)
@@ -85,7 +85,7 @@ func TestSQLiteVecStore_Delete(t *testing.T) {
 
 	require.NoError(t, store.Delete(ctx, "knowledge", []string{"k1"}))
 
-	results, err := store.Search(ctx, "knowledge", []float32{1, 0, 0, 0}, 5)
+	results, err := store.Search(ctx, "knowledge", []float32{1, 0, 0, 0}, 5, nil)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Equal(t, "k2", results[0].ID)
@@ -105,7 +105,7 @@ func TestSQLiteVecStore_EmptyOperations(t *testing.T) {
 	require.NoError(t, store.Delete(ctx, "knowledge", nil))
 
 	// Search on empty store should return empty.
-	results, err := store.Search(ctx, "knowledge", []float32{1, 0, 0, 0}, 5)
+	results, err := store.Search(ctx, "knowledge", []float32{1, 0, 0, 0}, 5, nil)
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

@@ -9,6 +9,15 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 )
 
+// ToolResultObserver observes tool execution results for learning.
+// Both Engine and GraphEngine implement this interface.
+type ToolResultObserver interface {
+	OnToolResult(ctx context.Context, sessionKey, toolName string, params map[string]interface{}, result interface{}, err error)
+}
+
+// Compile-time interface check.
+var _ ToolResultObserver = (*Engine)(nil)
+
 // Engine observes tool execution results and learns from errors.
 type Engine struct {
 	store  *knowledge.Store
@@ -123,7 +132,7 @@ func (e *Engine) handleSuccess(ctx context.Context, toolName string) {
 	}
 
 	for _, entity := range entities {
-		if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1); boostErr != nil {
+		if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1, 0.0); boostErr != nil {
 			e.logger.Warnw("boost learning confidence:", "error", boostErr)
 		}
 	}

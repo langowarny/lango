@@ -23,6 +23,8 @@ type RetrieveOptions struct {
 	Limit int
 	// SessionKey filters for session-specific results.
 	SessionKey string
+	// MaxDistance is the maximum cosine distance for results (0.0 = disabled).
+	MaxDistance float32
 }
 
 // ContentResolver looks up the original text content by collection and ID.
@@ -89,8 +91,16 @@ func (r *RAGService) Retrieve(ctx context.Context, query string, opts RetrieveOp
 		perCollectionLimit = opts.Limit * 2
 	}
 
+	// Build search options from session key.
+	var searchOpts *SearchOptions
+	if opts.SessionKey != "" {
+		searchOpts = &SearchOptions{
+			MetadataFilter: map[string]string{"session_key": opts.SessionKey},
+		}
+	}
+
 	for _, col := range collections {
-		hits, err := r.store.Search(ctx, col, queryVec, perCollectionLimit)
+		hits, err := r.store.Search(ctx, col, queryVec, perCollectionLimit, searchOpts)
 		if err != nil {
 			r.logger.Warnw("rag search error", "collection", col, "error", err)
 			continue
@@ -122,6 +132,11 @@ func (r *RAGService) Retrieve(ctx context.Context, query string, opts RetrieveOp
 		results = results[:opts.Limit]
 	}
 
+	// Filter by MaxDistance if configured.
+	if opts.MaxDistance > 0 {
+		results = filterByMaxDistance(results, opts.MaxDistance)
+	}
+
 	return results, nil
 }
 
@@ -132,4 +147,15 @@ func sortByDistance(results []RAGResult) {
 			results[j], results[j-1] = results[j-1], results[j]
 		}
 	}
+}
+
+// filterByMaxDistance removes results whose distance exceeds maxDist.
+func filterByMaxDistance(results []RAGResult, maxDist float32) []RAGResult {
+	filtered := make([]RAGResult, 0, len(results))
+	for _, r := range results {
+		if r.Distance <= maxDist {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }
