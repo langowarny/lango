@@ -1,3 +1,7 @@
+## Purpose
+
+WebSocket/HTTP gateway server for the Lango agent. Provides real-time communication via JSON-RPC over WebSocket, supports UI and companion client types, authentication middleware, approval workflows, session-scoped broadcasting, and agent thinking state events.
+
 ## Requirements
 
 ### Requirement: Gateway Initialization
@@ -148,3 +152,27 @@ The gateway server SHALL support registering turn completion callbacks via OnTur
 #### Scenario: Multiple turn callbacks
 - **WHEN** both MemoryBuffer.Trigger and AnalysisBuffer.Trigger are registered as callbacks
 - **THEN** both SHALL fire after each agent turn
+
+### Requirement: Session-scoped broadcast
+The Gateway server SHALL provide a `BroadcastToSession` method that sends events only to UI clients matching a specific session key. When session key is empty (no auth), it SHALL broadcast to all UI clients.
+
+#### Scenario: Authenticated session broadcast
+- **WHEN** `BroadcastToSession` is called with a non-empty session key
+- **THEN** only UI clients with a matching `SessionKey` SHALL receive the event
+- **AND** companion clients SHALL NOT receive the event
+
+#### Scenario: Unauthenticated broadcast
+- **WHEN** `BroadcastToSession` is called with an empty session key
+- **THEN** all UI clients SHALL receive the event
+
+### Requirement: Agent thinking events
+The Gateway server SHALL broadcast `agent.thinking` before agent processing and `agent.done` after processing completes, scoped to the requesting user's session.
+
+#### Scenario: Thinking event on message receipt
+- **WHEN** a `chat.message` RPC is received
+- **THEN** the server SHALL broadcast an `agent.thinking` event to the session before calling `RunAndCollect`
+
+#### Scenario: Done event after processing
+- **WHEN** `RunAndCollect` returns (success or error)
+- **THEN** the server SHALL broadcast an `agent.done` event to the session
+

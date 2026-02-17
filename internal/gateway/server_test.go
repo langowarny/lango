@@ -257,6 +257,95 @@ func TestApprovalResponse_DuplicateResponse(t *testing.T) {
 	}
 }
 
+func TestBroadcastToSession_ScopedBySessionKey(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	// Create clients with different session keys
+	sendA := make(chan []byte, 256)
+	sendB := make(chan []byte, 256)
+	sendC := make(chan []byte, 256)
+
+	server.clientsMu.Lock()
+	server.clients["a"] = &Client{ID: "a", Type: "ui", SessionKey: "sess-1", Send: sendA}
+	server.clients["b"] = &Client{ID: "b", Type: "ui", SessionKey: "sess-2", Send: sendB}
+	server.clients["c"] = &Client{ID: "c", Type: "companion", SessionKey: "sess-1", Send: sendC}
+	server.clientsMu.Unlock()
+
+	// Broadcast to session "sess-1" — only client "a" (UI, matching session) should receive
+	server.BroadcastToSession("sess-1", "agent.thinking", map[string]string{"sessionKey": "sess-1"})
+
+	// Client A should receive (UI + matching session)
+	select {
+	case msg := <-sendA:
+		var eventMsg map[string]interface{}
+		if err := json.Unmarshal(msg, &eventMsg); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if eventMsg["event"] != "agent.thinking" {
+			t.Errorf("expected 'agent.thinking', got %v", eventMsg["event"])
+		}
+	default:
+		t.Error("expected client A to receive broadcast")
+	}
+
+	// Client B should NOT receive (different session)
+	select {
+	case <-sendB:
+		t.Error("client B should not receive broadcast for sess-1")
+	default:
+		// Good
+	}
+
+	// Client C should NOT receive (companion, not UI)
+	select {
+	case <-sendC:
+		t.Error("companion client should not receive session broadcast")
+	default:
+		// Good
+	}
+}
+
+func TestBroadcastToSession_NoAuth(t *testing.T) {
+	cfg := Config{
+		Host:             "localhost",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}
+	server := New(cfg, nil, nil, nil, nil)
+
+	sendA := make(chan []byte, 256)
+	sendB := make(chan []byte, 256)
+
+	server.clientsMu.Lock()
+	server.clients["a"] = &Client{ID: "a", Type: "ui", SessionKey: "", Send: sendA}
+	server.clients["b"] = &Client{ID: "b", Type: "ui", SessionKey: "", Send: sendB}
+	server.clientsMu.Unlock()
+
+	// With empty session key (no auth), all UI clients should receive
+	server.BroadcastToSession("", "agent.done", map[string]string{"sessionKey": ""})
+
+	select {
+	case <-sendA:
+		// Good
+	default:
+		t.Error("expected client A to receive broadcast")
+	}
+
+	select {
+	case <-sendB:
+		// Good
+	default:
+		t.Error("expected client B to receive broadcast")
+	}
+}
+
 func TestApprovalTimeout_UsesConfigTimeout(t *testing.T) {
 	cfg := Config{
 		Host:             "localhost",

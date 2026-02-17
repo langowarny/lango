@@ -184,8 +184,11 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 		"authorId", m.Author.ID,
 	)
 
-	// Call handler
+	// Show typing indicator while processing
+	stopThinking := c.startTyping(m.ChannelID)
 	response, err := c.handler(c.ctx, incoming)
+	stopThinking()
+
 	if err != nil {
 		logger.Errorw("handler error", "error", err)
 		c.sendError(m.ChannelID, err)
@@ -197,6 +200,32 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 			logger.Errorw("send error", "error", err)
 		}
 	}
+}
+
+// startTyping sends a typing indicator to the channel and refreshes it
+// periodically until the returned stop function is called.
+func (c *Channel) startTyping(channelID string) func() {
+	if err := c.session.ChannelTyping(channelID); err != nil {
+		logger.Warnw("typing indicator error", "error", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(8 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := c.session.ChannelTyping(channelID); err != nil {
+					logger.Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { close(done) }
 }
 
 // Send sends a message

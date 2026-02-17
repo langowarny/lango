@@ -12,10 +12,16 @@ import (
 
 // MockClient implements Client interface
 type MockClient struct {
-	AuthTestFunc    func() (*slack.AuthTestResponse, error)
-	PostMessageFunc func(channelID string, options ...slack.MsgOption) (string, string, error)
-	PostMessages    []struct {
+	AuthTestFunc      func() (*slack.AuthTestResponse, error)
+	PostMessageFunc   func(channelID string, options ...slack.MsgOption) (string, string, error)
+	UpdateMessageFunc func(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error)
+	PostMessages      []struct {
 		ChannelID string
+		Options   []slack.MsgOption
+	}
+	UpdateMessages []struct {
+		ChannelID string
+		Timestamp string
 		Options   []slack.MsgOption
 	}
 }
@@ -28,6 +34,14 @@ func (m *MockClient) AuthTest() (*slack.AuthTestResponse, error) {
 }
 
 func (m *MockClient) UpdateMessage(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error) {
+	m.UpdateMessages = append(m.UpdateMessages, struct {
+		ChannelID string
+		Timestamp string
+		Options   []slack.MsgOption
+	}{ChannelID: channelID, Timestamp: timestamp, Options: options})
+	if m.UpdateMessageFunc != nil {
+		return m.UpdateMessageFunc(channelID, timestamp, options...)
+	}
 	return channelID, timestamp, "", nil
 }
 
@@ -115,15 +129,90 @@ func TestSlackChannel(t *testing.T) {
 	}
 
 	// Wait for processing (async)
-	// We can check if PostMessage was called
 	select {
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
+		// With thinking indicator: expect 1 PostMessage (thinking placeholder)
+		// + 1 UpdateMessage (replace placeholder with response)
 		if len(mockClient.PostMessages) == 0 {
-			t.Error("expected PostMessage to be called")
-		} else {
-			// Verification
-			// Slack MsgOption is opaque function, hard to verify content directly without applying it to a struct
-			// But simpler: just checking call count is enough for basic unit test of flow.
+			t.Error("expected PostMessage to be called (thinking placeholder)")
 		}
+		if len(mockClient.UpdateMessages) == 0 {
+			t.Error("expected UpdateMessage to be called (replace placeholder)")
+		}
+	}
+}
+
+func TestSlackThinkingPlaceholder(t *testing.T) {
+	mockClient := &MockClient{
+		PostMessageFunc: func(channelID string, options ...slack.MsgOption) (string, string, error) {
+			return channelID, "placeholder-ts", nil
+		},
+	}
+	mockSocket := &MockSocket{
+		EventsCh: make(chan socketmode.Event, 1),
+	}
+
+	cfg := Config{
+		BotToken: "TEST_TOKEN",
+		AppToken: "APP_TOKEN",
+		Client:   mockClient,
+		Socket:   mockSocket,
+	}
+
+	channel, err := New(cfg)
+	if err != nil {
+		t.Fatalf("new channel: %v", err)
+	}
+
+	handlerDone := make(chan struct{})
+	channel.SetHandler(func(ctx context.Context, msg *IncomingMessage) (*OutgoingMessage, error) {
+		defer close(handlerDone)
+		return &OutgoingMessage{Text: "response text"}, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := channel.Start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	innerEvent := &slackevents.MessageEvent{
+		Type:        "message",
+		Text:        "Hello",
+		User:        "user-2",
+		Channel:     "chan-2",
+		ChannelType: "im",
+	}
+	eventsAPIEvent := slackevents.EventsAPIEvent{
+		Type:       slackevents.CallbackEvent,
+		InnerEvent: slackevents.EventsAPIInnerEvent{Data: innerEvent},
+	}
+	mockSocket.EventsCh <- socketmode.Event{
+		Type:    socketmode.EventTypeEventsAPI,
+		Request: &socketmode.Request{},
+		Data:    eventsAPIEvent,
+	}
+
+	select {
+	case <-handlerDone:
+		// Allow goroutine to finish posting
+		time.Sleep(50 * time.Millisecond)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
+
+	// Verify: first PostMessage is the thinking placeholder, then UpdateMessage replaces it
+	if len(mockClient.PostMessages) < 1 {
+		t.Fatalf("expected at least 1 PostMessage call, got %d", len(mockClient.PostMessages))
+	}
+
+	if len(mockClient.UpdateMessages) < 1 {
+		t.Fatalf("expected at least 1 UpdateMessage call, got %d", len(mockClient.UpdateMessages))
+	}
+
+	// Verify UpdateMessage was called with the placeholder timestamp
+	if mockClient.UpdateMessages[0].Timestamp != "placeholder-ts" {
+		t.Errorf("expected update on 'placeholder-ts', got '%s'", mockClient.UpdateMessages[0].Timestamp)
 	}
 }

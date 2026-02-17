@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Discord channel adapter for the Lango agent. Connects to Discord via Bot API, handles message reception (DMs and mentions), slash commands, approval workflows, and typing indicators.
+
+## Requirements
 
 ### Requirement: Discord bot connection
 The system SHALL connect to Discord using the Bot API with a provided bot token.
@@ -116,3 +120,16 @@ The Discord approval provider SHALL capture the message ID from ChannelMessageSe
 #### Scenario: Sent message ID stored in pending struct
 - **WHEN** an approval message is sent successfully
 - **THEN** the system SHALL store the returned message ID alongside the response channel and channel ID in an approvalPending struct
+### Requirement: Typing indicator during processing
+The Discord channel SHALL show a typing indicator while the message handler processes a user message. The `Session` interface SHALL include `ChannelTyping`. The typing indicator SHALL be sent via `ChannelTyping` immediately and refreshed every 8 seconds until the handler returns.
+
+#### Scenario: Typing indicator during processing
+- **WHEN** a user sends a message (DM or mention) to the Discord bot
+- **THEN** the bot SHALL call `ChannelTyping` on the channel before calling the handler
+- **AND** SHALL refresh the typing indicator every 8 seconds
+- **AND** SHALL stop refreshing when the handler returns
+
+#### Scenario: Typing indicator API failure
+- **WHEN** the `ChannelTyping` call fails
+- **THEN** the bot SHALL log a warning and continue processing normally
+

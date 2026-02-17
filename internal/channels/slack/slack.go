@@ -268,19 +268,61 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 	go func() {
 		defer c.wg.Done()
 
+		// Post a placeholder "Thinking..." message while processing
+		placeholderTS, placeholderErr := c.postThinking(channelID, threadTS)
+
 		response, err := c.handler(ctx, incoming)
 		if err != nil {
 			logger.Errorw("handler error", "error", err)
 			c.sendError(channelID, threadTS, err)
+			// Clean up placeholder on error
+			if placeholderErr == nil {
+				c.updateThinking(channelID, placeholderTS, fmt.Sprintf("Error: %s", err.Error()))
+			}
 			return
 		}
 
 		if response != nil {
-			if err := c.Send(channelID, response); err != nil {
-				logger.Errorw("send error", "error", err)
+			// Replace placeholder with actual response
+			if placeholderErr == nil {
+				formattedText := FormatMrkdwn(response.Text)
+				if updateErr := c.updateThinking(channelID, placeholderTS, formattedText); updateErr != nil {
+					logger.Warnw("placeholder update failed, sending new message", "error", updateErr)
+					if err := c.Send(channelID, response); err != nil {
+						logger.Errorw("send error", "error", err)
+					}
+				}
+			} else {
+				// Placeholder failed, send normally
+				if err := c.Send(channelID, response); err != nil {
+					logger.Errorw("send error", "error", err)
+				}
 			}
 		}
 	}()
+}
+
+// postThinking posts a placeholder "Thinking..." message and returns its timestamp.
+func (c *Channel) postThinking(channelID, threadTS string) (string, error) {
+	options := []slack.MsgOption{
+		slack.MsgOptionText("_Thinking..._", false),
+	}
+	if threadTS != "" {
+		options = append(options, slack.MsgOptionTS(threadTS))
+	}
+
+	_, ts, err := c.api.PostMessage(channelID, options...)
+	if err != nil {
+		logger.Warnw("post thinking placeholder error", "error", err)
+		return "", err
+	}
+	return ts, nil
+}
+
+// updateThinking replaces a placeholder message with the given text.
+func (c *Channel) updateThinking(channelID, messageTS, text string) error {
+	_, _, _, err := c.api.UpdateMessage(channelID, messageTS, slack.MsgOptionText(text, false))
+	return err
 }
 
 // Send sends a message.

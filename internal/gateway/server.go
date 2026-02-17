@@ -166,6 +166,11 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		return nil, fmt.Errorf("agent not configured")
 	}
 
+	// Notify UI that agent is thinking
+	s.BroadcastToSession(sessionKey, "agent.thinking", map[string]string{
+		"sessionKey": sessionKey,
+	})
+
 	ctx := session.WithSessionKey(context.Background(), sessionKey)
 	response, err := s.agent.RunAndCollect(ctx, sessionKey, req.Message)
 
@@ -174,6 +179,11 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		cb(sessionKey)
 	}
 
+	// Notify UI that agent is done
+	s.BroadcastToSession(sessionKey, "agent.done", map[string]string{
+		"sessionKey": sessionKey,
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +191,34 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	return map[string]string{
 		"response": response,
 	}, nil
+}
+
+// BroadcastToSession sends an event to all UI clients belonging to a specific session.
+// When the session key is empty (no auth), it broadcasts to all UI clients.
+func (s *Server) BroadcastToSession(sessionKey, event string, payload interface{}) {
+	msg, _ := json.Marshal(map[string]interface{}{
+		"type":    "event",
+		"event":   event,
+		"payload": payload,
+	})
+
+	s.clientsMu.RLock()
+	defer s.clientsMu.RUnlock()
+
+	for _, client := range s.clients {
+		if client.Type != "ui" {
+			continue
+		}
+		// If authenticated, scope to the session; otherwise broadcast to all UI clients
+		if sessionKey != "" && client.SessionKey != "" && client.SessionKey != sessionKey {
+			continue
+		}
+		select {
+		case client.Send <- msg:
+		default:
+			// Client buffer full, skip
+		}
+	}
 }
 
 // handleSignResponse proxies signature responses to the RPCProvider

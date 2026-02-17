@@ -199,8 +199,11 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 		"userId", incoming.UserID,
 	)
 
-	// Call handler
+	// Show typing indicator while processing
+	stopThinking := c.startTyping(incoming.ChatID)
 	response, err := c.handler(ctx, incoming)
+	stopThinking()
+
 	if err != nil {
 		logger().Errorw("handler error", "error", err)
 		c.sendError(incoming.ChatID, msg.MessageID, err)
@@ -212,6 +215,33 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 			logger().Errorw("send error", "error", err)
 		}
 	}
+}
+
+// startTyping sends a typing action to the chat and refreshes it
+// periodically until the returned stop function is called.
+func (c *Channel) startTyping(chatID int64) func() {
+	action := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := c.bot.Request(action); err != nil {
+		logger().Warnw("typing indicator error", "error", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if _, err := c.bot.Request(action); err != nil {
+					logger().Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { close(done) }
 }
 
 // Send sends a message.
