@@ -22,6 +22,9 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.Gateway() }
 
+// TurnCallback is called after each agent turn completes (for buffer triggers, etc).
+type TurnCallback func(sessionKey string)
+
 // Server represents the gateway server
 type Server struct {
 	config             Config
@@ -38,6 +41,7 @@ type Server struct {
 	handlersMu         sync.RWMutex
 	pendingApprovals   map[string]chan bool
 	pendingApprovalsMu sync.Mutex
+	turnCallbacks      []TurnCallback
 }
 
 // Config holds gateway server configuration
@@ -164,6 +168,12 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 
 	ctx := session.WithSessionKey(context.Background(), sessionKey)
 	response, err := s.agent.RunAndCollect(ctx, sessionKey, req.Message)
+
+	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
+	for _, cb := range s.turnCallbacks {
+		cb(sessionKey)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -367,6 +377,11 @@ func (s *Server) Router() chi.Router {
 // SetAgent sets the agent on the server (used for deferred wiring).
 func (s *Server) SetAgent(agent *adk.Agent) {
 	s.agent = agent
+}
+
+// OnTurnComplete registers a callback that fires after each agent turn.
+func (s *Server) OnTurnComplete(cb TurnCallback) {
+	s.turnCallbacks = append(s.turnCallbacks, cb)
 }
 
 // RegisterHandler registers an RPC method handler

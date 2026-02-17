@@ -12,6 +12,9 @@ import (
 // MessageProvider retrieves messages for a session key.
 type MessageProvider func(sessionKey string) ([]session.Message, error)
 
+// MessageCompactor replaces observed messages with a summary to reduce session size.
+type MessageCompactor func(sessionKey string, upToIndex int, summary string) error
+
 // Buffer manages background observation and reflection processing.
 type Buffer struct {
 	observer  *Observer
@@ -21,6 +24,7 @@ type Buffer struct {
 	messageTokenThreshold     int
 	observationTokenThreshold int
 	getMessages               MessageProvider
+	compactor                 MessageCompactor // optional: compact observed messages
 
 	// lastObserved tracks the last observed message index per session.
 	mu           sync.Mutex
@@ -76,6 +80,13 @@ func (b *Buffer) Trigger(sessionKey string) {
 	}
 }
 
+// SetCompactor enables message compaction after observation. When set,
+// observed messages are replaced with a summary message in the session,
+// effectively reducing the session's memory footprint.
+func (b *Buffer) SetCompactor(c MessageCompactor) {
+	b.compactor = c
+}
+
 // Stop signals the background goroutine to stop and waits for completion.
 func (b *Buffer) Stop() {
 	close(b.stopCh)
@@ -124,6 +135,20 @@ func (b *Buffer) process(sessionKey string) {
 			}
 			if obs != nil {
 				b.setLastObserved(sessionKey, obs.SourceEndIndex)
+
+				// Compact observed messages if compactor is configured.
+				if b.compactor != nil && obs.SourceEndIndex > 0 {
+					if err := b.compactor(sessionKey, obs.SourceEndIndex, obs.Content); err != nil {
+						b.logger.Warnw("compaction failed", "sessionKey", sessionKey, "error", err)
+					} else {
+						// Reset lastObserved since message indices shifted after compaction.
+						b.setLastObserved(sessionKey, 0)
+						b.logger.Debugw("messages compacted",
+							"sessionKey", sessionKey,
+							"upToIndex", obs.SourceEndIndex,
+						)
+					}
+				}
 			}
 		}
 	}

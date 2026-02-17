@@ -114,7 +114,18 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 // runAgent executes the agent and aggregates the response.
 // It injects the session key into the context so that downstream components
 // (approval providers, learning engine, etc.) can route by channel.
+// After each agent turn, buffers (memory, analysis) are triggered for async processing.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
 	ctx = session.WithSessionKey(ctx, sessionKey)
-	return a.Agent.RunAndCollect(ctx, sessionKey, input)
+	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input)
+
+	// Trigger async buffers after agent turn regardless of error.
+	if a.MemoryBuffer != nil {
+		a.MemoryBuffer.Trigger(sessionKey)
+	}
+	if a.AnalysisBuffer != nil {
+		a.AnalysisBuffer.Trigger(sessionKey)
+	}
+
+	return response, err
 }

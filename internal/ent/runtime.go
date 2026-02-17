@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/ent/auditlog"
 	"github.com/langowarny/lango/internal/ent/configprofile"
+	"github.com/langowarny/lango/internal/ent/cronjob"
+	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
@@ -20,6 +22,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/ent/skill"
+	"github.com/langowarny/lango/internal/ent/workflowrun"
+	"github.com/langowarny/lango/internal/ent/workflowsteprun"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -68,6 +72,64 @@ func init() {
 	configprofileDescID := configprofileFields[0].Descriptor()
 	// configprofile.DefaultID holds the default value on creation for the id field.
 	configprofile.DefaultID = configprofileDescID.Default.(func() uuid.UUID)
+	cronjobFields := schema.CronJob{}.Fields()
+	_ = cronjobFields
+	// cronjobDescName is the schema descriptor for name field.
+	cronjobDescName := cronjobFields[1].Descriptor()
+	// cronjob.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	cronjob.NameValidator = cronjobDescName.Validators[0].(func(string) error)
+	// cronjobDescSchedule is the schema descriptor for schedule field.
+	cronjobDescSchedule := cronjobFields[3].Descriptor()
+	// cronjob.ScheduleValidator is a validator for the "schedule" field. It is called by the builders before save.
+	cronjob.ScheduleValidator = cronjobDescSchedule.Validators[0].(func(string) error)
+	// cronjobDescPrompt is the schema descriptor for prompt field.
+	cronjobDescPrompt := cronjobFields[4].Descriptor()
+	// cronjob.PromptValidator is a validator for the "prompt" field. It is called by the builders before save.
+	cronjob.PromptValidator = cronjobDescPrompt.Validators[0].(func(string) error)
+	// cronjobDescSessionMode is the schema descriptor for session_mode field.
+	cronjobDescSessionMode := cronjobFields[5].Descriptor()
+	// cronjob.DefaultSessionMode holds the default value on creation for the session_mode field.
+	cronjob.DefaultSessionMode = cronjobDescSessionMode.Default.(string)
+	// cronjobDescTimezone is the schema descriptor for timezone field.
+	cronjobDescTimezone := cronjobFields[7].Descriptor()
+	// cronjob.DefaultTimezone holds the default value on creation for the timezone field.
+	cronjob.DefaultTimezone = cronjobDescTimezone.Default.(string)
+	// cronjobDescEnabled is the schema descriptor for enabled field.
+	cronjobDescEnabled := cronjobFields[8].Descriptor()
+	// cronjob.DefaultEnabled holds the default value on creation for the enabled field.
+	cronjob.DefaultEnabled = cronjobDescEnabled.Default.(bool)
+	// cronjobDescCreatedAt is the schema descriptor for created_at field.
+	cronjobDescCreatedAt := cronjobFields[11].Descriptor()
+	// cronjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cronjob.DefaultCreatedAt = cronjobDescCreatedAt.Default.(func() time.Time)
+	// cronjobDescUpdatedAt is the schema descriptor for updated_at field.
+	cronjobDescUpdatedAt := cronjobFields[12].Descriptor()
+	// cronjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	cronjob.DefaultUpdatedAt = cronjobDescUpdatedAt.Default.(func() time.Time)
+	// cronjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	cronjob.UpdateDefaultUpdatedAt = cronjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// cronjobDescID is the schema descriptor for id field.
+	cronjobDescID := cronjobFields[0].Descriptor()
+	// cronjob.DefaultID holds the default value on creation for the id field.
+	cronjob.DefaultID = cronjobDescID.Default.(func() uuid.UUID)
+	cronjobhistoryFields := schema.CronJobHistory{}.Fields()
+	_ = cronjobhistoryFields
+	// cronjobhistoryDescJobName is the schema descriptor for job_name field.
+	cronjobhistoryDescJobName := cronjobhistoryFields[2].Descriptor()
+	// cronjobhistory.JobNameValidator is a validator for the "job_name" field. It is called by the builders before save.
+	cronjobhistory.JobNameValidator = cronjobhistoryDescJobName.Validators[0].(func(string) error)
+	// cronjobhistoryDescTokensUsed is the schema descriptor for tokens_used field.
+	cronjobhistoryDescTokensUsed := cronjobhistoryFields[7].Descriptor()
+	// cronjobhistory.DefaultTokensUsed holds the default value on creation for the tokens_used field.
+	cronjobhistory.DefaultTokensUsed = cronjobhistoryDescTokensUsed.Default.(int)
+	// cronjobhistoryDescStartedAt is the schema descriptor for started_at field.
+	cronjobhistoryDescStartedAt := cronjobhistoryFields[8].Descriptor()
+	// cronjobhistory.DefaultStartedAt holds the default value on creation for the started_at field.
+	cronjobhistory.DefaultStartedAt = cronjobhistoryDescStartedAt.Default.(func() time.Time)
+	// cronjobhistoryDescID is the schema descriptor for id field.
+	cronjobhistoryDescID := cronjobhistoryFields[0].Descriptor()
+	// cronjobhistory.DefaultID holds the default value on creation for the id field.
+	cronjobhistory.DefaultID = cronjobhistoryDescID.Default.(func() uuid.UUID)
 	externalrefFields := schema.ExternalRef{}.Fields()
 	_ = externalrefFields
 	// externalrefDescName is the schema descriptor for name field.
@@ -348,4 +410,36 @@ func init() {
 	skillDescID := skillFields[0].Descriptor()
 	// skill.DefaultID holds the default value on creation for the id field.
 	skill.DefaultID = skillDescID.Default.(func() uuid.UUID)
+	workflowrunFields := schema.WorkflowRun{}.Fields()
+	_ = workflowrunFields
+	// workflowrunDescWorkflowName is the schema descriptor for workflow_name field.
+	workflowrunDescWorkflowName := workflowrunFields[1].Descriptor()
+	// workflowrun.WorkflowNameValidator is a validator for the "workflow_name" field. It is called by the builders before save.
+	workflowrun.WorkflowNameValidator = workflowrunDescWorkflowName.Validators[0].(func(string) error)
+	// workflowrunDescTotalSteps is the schema descriptor for total_steps field.
+	workflowrunDescTotalSteps := workflowrunFields[4].Descriptor()
+	// workflowrun.DefaultTotalSteps holds the default value on creation for the total_steps field.
+	workflowrun.DefaultTotalSteps = workflowrunDescTotalSteps.Default.(int)
+	// workflowrunDescCompletedSteps is the schema descriptor for completed_steps field.
+	workflowrunDescCompletedSteps := workflowrunFields[5].Descriptor()
+	// workflowrun.DefaultCompletedSteps holds the default value on creation for the completed_steps field.
+	workflowrun.DefaultCompletedSteps = workflowrunDescCompletedSteps.Default.(int)
+	// workflowrunDescStartedAt is the schema descriptor for started_at field.
+	workflowrunDescStartedAt := workflowrunFields[7].Descriptor()
+	// workflowrun.DefaultStartedAt holds the default value on creation for the started_at field.
+	workflowrun.DefaultStartedAt = workflowrunDescStartedAt.Default.(func() time.Time)
+	// workflowrunDescID is the schema descriptor for id field.
+	workflowrunDescID := workflowrunFields[0].Descriptor()
+	// workflowrun.DefaultID holds the default value on creation for the id field.
+	workflowrun.DefaultID = workflowrunDescID.Default.(func() uuid.UUID)
+	workflowsteprunFields := schema.WorkflowStepRun{}.Fields()
+	_ = workflowsteprunFields
+	// workflowsteprunDescStepID is the schema descriptor for step_id field.
+	workflowsteprunDescStepID := workflowsteprunFields[2].Descriptor()
+	// workflowsteprun.StepIDValidator is a validator for the "step_id" field. It is called by the builders before save.
+	workflowsteprun.StepIDValidator = workflowsteprunDescStepID.Validators[0].(func(string) error)
+	// workflowsteprunDescID is the schema descriptor for id field.
+	workflowsteprunDescID := workflowsteprunFields[0].Descriptor()
+	// workflowsteprun.DefaultID holds the default value on creation for the id field.
+	workflowsteprun.DefaultID = workflowsteprunDescID.Default.(func() uuid.UUID)
 }

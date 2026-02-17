@@ -69,6 +69,76 @@ var (
 			},
 		},
 	}
+	// CronJobsColumns holds the columns for the "cron_jobs" table.
+	CronJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "schedule_type", Type: field.TypeEnum, Enums: []string{"at", "every", "cron"}},
+		{Name: "schedule", Type: field.TypeString},
+		{Name: "prompt", Type: field.TypeString, Size: 2147483647},
+		{Name: "session_mode", Type: field.TypeString, Default: "isolated"},
+		{Name: "deliver_to", Type: field.TypeJSON, Nullable: true},
+		{Name: "timezone", Type: field.TypeString, Default: "UTC"},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "last_run_at", Type: field.TypeTime, Nullable: true},
+		{Name: "next_run_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CronJobsTable holds the schema information for the "cron_jobs" table.
+	CronJobsTable = &schema.Table{
+		Name:       "cron_jobs",
+		Columns:    CronJobsColumns,
+		PrimaryKey: []*schema.Column{CronJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cronjob_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{CronJobsColumns[8]},
+			},
+			{
+				Name:    "cronjob_next_run_at",
+				Unique:  false,
+				Columns: []*schema.Column{CronJobsColumns[10]},
+			},
+		},
+	}
+	// CronJobHistoriesColumns holds the columns for the "cron_job_histories" table.
+	CronJobHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "job_id", Type: field.TypeUUID},
+		{Name: "job_name", Type: field.TypeString},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"running", "completed", "failed"}, Default: "running"},
+		{Name: "prompt", Type: field.TypeString, Size: 2147483647},
+		{Name: "result", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "tokens_used", Type: field.TypeInt, Default: 0},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// CronJobHistoriesTable holds the schema information for the "cron_job_histories" table.
+	CronJobHistoriesTable = &schema.Table{
+		Name:       "cron_job_histories",
+		Columns:    CronJobHistoriesColumns,
+		PrimaryKey: []*schema.Column{CronJobHistoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cronjobhistory_job_id",
+				Unique:  false,
+				Columns: []*schema.Column{CronJobHistoriesColumns[1]},
+			},
+			{
+				Name:    "cronjobhistory_status",
+				Unique:  false,
+				Columns: []*schema.Column{CronJobHistoriesColumns[3]},
+			},
+			{
+				Name:    "cronjobhistory_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{CronJobHistoriesColumns[8]},
+			},
+		},
+	}
 	// ExternalRefsColumns holds the columns for the "external_refs" table.
 	ExternalRefsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -403,10 +473,83 @@ var (
 			},
 		},
 	}
+	// WorkflowRunsColumns holds the columns for the "workflow_runs" table.
+	WorkflowRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "workflow_name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "completed", "failed", "cancelled"}, Default: "pending"},
+		{Name: "total_steps", Type: field.TypeInt, Default: 0},
+		{Name: "completed_steps", Type: field.TypeInt, Default: 0},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// WorkflowRunsTable holds the schema information for the "workflow_runs" table.
+	WorkflowRunsTable = &schema.Table{
+		Name:       "workflow_runs",
+		Columns:    WorkflowRunsColumns,
+		PrimaryKey: []*schema.Column{WorkflowRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workflowrun_status",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[3]},
+			},
+			{
+				Name:    "workflowrun_workflow_name",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[1]},
+			},
+			{
+				Name:    "workflowrun_started_at",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowRunsColumns[7]},
+			},
+		},
+	}
+	// WorkflowStepRunsColumns holds the columns for the "workflow_step_runs" table.
+	WorkflowStepRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeUUID},
+		{Name: "step_id", Type: field.TypeString},
+		{Name: "agent", Type: field.TypeString, Nullable: true},
+		{Name: "prompt", Type: field.TypeString, Size: 2147483647},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "running", "completed", "failed", "skipped"}, Default: "pending"},
+		{Name: "result", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// WorkflowStepRunsTable holds the schema information for the "workflow_step_runs" table.
+	WorkflowStepRunsTable = &schema.Table{
+		Name:       "workflow_step_runs",
+		Columns:    WorkflowStepRunsColumns,
+		PrimaryKey: []*schema.Column{WorkflowStepRunsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "workflowsteprun_run_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowStepRunsColumns[1]},
+			},
+			{
+				Name:    "workflowsteprun_status",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowStepRunsColumns[5]},
+			},
+			{
+				Name:    "workflowsteprun_run_id_step_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorkflowStepRunsColumns[1], WorkflowStepRunsColumns[2]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditLogsTable,
 		ConfigProfilesTable,
+		CronJobsTable,
+		CronJobHistoriesTable,
 		ExternalRefsTable,
 		KeysTable,
 		KnowledgesTable,
@@ -418,6 +561,8 @@ var (
 		SecretsTable,
 		SessionsTable,
 		SkillsTable,
+		WorkflowRunsTable,
+		WorkflowStepRunsTable,
 	}
 )
 

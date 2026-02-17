@@ -20,6 +20,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/slack-go/slack v0.12.5
 	github.com/spf13/cobra v1.8.1
@@ -32,6 +33,7 @@ require (
 	golang.org/x/term v0.39.0
 	google.golang.org/adk v0.4.0
 	google.golang.org/genai v1.40.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -136,7 +138,6 @@ require (
 	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/omap v1.2.0 // indirect
 	rsc.io/ordered v1.1.1 // indirect
 )

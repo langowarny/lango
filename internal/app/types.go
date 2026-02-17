@@ -7,18 +7,21 @@ import (
 
 	"github.com/langowarny/lango/internal/adk"
 	"github.com/langowarny/lango/internal/approval"
+	"github.com/langowarny/lango/internal/background"
 	"github.com/langowarny/lango/internal/config"
+	cronpkg "github.com/langowarny/lango/internal/cron"
 	"github.com/langowarny/lango/internal/embedding"
 	"github.com/langowarny/lango/internal/gateway"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
-	"github.com/langowarny/lango/internal/payment"
-	"github.com/langowarny/lango/internal/wallet"
 	"github.com/langowarny/lango/internal/learning"
 	"github.com/langowarny/lango/internal/memory"
+	"github.com/langowarny/lango/internal/payment"
 	"github.com/langowarny/lango/internal/security"
 	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/skill"
+	"github.com/langowarny/lango/internal/wallet"
+	"github.com/langowarny/lango/internal/workflow"
 )
 
 // App is the root application structure
@@ -64,6 +67,15 @@ type App struct {
 	// Payment Components (optional)
 	WalletProvider wallet.WalletProvider
 	PaymentService *payment.Service
+
+	// Cron Scheduling Components (optional)
+	CronScheduler *cronpkg.Scheduler
+
+	// Background Task Components (optional)
+	BackgroundManager *background.Manager
+
+	// Workflow Engine Components (optional)
+	WorkflowEngine *workflow.Engine
 
 	// Channels
 	Channels []Channel

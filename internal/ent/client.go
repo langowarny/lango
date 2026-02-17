@@ -18,6 +18,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/langowarny/lango/internal/ent/auditlog"
 	"github.com/langowarny/lango/internal/ent/configprofile"
+	"github.com/langowarny/lango/internal/ent/cronjob"
+	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
@@ -29,6 +31,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/ent/skill"
+	"github.com/langowarny/lango/internal/ent/workflowrun"
+	"github.com/langowarny/lango/internal/ent/workflowsteprun"
 )
 
 // Client is the client that holds all ent builders.
@@ -40,6 +44,10 @@ type Client struct {
 	AuditLog *AuditLogClient
 	// ConfigProfile is the client for interacting with the ConfigProfile builders.
 	ConfigProfile *ConfigProfileClient
+	// CronJob is the client for interacting with the CronJob builders.
+	CronJob *CronJobClient
+	// CronJobHistory is the client for interacting with the CronJobHistory builders.
+	CronJobHistory *CronJobHistoryClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Key is the client for interacting with the Key builders.
@@ -62,6 +70,10 @@ type Client struct {
 	Session *SessionClient
 	// Skill is the client for interacting with the Skill builders.
 	Skill *SkillClient
+	// WorkflowRun is the client for interacting with the WorkflowRun builders.
+	WorkflowRun *WorkflowRunClient
+	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
+	WorkflowStepRun *WorkflowStepRunClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -75,6 +87,8 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.ConfigProfile = NewConfigProfileClient(c.config)
+	c.CronJob = NewCronJobClient(c.config)
+	c.CronJobHistory = NewCronJobHistoryClient(c.config)
 	c.ExternalRef = NewExternalRefClient(c.config)
 	c.Key = NewKeyClient(c.config)
 	c.Knowledge = NewKnowledgeClient(c.config)
@@ -86,6 +100,8 @@ func (c *Client) init() {
 	c.Secret = NewSecretClient(c.config)
 	c.Session = NewSessionClient(c.config)
 	c.Skill = NewSkillClient(c.config)
+	c.WorkflowRun = NewWorkflowRunClient(c.config)
+	c.WorkflowStepRun = NewWorkflowStepRunClient(c.config)
 }
 
 type (
@@ -176,21 +192,25 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		AuditLog:      NewAuditLogClient(cfg),
-		ConfigProfile: NewConfigProfileClient(cfg),
-		ExternalRef:   NewExternalRefClient(cfg),
-		Key:           NewKeyClient(cfg),
-		Knowledge:     NewKnowledgeClient(cfg),
-		Learning:      NewLearningClient(cfg),
-		Message:       NewMessageClient(cfg),
-		Observation:   NewObservationClient(cfg),
-		PaymentTx:     NewPaymentTxClient(cfg),
-		Reflection:    NewReflectionClient(cfg),
-		Secret:        NewSecretClient(cfg),
-		Session:       NewSessionClient(cfg),
-		Skill:         NewSkillClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		AuditLog:        NewAuditLogClient(cfg),
+		ConfigProfile:   NewConfigProfileClient(cfg),
+		CronJob:         NewCronJobClient(cfg),
+		CronJobHistory:  NewCronJobHistoryClient(cfg),
+		ExternalRef:     NewExternalRefClient(cfg),
+		Key:             NewKeyClient(cfg),
+		Knowledge:       NewKnowledgeClient(cfg),
+		Learning:        NewLearningClient(cfg),
+		Message:         NewMessageClient(cfg),
+		Observation:     NewObservationClient(cfg),
+		PaymentTx:       NewPaymentTxClient(cfg),
+		Reflection:      NewReflectionClient(cfg),
+		Secret:          NewSecretClient(cfg),
+		Session:         NewSessionClient(cfg),
+		Skill:           NewSkillClient(cfg),
+		WorkflowRun:     NewWorkflowRunClient(cfg),
+		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -208,21 +228,25 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		AuditLog:      NewAuditLogClient(cfg),
-		ConfigProfile: NewConfigProfileClient(cfg),
-		ExternalRef:   NewExternalRefClient(cfg),
-		Key:           NewKeyClient(cfg),
-		Knowledge:     NewKnowledgeClient(cfg),
-		Learning:      NewLearningClient(cfg),
-		Message:       NewMessageClient(cfg),
-		Observation:   NewObservationClient(cfg),
-		PaymentTx:     NewPaymentTxClient(cfg),
-		Reflection:    NewReflectionClient(cfg),
-		Secret:        NewSecretClient(cfg),
-		Session:       NewSessionClient(cfg),
-		Skill:         NewSkillClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		AuditLog:        NewAuditLogClient(cfg),
+		ConfigProfile:   NewConfigProfileClient(cfg),
+		CronJob:         NewCronJobClient(cfg),
+		CronJobHistory:  NewCronJobHistoryClient(cfg),
+		ExternalRef:     NewExternalRefClient(cfg),
+		Key:             NewKeyClient(cfg),
+		Knowledge:       NewKnowledgeClient(cfg),
+		Learning:        NewLearningClient(cfg),
+		Message:         NewMessageClient(cfg),
+		Observation:     NewObservationClient(cfg),
+		PaymentTx:       NewPaymentTxClient(cfg),
+		Reflection:      NewReflectionClient(cfg),
+		Secret:          NewSecretClient(cfg),
+		Session:         NewSessionClient(cfg),
+		Skill:           NewSkillClient(cfg),
+		WorkflowRun:     NewWorkflowRunClient(cfg),
+		WorkflowStepRun: NewWorkflowStepRunClient(cfg),
 	}, nil
 }
 
@@ -252,9 +276,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.ConfigProfile, c.ExternalRef, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.PaymentTx, c.Reflection, c.Secret, c.Session,
-		c.Skill,
+		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef, c.Key,
+		c.Knowledge, c.Learning, c.Message, c.Observation, c.PaymentTx, c.Reflection,
+		c.Secret, c.Session, c.Skill, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Use(hooks...)
 	}
@@ -264,9 +288,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.ConfigProfile, c.ExternalRef, c.Key, c.Knowledge, c.Learning,
-		c.Message, c.Observation, c.PaymentTx, c.Reflection, c.Secret, c.Session,
-		c.Skill,
+		c.AuditLog, c.ConfigProfile, c.CronJob, c.CronJobHistory, c.ExternalRef, c.Key,
+		c.Knowledge, c.Learning, c.Message, c.Observation, c.PaymentTx, c.Reflection,
+		c.Secret, c.Session, c.Skill, c.WorkflowRun, c.WorkflowStepRun,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -279,6 +303,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditLog.mutate(ctx, m)
 	case *ConfigProfileMutation:
 		return c.ConfigProfile.mutate(ctx, m)
+	case *CronJobMutation:
+		return c.CronJob.mutate(ctx, m)
+	case *CronJobHistoryMutation:
+		return c.CronJobHistory.mutate(ctx, m)
 	case *ExternalRefMutation:
 		return c.ExternalRef.mutate(ctx, m)
 	case *KeyMutation:
@@ -301,6 +329,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Session.mutate(ctx, m)
 	case *SkillMutation:
 		return c.Skill.mutate(ctx, m)
+	case *WorkflowRunMutation:
+		return c.WorkflowRun.mutate(ctx, m)
+	case *WorkflowStepRunMutation:
+		return c.WorkflowStepRun.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -569,6 +601,272 @@ func (c *ConfigProfileClient) mutate(ctx context.Context, m *ConfigProfileMutati
 		return (&ConfigProfileDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ConfigProfile mutation op: %q", m.Op())
+	}
+}
+
+// CronJobClient is a client for the CronJob schema.
+type CronJobClient struct {
+	config
+}
+
+// NewCronJobClient returns a client for the CronJob from the given config.
+func NewCronJobClient(c config) *CronJobClient {
+	return &CronJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cronjob.Hooks(f(g(h())))`.
+func (c *CronJobClient) Use(hooks ...Hook) {
+	c.hooks.CronJob = append(c.hooks.CronJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cronjob.Intercept(f(g(h())))`.
+func (c *CronJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CronJob = append(c.inters.CronJob, interceptors...)
+}
+
+// Create returns a builder for creating a CronJob entity.
+func (c *CronJobClient) Create() *CronJobCreate {
+	mutation := newCronJobMutation(c.config, OpCreate)
+	return &CronJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CronJob entities.
+func (c *CronJobClient) CreateBulk(builders ...*CronJobCreate) *CronJobCreateBulk {
+	return &CronJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CronJobClient) MapCreateBulk(slice any, setFunc func(*CronJobCreate, int)) *CronJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CronJobCreateBulk{err: fmt.Errorf("calling to CronJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CronJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CronJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CronJob.
+func (c *CronJobClient) Update() *CronJobUpdate {
+	mutation := newCronJobMutation(c.config, OpUpdate)
+	return &CronJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CronJobClient) UpdateOne(_m *CronJob) *CronJobUpdateOne {
+	mutation := newCronJobMutation(c.config, OpUpdateOne, withCronJob(_m))
+	return &CronJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CronJobClient) UpdateOneID(id uuid.UUID) *CronJobUpdateOne {
+	mutation := newCronJobMutation(c.config, OpUpdateOne, withCronJobID(id))
+	return &CronJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CronJob.
+func (c *CronJobClient) Delete() *CronJobDelete {
+	mutation := newCronJobMutation(c.config, OpDelete)
+	return &CronJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CronJobClient) DeleteOne(_m *CronJob) *CronJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CronJobClient) DeleteOneID(id uuid.UUID) *CronJobDeleteOne {
+	builder := c.Delete().Where(cronjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CronJobDeleteOne{builder}
+}
+
+// Query returns a query builder for CronJob.
+func (c *CronJobClient) Query() *CronJobQuery {
+	return &CronJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCronJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CronJob entity by its id.
+func (c *CronJobClient) Get(ctx context.Context, id uuid.UUID) (*CronJob, error) {
+	return c.Query().Where(cronjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CronJobClient) GetX(ctx context.Context, id uuid.UUID) *CronJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CronJobClient) Hooks() []Hook {
+	return c.hooks.CronJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *CronJobClient) Interceptors() []Interceptor {
+	return c.inters.CronJob
+}
+
+func (c *CronJobClient) mutate(ctx context.Context, m *CronJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CronJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CronJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CronJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CronJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CronJob mutation op: %q", m.Op())
+	}
+}
+
+// CronJobHistoryClient is a client for the CronJobHistory schema.
+type CronJobHistoryClient struct {
+	config
+}
+
+// NewCronJobHistoryClient returns a client for the CronJobHistory from the given config.
+func NewCronJobHistoryClient(c config) *CronJobHistoryClient {
+	return &CronJobHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cronjobhistory.Hooks(f(g(h())))`.
+func (c *CronJobHistoryClient) Use(hooks ...Hook) {
+	c.hooks.CronJobHistory = append(c.hooks.CronJobHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cronjobhistory.Intercept(f(g(h())))`.
+func (c *CronJobHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CronJobHistory = append(c.inters.CronJobHistory, interceptors...)
+}
+
+// Create returns a builder for creating a CronJobHistory entity.
+func (c *CronJobHistoryClient) Create() *CronJobHistoryCreate {
+	mutation := newCronJobHistoryMutation(c.config, OpCreate)
+	return &CronJobHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CronJobHistory entities.
+func (c *CronJobHistoryClient) CreateBulk(builders ...*CronJobHistoryCreate) *CronJobHistoryCreateBulk {
+	return &CronJobHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CronJobHistoryClient) MapCreateBulk(slice any, setFunc func(*CronJobHistoryCreate, int)) *CronJobHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CronJobHistoryCreateBulk{err: fmt.Errorf("calling to CronJobHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CronJobHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CronJobHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CronJobHistory.
+func (c *CronJobHistoryClient) Update() *CronJobHistoryUpdate {
+	mutation := newCronJobHistoryMutation(c.config, OpUpdate)
+	return &CronJobHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CronJobHistoryClient) UpdateOne(_m *CronJobHistory) *CronJobHistoryUpdateOne {
+	mutation := newCronJobHistoryMutation(c.config, OpUpdateOne, withCronJobHistory(_m))
+	return &CronJobHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CronJobHistoryClient) UpdateOneID(id uuid.UUID) *CronJobHistoryUpdateOne {
+	mutation := newCronJobHistoryMutation(c.config, OpUpdateOne, withCronJobHistoryID(id))
+	return &CronJobHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CronJobHistory.
+func (c *CronJobHistoryClient) Delete() *CronJobHistoryDelete {
+	mutation := newCronJobHistoryMutation(c.config, OpDelete)
+	return &CronJobHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CronJobHistoryClient) DeleteOne(_m *CronJobHistory) *CronJobHistoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CronJobHistoryClient) DeleteOneID(id uuid.UUID) *CronJobHistoryDeleteOne {
+	builder := c.Delete().Where(cronjobhistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CronJobHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for CronJobHistory.
+func (c *CronJobHistoryClient) Query() *CronJobHistoryQuery {
+	return &CronJobHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCronJobHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CronJobHistory entity by its id.
+func (c *CronJobHistoryClient) Get(ctx context.Context, id uuid.UUID) (*CronJobHistory, error) {
+	return c.Query().Where(cronjobhistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CronJobHistoryClient) GetX(ctx context.Context, id uuid.UUID) *CronJobHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CronJobHistoryClient) Hooks() []Hook {
+	return c.hooks.CronJobHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *CronJobHistoryClient) Interceptors() []Interceptor {
+	return c.inters.CronJobHistory
+}
+
+func (c *CronJobHistoryClient) mutate(ctx context.Context, m *CronJobHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CronJobHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CronJobHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CronJobHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CronJobHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CronJobHistory mutation op: %q", m.Op())
 	}
 }
 
@@ -2099,14 +2397,282 @@ func (c *SkillClient) mutate(ctx context.Context, m *SkillMutation) (Value, erro
 	}
 }
 
+// WorkflowRunClient is a client for the WorkflowRun schema.
+type WorkflowRunClient struct {
+	config
+}
+
+// NewWorkflowRunClient returns a client for the WorkflowRun from the given config.
+func NewWorkflowRunClient(c config) *WorkflowRunClient {
+	return &WorkflowRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `workflowrun.Hooks(f(g(h())))`.
+func (c *WorkflowRunClient) Use(hooks ...Hook) {
+	c.hooks.WorkflowRun = append(c.hooks.WorkflowRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `workflowrun.Intercept(f(g(h())))`.
+func (c *WorkflowRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.WorkflowRun = append(c.inters.WorkflowRun, interceptors...)
+}
+
+// Create returns a builder for creating a WorkflowRun entity.
+func (c *WorkflowRunClient) Create() *WorkflowRunCreate {
+	mutation := newWorkflowRunMutation(c.config, OpCreate)
+	return &WorkflowRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of WorkflowRun entities.
+func (c *WorkflowRunClient) CreateBulk(builders ...*WorkflowRunCreate) *WorkflowRunCreateBulk {
+	return &WorkflowRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *WorkflowRunClient) MapCreateBulk(slice any, setFunc func(*WorkflowRunCreate, int)) *WorkflowRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &WorkflowRunCreateBulk{err: fmt.Errorf("calling to WorkflowRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*WorkflowRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &WorkflowRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for WorkflowRun.
+func (c *WorkflowRunClient) Update() *WorkflowRunUpdate {
+	mutation := newWorkflowRunMutation(c.config, OpUpdate)
+	return &WorkflowRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *WorkflowRunClient) UpdateOne(_m *WorkflowRun) *WorkflowRunUpdateOne {
+	mutation := newWorkflowRunMutation(c.config, OpUpdateOne, withWorkflowRun(_m))
+	return &WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *WorkflowRunClient) UpdateOneID(id uuid.UUID) *WorkflowRunUpdateOne {
+	mutation := newWorkflowRunMutation(c.config, OpUpdateOne, withWorkflowRunID(id))
+	return &WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for WorkflowRun.
+func (c *WorkflowRunClient) Delete() *WorkflowRunDelete {
+	mutation := newWorkflowRunMutation(c.config, OpDelete)
+	return &WorkflowRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *WorkflowRunClient) DeleteOne(_m *WorkflowRun) *WorkflowRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *WorkflowRunClient) DeleteOneID(id uuid.UUID) *WorkflowRunDeleteOne {
+	builder := c.Delete().Where(workflowrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &WorkflowRunDeleteOne{builder}
+}
+
+// Query returns a query builder for WorkflowRun.
+func (c *WorkflowRunClient) Query() *WorkflowRunQuery {
+	return &WorkflowRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWorkflowRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a WorkflowRun entity by its id.
+func (c *WorkflowRunClient) Get(ctx context.Context, id uuid.UUID) (*WorkflowRun, error) {
+	return c.Query().Where(workflowrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *WorkflowRunClient) GetX(ctx context.Context, id uuid.UUID) *WorkflowRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *WorkflowRunClient) Hooks() []Hook {
+	return c.hooks.WorkflowRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *WorkflowRunClient) Interceptors() []Interceptor {
+	return c.inters.WorkflowRun
+}
+
+func (c *WorkflowRunClient) mutate(ctx context.Context, m *WorkflowRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&WorkflowRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&WorkflowRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&WorkflowRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&WorkflowRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown WorkflowRun mutation op: %q", m.Op())
+	}
+}
+
+// WorkflowStepRunClient is a client for the WorkflowStepRun schema.
+type WorkflowStepRunClient struct {
+	config
+}
+
+// NewWorkflowStepRunClient returns a client for the WorkflowStepRun from the given config.
+func NewWorkflowStepRunClient(c config) *WorkflowStepRunClient {
+	return &WorkflowStepRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `workflowsteprun.Hooks(f(g(h())))`.
+func (c *WorkflowStepRunClient) Use(hooks ...Hook) {
+	c.hooks.WorkflowStepRun = append(c.hooks.WorkflowStepRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `workflowsteprun.Intercept(f(g(h())))`.
+func (c *WorkflowStepRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.WorkflowStepRun = append(c.inters.WorkflowStepRun, interceptors...)
+}
+
+// Create returns a builder for creating a WorkflowStepRun entity.
+func (c *WorkflowStepRunClient) Create() *WorkflowStepRunCreate {
+	mutation := newWorkflowStepRunMutation(c.config, OpCreate)
+	return &WorkflowStepRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of WorkflowStepRun entities.
+func (c *WorkflowStepRunClient) CreateBulk(builders ...*WorkflowStepRunCreate) *WorkflowStepRunCreateBulk {
+	return &WorkflowStepRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *WorkflowStepRunClient) MapCreateBulk(slice any, setFunc func(*WorkflowStepRunCreate, int)) *WorkflowStepRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &WorkflowStepRunCreateBulk{err: fmt.Errorf("calling to WorkflowStepRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*WorkflowStepRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &WorkflowStepRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for WorkflowStepRun.
+func (c *WorkflowStepRunClient) Update() *WorkflowStepRunUpdate {
+	mutation := newWorkflowStepRunMutation(c.config, OpUpdate)
+	return &WorkflowStepRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *WorkflowStepRunClient) UpdateOne(_m *WorkflowStepRun) *WorkflowStepRunUpdateOne {
+	mutation := newWorkflowStepRunMutation(c.config, OpUpdateOne, withWorkflowStepRun(_m))
+	return &WorkflowStepRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *WorkflowStepRunClient) UpdateOneID(id uuid.UUID) *WorkflowStepRunUpdateOne {
+	mutation := newWorkflowStepRunMutation(c.config, OpUpdateOne, withWorkflowStepRunID(id))
+	return &WorkflowStepRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for WorkflowStepRun.
+func (c *WorkflowStepRunClient) Delete() *WorkflowStepRunDelete {
+	mutation := newWorkflowStepRunMutation(c.config, OpDelete)
+	return &WorkflowStepRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *WorkflowStepRunClient) DeleteOne(_m *WorkflowStepRun) *WorkflowStepRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *WorkflowStepRunClient) DeleteOneID(id uuid.UUID) *WorkflowStepRunDeleteOne {
+	builder := c.Delete().Where(workflowsteprun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &WorkflowStepRunDeleteOne{builder}
+}
+
+// Query returns a query builder for WorkflowStepRun.
+func (c *WorkflowStepRunClient) Query() *WorkflowStepRunQuery {
+	return &WorkflowStepRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWorkflowStepRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a WorkflowStepRun entity by its id.
+func (c *WorkflowStepRunClient) Get(ctx context.Context, id uuid.UUID) (*WorkflowStepRun, error) {
+	return c.Query().Where(workflowsteprun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *WorkflowStepRunClient) GetX(ctx context.Context, id uuid.UUID) *WorkflowStepRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *WorkflowStepRunClient) Hooks() []Hook {
+	return c.hooks.WorkflowStepRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *WorkflowStepRunClient) Interceptors() []Interceptor {
+	return c.inters.WorkflowStepRun
+}
+
+func (c *WorkflowStepRunClient) mutate(ctx context.Context, m *WorkflowStepRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&WorkflowStepRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&WorkflowStepRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&WorkflowStepRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&WorkflowStepRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown WorkflowStepRun mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, ConfigProfile, ExternalRef, Key, Knowledge, Learning, Message,
-		Observation, PaymentTx, Reflection, Secret, Session, Skill []ent.Hook
+		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Key, Knowledge,
+		Learning, Message, Observation, PaymentTx, Reflection, Secret, Session, Skill,
+		WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
-		AuditLog, ConfigProfile, ExternalRef, Key, Knowledge, Learning, Message,
-		Observation, PaymentTx, Reflection, Secret, Session, Skill []ent.Interceptor
+		AuditLog, ConfigProfile, CronJob, CronJobHistory, ExternalRef, Key, Knowledge,
+		Learning, Message, Observation, PaymentTx, Reflection, Secret, Session, Skill,
+		WorkflowRun, WorkflowStepRun []ent.Interceptor
 	}
 )

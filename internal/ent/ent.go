@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/langowarny/lango/internal/ent/auditlog"
 	"github.com/langowarny/lango/internal/ent/configprofile"
+	"github.com/langowarny/lango/internal/ent/cronjob"
+	"github.com/langowarny/lango/internal/ent/cronjobhistory"
 	"github.com/langowarny/lango/internal/ent/externalref"
 	"github.com/langowarny/lango/internal/ent/key"
 	"github.com/langowarny/lango/internal/ent/knowledge"
@@ -25,6 +27,8 @@ import (
 	"github.com/langowarny/lango/internal/ent/secret"
 	"github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/ent/skill"
+	"github.com/langowarny/lango/internal/ent/workflowrun"
+	"github.com/langowarny/lango/internal/ent/workflowsteprun"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -85,19 +89,23 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:      auditlog.ValidColumn,
-			configprofile.Table: configprofile.ValidColumn,
-			externalref.Table:   externalref.ValidColumn,
-			key.Table:           key.ValidColumn,
-			knowledge.Table:     knowledge.ValidColumn,
-			learning.Table:      learning.ValidColumn,
-			message.Table:       message.ValidColumn,
-			observation.Table:   observation.ValidColumn,
-			paymenttx.Table:     paymenttx.ValidColumn,
-			reflection.Table:    reflection.ValidColumn,
-			secret.Table:        secret.ValidColumn,
-			session.Table:       session.ValidColumn,
-			skill.Table:         skill.ValidColumn,
+			auditlog.Table:        auditlog.ValidColumn,
+			configprofile.Table:   configprofile.ValidColumn,
+			cronjob.Table:         cronjob.ValidColumn,
+			cronjobhistory.Table:  cronjobhistory.ValidColumn,
+			externalref.Table:     externalref.ValidColumn,
+			key.Table:             key.ValidColumn,
+			knowledge.Table:       knowledge.ValidColumn,
+			learning.Table:        learning.ValidColumn,
+			message.Table:         message.ValidColumn,
+			observation.Table:     observation.ValidColumn,
+			paymenttx.Table:       paymenttx.ValidColumn,
+			reflection.Table:      reflection.ValidColumn,
+			secret.Table:          secret.ValidColumn,
+			session.Table:         session.ValidColumn,
+			skill.Table:           skill.ValidColumn,
+			workflowrun.Table:     workflowrun.ValidColumn,
+			workflowsteprun.Table: workflowsteprun.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

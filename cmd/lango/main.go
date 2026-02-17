@@ -15,12 +15,14 @@ import (
 	"github.com/langowarny/lango/internal/app"
 	"github.com/langowarny/lango/internal/bootstrap"
 	cliagent "github.com/langowarny/lango/internal/cli/agent"
+	clicron "github.com/langowarny/lango/internal/cli/cron"
 	"github.com/langowarny/lango/internal/cli/doctor"
 	cligraph "github.com/langowarny/lango/internal/cli/graph"
-	clipayment "github.com/langowarny/lango/internal/cli/payment"
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
+	clipayment "github.com/langowarny/lango/internal/cli/payment"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
+	cliworkflow "github.com/langowarny/lango/internal/cli/workflow"
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/configstore"
 	"github.com/langowarny/lango/internal/logging"
@@ -71,6 +73,12 @@ func main() {
 		return boot.Config, nil
 	}))
 	rootCmd.AddCommand(clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}))
+	rootCmd.AddCommand(clicron.NewCronCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}))
+	rootCmd.AddCommand(cliworkflow.NewWorkflowCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	}))
 

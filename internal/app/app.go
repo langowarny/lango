@@ -15,6 +15,7 @@ import (
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/logging"
 	"github.com/langowarny/lango/internal/security"
+	"github.com/langowarny/lango/internal/session"
 	"github.com/langowarny/lango/internal/tools/browser"
 	"github.com/langowarny/lango/internal/tools/filesystem"
 )
@@ -226,6 +227,35 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Errorw("failed to initialize channels", "error", err)
 	}
 
+	// 11. Cron Scheduling (optional)
+	app.CronScheduler = initCron(cfg, store, app)
+
+	// 12. Background Tasks (optional)
+	app.BackgroundManager = initBackground(cfg, app)
+
+	// 13. Workflow Engine (optional)
+	app.WorkflowEngine = initWorkflow(cfg, store, app)
+
+	// 14. Wire memory compaction (optional)
+	if mc != nil && mc.buffer != nil {
+		if entStore, ok := store.(*session.EntStore); ok {
+			mc.buffer.SetCompactor(entStore.CompactMessages)
+			logger().Info("observational memory compaction wired")
+		}
+	}
+
+	// 15. Wire gateway turn callbacks for buffer triggers
+	if app.MemoryBuffer != nil {
+		app.Gateway.OnTurnComplete(func(sessionKey string) {
+			app.MemoryBuffer.Trigger(sessionKey)
+		})
+	}
+	if app.AnalysisBuffer != nil {
+		app.Gateway.OnTurnComplete(func(sessionKey string) {
+			app.AnalysisBuffer.Trigger(sessionKey)
+		})
+	}
+
 	return app, nil
 }
 
@@ -265,6 +295,15 @@ func (a *App) Start(ctx context.Context) error {
 		logger().Info("conversation analysis buffer started")
 	}
 
+	// Start cron scheduler if enabled
+	if a.CronScheduler != nil {
+		if err := a.CronScheduler.Start(ctx); err != nil {
+			logger().Errorw("cron scheduler start error", "error", err)
+		} else {
+			logger().Info("cron scheduler started")
+		}
+	}
+
 	logger().Info("starting channels...")
 	for _, ch := range a.Channels {
 		a.wg.Add(1)
@@ -282,6 +321,12 @@ func (a *App) Start(ctx context.Context) error {
 // Stop stops the application services and waits for all goroutines to exit.
 func (a *App) Stop(ctx context.Context) error {
 	logger().Info("stopping application")
+
+	// Stop cron scheduler
+	if a.CronScheduler != nil {
+		a.CronScheduler.Stop()
+		logger().Info("cron scheduler stopped")
+	}
 
 	// Signal gateway and channels to stop
 	if err := a.Gateway.Shutdown(ctx); err != nil {

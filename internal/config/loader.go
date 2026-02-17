@@ -89,6 +89,24 @@ func DefaultConfig() *Config {
 				MaxAutoPayAmount: "0.50",
 			},
 		},
+		Cron: CronConfig{
+			Enabled:            false,
+			Timezone:           "UTC",
+			MaxConcurrentJobs:  5,
+			DefaultSessionMode: "isolated",
+			HistoryRetention:   "720h",
+		},
+		Background: BackgroundConfig{
+			Enabled:            false,
+			YieldMs:            30000,
+			MaxConcurrentTasks: 3,
+		},
+		Workflow: WorkflowConfig{
+			Enabled:            false,
+			MaxConcurrentSteps: 4,
+			DefaultTimeout:     10 * time.Minute,
+			StateDir:           "~/.lango/workflows/",
+		},
 	}
 }
 
@@ -133,6 +151,18 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("payment.limits.autoApproveBelow", defaults.Payment.Limits.AutoApproveBelow)
 	v.SetDefault("payment.x402.autoIntercept", defaults.Payment.X402.AutoIntercept)
 	v.SetDefault("payment.x402.maxAutoPayAmount", defaults.Payment.X402.MaxAutoPayAmount)
+	v.SetDefault("cron.enabled", defaults.Cron.Enabled)
+	v.SetDefault("cron.timezone", defaults.Cron.Timezone)
+	v.SetDefault("cron.maxConcurrentJobs", defaults.Cron.MaxConcurrentJobs)
+	v.SetDefault("cron.defaultSessionMode", defaults.Cron.DefaultSessionMode)
+	v.SetDefault("cron.historyRetention", defaults.Cron.HistoryRetention)
+	v.SetDefault("background.enabled", defaults.Background.Enabled)
+	v.SetDefault("background.yieldMs", defaults.Background.YieldMs)
+	v.SetDefault("background.maxConcurrentTasks", defaults.Background.MaxConcurrentTasks)
+	v.SetDefault("workflow.enabled", defaults.Workflow.Enabled)
+	v.SetDefault("workflow.maxConcurrentSteps", defaults.Workflow.MaxConcurrentSteps)
+	v.SetDefault("workflow.defaultTimeout", defaults.Workflow.DefaultTimeout)
+	v.SetDefault("workflow.stateDir", defaults.Workflow.StateDir)
 
 	// Configure viper
 	v.SetConfigType("json")

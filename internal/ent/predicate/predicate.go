@@ -12,6 +12,12 @@ type AuditLog func(*sql.Selector)
 // ConfigProfile is the predicate function for configprofile builders.
 type ConfigProfile func(*sql.Selector)
 
+// CronJob is the predicate function for cronjob builders.
+type CronJob func(*sql.Selector)
+
+// CronJobHistory is the predicate function for cronjobhistory builders.
+type CronJobHistory func(*sql.Selector)
+
 // ExternalRef is the predicate function for externalref builders.
 type ExternalRef func(*sql.Selector)
 
@@ -44,3 +50,9 @@ type Session func(*sql.Selector)
 
 // Skill is the predicate function for skill builders.
 type Skill func(*sql.Selector)
+
+// WorkflowRun is the predicate function for workflowrun builders.
+type WorkflowRun func(*sql.Selector)
+
+// WorkflowStepRun is the predicate function for workflowsteprun builders.
+type WorkflowStepRun func(*sql.Selector)

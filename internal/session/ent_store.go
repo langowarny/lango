@@ -401,6 +401,66 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 	return nil
 }
 
+// CompactMessages replaces messages up to (and including) upToIndex with a
+// single summary message. This achieves compaction: the original messages are
+// removed and replaced by a condensed version, preserving recent context.
+func (s *EntStore) CompactMessages(key string, upToIndex int, summary string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ctx := context.Background()
+
+	// Get session
+	entSession, err := s.client.Session.
+		Query().
+		Where(entsession.Key(key)).
+		Only(ctx)
+	if err != nil {
+		return fmt.Errorf("get session %q: %w", key, err)
+	}
+
+	// Get ordered messages to identify which ones to compact
+	messages, err := s.client.Message.
+		Query().
+		Where(message.HasSessionWith(entsession.Key(key))).
+		Order(message.ByTimestamp()).
+		All(ctx)
+	if err != nil {
+		return fmt.Errorf("list messages: %w", err)
+	}
+
+	if upToIndex >= len(messages) || upToIndex < 0 {
+		return fmt.Errorf("compact index %d out of range (have %d messages)", upToIndex, len(messages))
+	}
+
+	// Collect IDs of messages to delete (0..upToIndex inclusive)
+	toDelete := make([]int, 0, upToIndex+1)
+	for i := 0; i <= upToIndex; i++ {
+		toDelete = append(toDelete, messages[i].ID)
+	}
+
+	// Delete old messages in batch
+	_, err = s.client.Message.Delete().
+		Where(message.IDIn(toDelete...)).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("delete compacted messages: %w", err)
+	}
+
+	// Insert summary message at the beginning (with early timestamp)
+	_, err = s.client.Message.Create().
+		SetSession(entSession).
+		SetRole("system").
+		SetContent("[Compacted Summary]\n" + summary).
+		SetTimestamp(time.Now().Add(-24 * time.Hour)). // ensure it sorts before recent messages
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("create summary message: %w", err)
+	}
+
+	return nil
+}
+
 // Close closes the ent client and underlying database connection.
 // When the client was provided externally via NewEntStoreWithClient, only the
 // ent client is closed; the raw DB connection is managed by the caller.

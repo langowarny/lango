@@ -33,6 +33,30 @@ func (f ConfigProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigProfileMutation", m)
 }
 
+// The CronJobFunc type is an adapter to allow the use of ordinary
+// function as CronJob mutator.
+type CronJobFunc func(context.Context, *ent.CronJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CronJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CronJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CronJobMutation", m)
+}
+
+// The CronJobHistoryFunc type is an adapter to allow the use of ordinary
+// function as CronJobHistory mutator.
+type CronJobHistoryFunc func(context.Context, *ent.CronJobHistoryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CronJobHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CronJobHistoryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CronJobHistoryMutation", m)
+}
+
 // The ExternalRefFunc type is an adapter to allow the use of ordinary
 // function as ExternalRef mutator.
 type ExternalRefFunc func(context.Context, *ent.ExternalRefMutation) (ent.Value, error)
@@ -163,6 +187,30 @@ func (f SkillFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SkillMutation", m)
+}
+
+// The WorkflowRunFunc type is an adapter to allow the use of ordinary
+// function as WorkflowRun mutator.
+type WorkflowRunFunc func(context.Context, *ent.WorkflowRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f WorkflowRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.WorkflowRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.WorkflowRunMutation", m)
+}
+
+// The WorkflowStepRunFunc type is an adapter to allow the use of ordinary
+// function as WorkflowStepRun mutator.
+type WorkflowStepRunFunc func(context.Context, *ent.WorkflowStepRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f WorkflowStepRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.WorkflowStepRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.WorkflowStepRunMutation", m)
 }
 
 // Condition is a hook condition function.

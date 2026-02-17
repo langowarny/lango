@@ -16,6 +16,10 @@ type Tx struct {
 	AuditLog *AuditLogClient
 	// ConfigProfile is the client for interacting with the ConfigProfile builders.
 	ConfigProfile *ConfigProfileClient
+	// CronJob is the client for interacting with the CronJob builders.
+	CronJob *CronJobClient
+	// CronJobHistory is the client for interacting with the CronJobHistory builders.
+	CronJobHistory *CronJobHistoryClient
 	// ExternalRef is the client for interacting with the ExternalRef builders.
 	ExternalRef *ExternalRefClient
 	// Key is the client for interacting with the Key builders.
@@ -38,6 +42,10 @@ type Tx struct {
 	Session *SessionClient
 	// Skill is the client for interacting with the Skill builders.
 	Skill *SkillClient
+	// WorkflowRun is the client for interacting with the WorkflowRun builders.
+	WorkflowRun *WorkflowRunClient
+	// WorkflowStepRun is the client for interacting with the WorkflowStepRun builders.
+	WorkflowStepRun *WorkflowStepRunClient
 
 	// lazily loaded.
 	client     *Client
@@ -171,6 +179,8 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.ConfigProfile = NewConfigProfileClient(tx.config)
+	tx.CronJob = NewCronJobClient(tx.config)
+	tx.CronJobHistory = NewCronJobHistoryClient(tx.config)
 	tx.ExternalRef = NewExternalRefClient(tx.config)
 	tx.Key = NewKeyClient(tx.config)
 	tx.Knowledge = NewKnowledgeClient(tx.config)
@@ -182,6 +192,8 @@ func (tx *Tx) init() {
 	tx.Secret = NewSecretClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
 	tx.Skill = NewSkillClient(tx.config)
+	tx.WorkflowRun = NewWorkflowRunClient(tx.config)
+	tx.WorkflowStepRun = NewWorkflowStepRunClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

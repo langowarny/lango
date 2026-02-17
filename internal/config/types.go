@@ -46,8 +46,62 @@ type Config struct {
 	// Payment configuration (blockchain micropayments)
 	Payment PaymentConfig `mapstructure:"payment" json:"payment"`
 
+	// Cron scheduling configuration
+	Cron CronConfig `mapstructure:"cron" json:"cron"`
+
+	// Background task execution configuration
+	Background BackgroundConfig `mapstructure:"background" json:"background"`
+
+	// Workflow engine configuration
+	Workflow WorkflowConfig `mapstructure:"workflow" json:"workflow"`
+
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+}
+
+// CronConfig defines cron scheduling settings.
+type CronConfig struct {
+	// Enable the cron scheduling system.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Default timezone for cron schedules (e.g. "Asia/Seoul").
+	Timezone string `mapstructure:"timezone" json:"timezone"`
+
+	// Maximum number of concurrently executing jobs.
+	MaxConcurrentJobs int `mapstructure:"maxConcurrentJobs" json:"maxConcurrentJobs"`
+
+	// Default session mode for jobs: "isolated" or "main".
+	DefaultSessionMode string `mapstructure:"defaultSessionMode" json:"defaultSessionMode"`
+
+	// How long to retain job execution history (e.g. "30d", "720h").
+	HistoryRetention string `mapstructure:"historyRetention" json:"historyRetention"`
+}
+
+// BackgroundConfig defines background task execution settings.
+type BackgroundConfig struct {
+	// Enable the background task system.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Time in milliseconds before an agent turn is auto-yielded to background.
+	YieldMs int `mapstructure:"yieldMs" json:"yieldMs"`
+
+	// Maximum number of concurrently running background tasks.
+	MaxConcurrentTasks int `mapstructure:"maxConcurrentTasks" json:"maxConcurrentTasks"`
+}
+
+// WorkflowConfig defines workflow engine settings.
+type WorkflowConfig struct {
+	// Enable the workflow engine.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Maximum number of concurrently executing workflow steps.
+	MaxConcurrentSteps int `mapstructure:"maxConcurrentSteps" json:"maxConcurrentSteps"`
+
+	// Default timeout for a single workflow step (e.g. "10m").
+	DefaultTimeout time.Duration `mapstructure:"defaultTimeout" json:"defaultTimeout"`
+
+	// Directory to store workflow state for resume capability.
+	StateDir string `mapstructure:"stateDir" json:"stateDir"`
 }
 
 // KnowledgeConfig defines self-learning knowledge system settings
