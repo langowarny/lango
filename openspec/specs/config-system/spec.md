@@ -63,6 +63,11 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 - `tools.filesystem.maxReadSize`: `1048576` (1MB)
 - `tools.browser.headless`: `true`
 - `tools.browser.sessionTimeout`: `5m`
+- `librarian.enabled`: `false`
+- `librarian.observationThreshold`: `2`
+- `librarian.inquiryCooldownTurns`: `3`
+- `librarian.maxPendingInquiries`: `2`
+- `librarian.autoSaveConfidence`: `"high"`
 
 #### Scenario: Missing optional field
 - **WHEN** a configuration field is not specified
@@ -72,6 +77,10 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 #### Scenario: Minimal configuration startup
 - **WHEN** config contains only `agent.provider`, one provider entry with `type` and `apiKey`, and one channel with `enabled: true` and token
 - **THEN** the application SHALL start successfully with all defaults applied
+
+#### Scenario: Librarian defaults applied
+- **WHEN** the `librarian` section is omitted from configuration
+- **THEN** the system SHALL apply default values: enabled=false, observationThreshold=2, inquiryCooldownTurns=3, maxPendingInquiries=2, autoSaveConfidence="high"
 
 ### Requirement: Runtime configuration updates
 The system SHALL support reloading configuration without full restart.
@@ -191,23 +200,34 @@ The substituteEnvVars function SHALL expand `${VAR}` patterns in `payment.networ
 - **THEN** the environment variable value is substituted
 
 ### Requirement: Cron configuration
-The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string).
+The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string), defaultDeliverTo ([]string).
 
 #### Scenario: Default cron config
 - **WHEN** no cron config is specified
-- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h"
+- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h", defaultDeliverTo=nil
 
 ### Requirement: Background configuration
-The config system SHALL support a `background` section with fields: enabled (bool), yieldMs (int), maxConcurrentTasks (int).
+The config system SHALL support a `background` section with fields: enabled (bool), yieldMs (int), maxConcurrentTasks (int), defaultDeliverTo ([]string).
 
 #### Scenario: Default background config
 - **WHEN** no background config is specified
-- **THEN** defaults SHALL be: enabled=false, yieldMs=30000, maxConcurrentTasks=3
+- **THEN** defaults SHALL be: enabled=false, yieldMs=30000, maxConcurrentTasks=3, defaultDeliverTo=nil
 
 ### Requirement: Workflow configuration
-The config system SHALL support a `workflow` section with fields: enabled (bool), maxConcurrentSteps (int), defaultTimeout (duration string), stateDir (string).
+The config system SHALL support a `workflow` section with fields: enabled (bool), maxConcurrentSteps (int), defaultTimeout (duration string), stateDir (string), defaultDeliverTo ([]string).
 
 #### Scenario: Default workflow config
 - **WHEN** no workflow config is specified
-- **THEN** defaults SHALL be: enabled=false, maxConcurrentSteps=4, defaultTimeout="10m", stateDir="~/.lango/workflows/"
+- **THEN** defaults SHALL be: enabled=false, maxConcurrentSteps=4, defaultTimeout="10m", stateDir="~/.lango/workflows/", defaultDeliverTo=nil
+
+### Requirement: Automation config DefaultDeliverTo fields
+CronConfig, BackgroundConfig, and WorkflowConfig SHALL each include a `DefaultDeliverTo []string` field with mapstructure tag "defaultDeliverTo". The config loader SHALL register viper defaults for all three fields.
+
+#### Scenario: Default config values
+- **WHEN** the application starts with no explicit defaultDeliverTo configuration
+- **THEN** the DefaultDeliverTo fields SHALL default to nil (empty slice)
+
+#### Scenario: Config file specifies defaults
+- **WHEN** the config file sets cron.defaultDeliverTo to ["telegram"]
+- **THEN** the loaded CronConfig.DefaultDeliverTo SHALL contain ["telegram"]
 

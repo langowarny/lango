@@ -242,6 +242,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Cron.DefaultSessionMode = val
 		case "cron_history_retention":
 			s.Current.Cron.HistoryRetention = val
+		case "cron_default_deliver":
+			s.Current.Cron.DefaultDeliverTo = splitCSV(val)
 
 		// Background
 		case "bg_enabled":
@@ -254,6 +256,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Background.MaxConcurrentTasks = i
 			}
+		case "bg_default_deliver":
+			s.Current.Background.DefaultDeliverTo = splitCSV(val)
 
 		// Workflow
 		case "wf_enabled":
@@ -268,6 +272,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 		case "wf_state_dir":
 			s.Current.Workflow.StateDir = val
+		case "wf_default_deliver":
+			s.Current.Workflow.DefaultDeliverTo = splitCSV(val)
 
 		// Payment
 		case "payment_enabled":
@@ -292,6 +298,28 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Payment.X402.AutoIntercept = f.Checked
 		case "payment_x402_max":
 			s.Current.Payment.X402.MaxAutoPayAmount = val
+
+		// Librarian
+		case "lib_enabled":
+			s.Current.Librarian.Enabled = f.Checked
+		case "lib_obs_threshold":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Librarian.ObservationThreshold = i
+			}
+		case "lib_cooldown":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Librarian.InquiryCooldownTurns = i
+			}
+		case "lib_max_inquiries":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Librarian.MaxPendingInquiries = i
+			}
+		case "lib_auto_save":
+			s.Current.Librarian.AutoSaveConfidence = val
+		case "lib_provider":
+			s.Current.Librarian.Provider = val
+		case "lib_model":
+			s.Current.Librarian.Model = val
 		}
 	}
 }

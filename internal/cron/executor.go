@@ -81,6 +81,11 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 				"error", deliverErr,
 			)
 		}
+	} else if len(job.DeliverTo) == 0 {
+		e.logger.Warnw("cron job completed but no delivery channel configured",
+			"job", job.Name,
+			"hint", "set deliver_to in cron_add or configure cron.defaultDeliverTo in settings",
+		)
 	}
 
 	if err != nil {

@@ -81,6 +81,9 @@ type CronConfig struct {
 
 	// How long to retain job execution history (e.g. "30d", "720h").
 	HistoryRetention string `mapstructure:"historyRetention" json:"historyRetention"`
+
+	// Default delivery channels when deliver_to is not specified (e.g. ["telegram"]).
+	DefaultDeliverTo []string `mapstructure:"defaultDeliverTo" json:"defaultDeliverTo"`
 }
 
 // BackgroundConfig defines background task execution settings.
@@ -93,6 +96,9 @@ type BackgroundConfig struct {
 
 	// Maximum number of concurrently running background tasks.
 	MaxConcurrentTasks int `mapstructure:"maxConcurrentTasks" json:"maxConcurrentTasks"`
+
+	// Default delivery channels when channel is not specified (e.g. ["telegram"]).
+	DefaultDeliverTo []string `mapstructure:"defaultDeliverTo" json:"defaultDeliverTo"`
 }
 
 // WorkflowConfig defines workflow engine settings.
@@ -108,6 +114,9 @@ type WorkflowConfig struct {
 
 	// Directory to store workflow state for resume capability.
 	StateDir string `mapstructure:"stateDir" json:"stateDir"`
+
+	// Default delivery channels when deliver_to is not specified (e.g. ["telegram"]).
+	DefaultDeliverTo []string `mapstructure:"defaultDeliverTo" json:"defaultDeliverTo"`
 }
 
 // LibrarianConfig defines proactive knowledge librarian settings.

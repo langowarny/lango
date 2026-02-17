@@ -181,6 +181,11 @@ func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 				e.logger.Warnw("deliver workflow result", "target", target, "error", sendErr)
 			}
 		}
+	} else if runErr == nil && len(w.DeliverTo) == 0 {
+		e.logger.Warnw("workflow completed but no delivery channel configured",
+			"workflow", w.Name,
+			"hint", "set deliver_to in YAML or configure workflow.defaultDeliverTo in settings",
+		)
 	}
 
 	completedAt := time.Now()

@@ -26,16 +26,17 @@ The settings editor SHALL support editing all configuration sections previously 
 17. **Cron Scheduler** — Enabled, timezone, max concurrent jobs, session mode, history retention
 18. **Background Tasks** — Enabled, yield time, max concurrent tasks
 19. **Workflow Engine** — Enabled, max concurrent steps, default timeout, state directory
+20. **Librarian** — Enabled, observation threshold, inquiry cooldown, max inquiries, auto-save confidence, provider, model
 
 ### User Interface
-- Menu-based navigation with 21 categories (19 sections + Save & Exit + Cancel)
+- Menu-based navigation with 22 categories (20 sections + Save & Exit + Cancel)
 - Free navigation between categories
 - Uses shared `tuicore.FormModel` for all forms
 - Provider and OIDC provider list views for managing collections
 
 #### Scenario: Menu categories
 - **WHEN** user launches `lango settings`
-- **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Save & Exit, Cancel
+- **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, Save & Exit, Cancel
 
 ### Skill configuration form
 The settings editor SHALL provide a Skill configuration form with the following fields:
@@ -57,6 +58,7 @@ The settings editor SHALL provide a Cron Scheduler configuration form with the f
 - **Max Concurrent Jobs** (`cron_max_jobs`) — Integer input
 - **Session Mode** (`cron_session_mode`) — Select: isolated, main
 - **History Retention** (`cron_history_retention`) — Text input for retention duration
+- **Default Deliver To** (`cron_default_deliver`) — Text input, comma-separated channel names
 
 #### Scenario: Edit cron settings
 - **WHEN** user selects "Cron Scheduler" from the settings menu
@@ -67,6 +69,7 @@ The settings editor SHALL provide a Background Tasks configuration form with the
 - **Enabled** (`bg_enabled`) — Boolean toggle
 - **Yield Time (ms)** (`bg_yield_ms`) — Integer input
 - **Max Concurrent Tasks** (`bg_max_tasks`) — Integer input
+- **Default Deliver To** (`bg_default_deliver`) — Text input, comma-separated channel names
 
 #### Scenario: Edit background settings
 - **WHEN** user selects "Background Tasks" from the settings menu
@@ -78,10 +81,48 @@ The settings editor SHALL provide a Workflow Engine configuration form with the 
 - **Max Concurrent Steps** (`wf_max_steps`) — Integer input
 - **Default Timeout** (`wf_timeout`) — Text input for duration (e.g., "10m")
 - **State Directory** (`wf_state_dir`) — Text input for directory path
+- **Default Deliver To** (`wf_default_deliver`) — Text input, comma-separated channel names
 
 #### Scenario: Edit workflow settings
 - **WHEN** user selects "Workflow Engine" from the settings menu
 - **THEN** the editor SHALL display a form with all workflow fields pre-populated from `config.Workflow`
+
+### Requirement: Librarian configuration form
+The settings editor SHALL provide a Librarian configuration form with the following fields:
+- **Enabled** (`lib_enabled`) — Boolean toggle for enabling the proactive librarian system
+- **Observation Threshold** (`lib_obs_threshold`) — Integer input (positive) for minimum observation count to trigger analysis
+- **Inquiry Cooldown Turns** (`lib_cooldown`) — Integer input (non-negative) for turns between inquiries per session
+- **Max Pending Inquiries** (`lib_max_inquiries`) — Integer input (non-negative) for maximum pending inquiries per session
+- **Auto-Save Confidence** (`lib_auto_save`) — Select input with options: "high", "medium", "low"
+- **Provider** (`lib_provider`) — Select input with "" (empty = agent default) + registered providers
+- **Model** (`lib_model`) — Text input for model ID
+
+#### Scenario: Edit librarian settings
+- **WHEN** user selects "Librarian" from the settings menu
+- **THEN** the editor SHALL display a form with all 7 fields pre-populated from `config.Librarian`
+
+#### Scenario: Save librarian settings
+- **WHEN** user edits librarian fields and navigates back (Esc)
+- **THEN** the config state SHALL be updated with the new values via `UpdateConfigFromForm()`
+
+### Requirement: Settings forms for default delivery channels
+The Cron, Background, and Workflow settings forms SHALL each include a "Default Deliver To" text input field that accepts comma-separated channel names. The state update handler SHALL map these fields to the respective config DefaultDeliverTo slices using the splitCSV helper.
+
+#### Scenario: Cron default deliver field
+- **WHEN** the user opens the Cron Scheduler settings form
+- **THEN** the form SHALL display a "Default Deliver To" field with placeholder "telegram,discord,slack (comma-separated)"
+
+#### Scenario: Background default deliver field
+- **WHEN** the user opens the Background Tasks settings form
+- **THEN** the form SHALL display a "Default Deliver To" field with placeholder "telegram,discord,slack (comma-separated)"
+
+#### Scenario: Workflow default deliver field
+- **WHEN** the user opens the Workflow Engine settings form
+- **THEN** the form SHALL display a "Default Deliver To" field with placeholder "telegram,discord,slack (comma-separated)"
+
+#### Scenario: State update mapping
+- **WHEN** the user enters "telegram,discord" in the cron default deliver field
+- **THEN** the config state SHALL update Cron.DefaultDeliverTo to ["telegram", "discord"]
 
 ### Command
 ```

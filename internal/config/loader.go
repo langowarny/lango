@@ -110,6 +110,13 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		Librarian: LibrarianConfig{
+			Enabled:              false,
+			ObservationThreshold: 2,
+			InquiryCooldownTurns: 3,
+			MaxPendingInquiries:  2,
+			AutoSaveConfidence:   "high",
+		},
 	}
 }
 
@@ -159,13 +166,21 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("cron.maxConcurrentJobs", defaults.Cron.MaxConcurrentJobs)
 	v.SetDefault("cron.defaultSessionMode", defaults.Cron.DefaultSessionMode)
 	v.SetDefault("cron.historyRetention", defaults.Cron.HistoryRetention)
+	v.SetDefault("cron.defaultDeliverTo", defaults.Cron.DefaultDeliverTo)
 	v.SetDefault("background.enabled", defaults.Background.Enabled)
 	v.SetDefault("background.yieldMs", defaults.Background.YieldMs)
 	v.SetDefault("background.maxConcurrentTasks", defaults.Background.MaxConcurrentTasks)
+	v.SetDefault("background.defaultDeliverTo", defaults.Background.DefaultDeliverTo)
 	v.SetDefault("workflow.enabled", defaults.Workflow.Enabled)
 	v.SetDefault("workflow.maxConcurrentSteps", defaults.Workflow.MaxConcurrentSteps)
 	v.SetDefault("workflow.defaultTimeout", defaults.Workflow.DefaultTimeout)
 	v.SetDefault("workflow.stateDir", defaults.Workflow.StateDir)
+	v.SetDefault("workflow.defaultDeliverTo", defaults.Workflow.DefaultDeliverTo)
+	v.SetDefault("librarian.enabled", defaults.Librarian.Enabled)
+	v.SetDefault("librarian.observationThreshold", defaults.Librarian.ObservationThreshold)
+	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
+	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
+	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
 
 	// Configure viper
 	v.SetConfigType("json")

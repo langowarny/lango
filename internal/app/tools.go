@@ -905,8 +905,25 @@ func buildSecretsTools(secretsStore *security.SecretsStore, refs *security.RefSt
 	}
 }
 
+// detectChannelFromContext extracts the channel name from the session key in context.
+// Returns "" if no known channel prefix is found.
+func detectChannelFromContext(ctx context.Context) string {
+	sessionKey := session.SessionKeyFromContext(ctx)
+	if sessionKey == "" {
+		return ""
+	}
+	parts := strings.SplitN(sessionKey, ":", 2)
+	ch := parts[0]
+	switch ch {
+	case "telegram", "discord", "slack":
+		return ch
+	default:
+		return ""
+	}
+}
+
 // buildCronTools creates tools for managing scheduled cron jobs.
-func buildCronTools(scheduler *cronpkg.Scheduler) []*agent.Tool {
+func buildCronTools(scheduler *cronpkg.Scheduler, defaultDeliverTo []string) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "cron_add",
@@ -945,6 +962,18 @@ func buildCronTools(scheduler *cronpkg.Scheduler) []*agent.Tool {
 							deliverTo = append(deliverTo, s)
 						}
 					}
+				}
+
+				// Auto-detect channel from session context.
+				if len(deliverTo) == 0 {
+					if ch := detectChannelFromContext(ctx); ch != "" {
+						deliverTo = []string{ch}
+					}
+				}
+				// Fall back to config default.
+				if len(deliverTo) == 0 && len(defaultDeliverTo) > 0 {
+					deliverTo = make([]string, len(defaultDeliverTo))
+					copy(deliverTo, defaultDeliverTo)
 				}
 
 				job := cronpkg.Job{
@@ -1085,7 +1114,7 @@ func buildCronTools(scheduler *cronpkg.Scheduler) []*agent.Tool {
 }
 
 // buildBackgroundTools creates tools for managing background tasks.
-func buildBackgroundTools(mgr *background.Manager) []*agent.Tool {
+func buildBackgroundTools(mgr *background.Manager, defaultDeliverTo []string) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "bg_submit",
@@ -1105,6 +1134,16 @@ func buildBackgroundTools(mgr *background.Manager) []*agent.Tool {
 					return nil, fmt.Errorf("missing prompt parameter")
 				}
 				channel, _ := params["channel"].(string)
+
+				// Auto-detect channel from session context.
+				if channel == "" {
+					channel = detectChannelFromContext(ctx)
+				}
+				// Fall back to config default.
+				if channel == "" && len(defaultDeliverTo) > 0 {
+					channel = defaultDeliverTo[0]
+				}
+
 				sessionKey := session.SessionKeyFromContext(ctx)
 
 				taskID, err := mgr.Submit(ctx, prompt, background.Origin{
@@ -1206,7 +1245,7 @@ func buildBackgroundTools(mgr *background.Manager) []*agent.Tool {
 }
 
 // buildWorkflowTools creates tools for executing and managing workflows.
-func buildWorkflowTools(engine *workflow.Engine, stateDir string) []*agent.Tool {
+func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliverTo []string) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "workflow_run",
@@ -1236,6 +1275,18 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string) []*agent.Tool 
 				}
 				if err != nil {
 					return nil, fmt.Errorf("parse workflow: %w", err)
+				}
+
+				// Auto-detect delivery channel from session context.
+				if len(w.DeliverTo) == 0 {
+					if ch := detectChannelFromContext(ctx); ch != "" {
+						w.DeliverTo = []string{ch}
+					}
+				}
+				// Fall back to config default.
+				if len(w.DeliverTo) == 0 && len(defaultDeliverTo) > 0 {
+					w.DeliverTo = make([]string, len(defaultDeliverTo))
+					copy(w.DeliverTo, defaultDeliverTo)
 				}
 
 				result, err := engine.Run(ctx, w)

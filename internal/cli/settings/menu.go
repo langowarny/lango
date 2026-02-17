@@ -46,6 +46,7 @@ func NewMenuModel() MenuModel {
 			{"cron", "Cron Scheduler", "Scheduled jobs, timezone, history"},
 			{"background", "Background Tasks", "Async tasks, concurrency limits"},
 			{"workflow", "Workflow Engine", "DAG workflows, timeouts, state"},
+			{"librarian", "Librarian", "Proactive knowledge extraction, inquiries"},
 			{"save", "Save & Exit", "Save encrypted profile"},
 			{"cancel", "Cancel", "Exit without saving"},
 		},

@@ -31,7 +31,10 @@ func (n *Notification) Notify(ctx context.Context, task *Task) error {
 	snap := task.Snapshot()
 
 	if snap.OriginChannel == "" {
-		n.logger.Debugw("skip notification: no origin channel", "taskID", snap.ID)
+		n.logger.Warnw("skip notification: no origin channel",
+			"taskID", snap.ID,
+			"hint", "set channel in bg_submit or configure background.defaultDeliverTo in settings",
+		)
 		return nil
 	}
 

@@ -703,6 +703,12 @@ func NewCronForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "30d or 720h",
 	})
 
+	form.AddField(&tuicore.Field{
+		Key: "cron_default_deliver", Label: "Default Deliver To", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.Cron.DefaultDeliverTo, ","),
+		Placeholder: "telegram,discord,slack (comma-separated)",
+	})
+
 	return &form
 }
 
@@ -723,6 +729,12 @@ func NewBackgroundForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "bg_max_tasks", Label: "Max Concurrent Tasks", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Background.MaxConcurrentTasks),
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "bg_default_deliver", Label: "Default Deliver To", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.Background.DefaultDeliverTo, ","),
+		Placeholder: "telegram,discord,slack (comma-separated)",
 	})
 
 	return &form
@@ -752,6 +764,76 @@ func NewWorkflowForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "wf_state_dir", Label: "State Directory", Type: tuicore.InputText,
 		Value:       cfg.Workflow.StateDir,
 		Placeholder: "~/.lango/workflows",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "wf_default_deliver", Label: "Default Deliver To", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.Workflow.DefaultDeliverTo, ","),
+		Placeholder: "telegram,discord,slack (comma-separated)",
+	})
+
+	return &form
+}
+
+// NewLibrarianForm creates the Librarian configuration form.
+func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Librarian Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Librarian.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_obs_threshold", Label: "Observation Threshold", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Librarian.ObservationThreshold),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_cooldown", Label: "Inquiry Cooldown Turns", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Librarian.InquiryCooldownTurns),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_max_inquiries", Label: "Max Pending Inquiries", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Librarian.MaxPendingInquiries),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_auto_save", Label: "Auto-Save Confidence", Type: tuicore.InputSelect,
+		Value:   cfg.Librarian.AutoSaveConfidence,
+		Options: []string{"high", "medium", "low"},
+	})
+
+	libProviderOpts := append([]string{""}, buildProviderOptions(cfg)...)
+	form.AddField(&tuicore.Field{
+		Key: "lib_provider", Label: "Provider", Type: tuicore.InputSelect,
+		Value:   cfg.Librarian.Provider,
+		Options: libProviderOpts,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "lib_model", Label: "Model", Type: tuicore.InputText,
+		Value:       cfg.Librarian.Model,
+		Placeholder: "leave empty for agent default",
 	})
 
 	return &form

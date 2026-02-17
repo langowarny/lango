@@ -201,21 +201,21 @@ func New(boot *bootstrap.Result) (*App, error) {
 	// 5j. Cron Scheduling (optional) — initialized before agent so tools get approval-wrapped.
 	app.CronScheduler = initCron(cfg, store, app)
 	if app.CronScheduler != nil {
-		tools = append(tools, buildCronTools(app.CronScheduler)...)
+		tools = append(tools, buildCronTools(app.CronScheduler, cfg.Cron.DefaultDeliverTo)...)
 		logger().Info("cron tools registered")
 	}
 
 	// 5k. Background Tasks (optional)
 	app.BackgroundManager = initBackground(cfg, app)
 	if app.BackgroundManager != nil {
-		tools = append(tools, buildBackgroundTools(app.BackgroundManager)...)
+		tools = append(tools, buildBackgroundTools(app.BackgroundManager, cfg.Background.DefaultDeliverTo)...)
 		logger().Info("background tools registered")
 	}
 
 	// 5l. Workflow Engine (optional)
 	app.WorkflowEngine = initWorkflow(cfg, store, app)
 	if app.WorkflowEngine != nil {
-		tools = append(tools, buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir)...)
+		tools = append(tools, buildWorkflowTools(app.WorkflowEngine, cfg.Workflow.StateDir, cfg.Workflow.DefaultDeliverTo)...)
 		logger().Info("workflow tools registered")
 	}
 

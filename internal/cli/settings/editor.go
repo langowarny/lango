@@ -276,6 +276,10 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewWorkflowForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "librarian":
+		e.activeForm = NewLibrarianForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "auth":
 		e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
 		e.step = StepAuthProvidersList
