@@ -52,6 +52,9 @@ type App struct {
 	EmbeddingBuffer *embedding.EmbeddingBuffer
 	RAGService      *embedding.RAGService
 
+	// Conversation Analysis Components (optional)
+	AnalysisBuffer *learning.AnalysisBuffer
+
 	// Graph Components (optional)
 	GraphStore  graph.Store
 	GraphBuffer *graph.GraphBuffer

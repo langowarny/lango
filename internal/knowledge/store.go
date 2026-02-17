@@ -358,7 +358,10 @@ func (s *Store) SearchLearningEntities(ctx context.Context, errorPattern string,
 }
 
 // BoostLearningConfidence increments success count and recalculates confidence.
-func (s *Store) BoostLearningConfidence(ctx context.Context, id uuid.UUID, successDelta int) error {
+// When confidenceBoost > 0, it is added directly to the current confidence (for
+// fractional graph propagation). When 0, the existing success/occurrence ratio is used.
+// Confidence is always clamped to [0.1, 1.0].
+func (s *Store) BoostLearningConfidence(ctx context.Context, id uuid.UUID, successDelta int, confidenceBoost float64) error {
 	l, err := s.client.Learning.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get learning: %w", err)
@@ -366,9 +369,19 @@ func (s *Store) BoostLearningConfidence(ctx context.Context, id uuid.UUID, succe
 
 	newSuccess := l.SuccessCount + successDelta
 	newOccurrence := l.OccurrenceCount + 1
-	newConfidence := float64(newSuccess) / float64(newSuccess+newOccurrence)
+
+	var newConfidence float64
+	if confidenceBoost > 0 {
+		newConfidence = l.Confidence + confidenceBoost
+	} else {
+		newConfidence = float64(newSuccess) / float64(newSuccess+newOccurrence)
+	}
+
 	if newConfidence < 0.1 {
 		newConfidence = 0.1
+	}
+	if newConfidence > 1.0 {
+		newConfidence = 1.0
 	}
 
 	_, err = l.Update().

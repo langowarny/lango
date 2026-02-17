@@ -75,3 +75,24 @@ If neither `ProviderID` nor `Provider = "local"` is set, the embedding system SH
 - Given `embedding.providerID` is set to a valid key in the providers map, then the backend type and API key are resolved from that provider entry
 - Given `embedding.provider` is set to `"local"`, then the backend type is `"local"` with no API key
 - Given both `embedding.providerID` and `embedding.provider` are empty, then the embedding system is disabled
+
+### REQ-EMB-012: MaxDistance Filtering
+The system SHALL support a MaxDistance configuration (default 0.0 = disabled). When enabled, vector search results with distance exceeding MaxDistance SHALL be excluded from RAG context.
+
+**Scenarios:**
+- Given MaxDistance is set to 0.5 and a search result has distance 0.7, then that result SHALL be excluded from the returned results
+- Given MaxDistance is 0.0 (default), then all results SHALL be returned regardless of distance (backward compatible)
+
+### REQ-EMB-013: Session-Scoped Metadata Filtering
+The system SHALL support filtering vector search results by metadata key-value pairs, enabling session-scoped retrieval.
+
+**Scenarios:**
+- Given a RAG query includes a session key, then results SHALL be filtered to include only entries matching that session's metadata
+- Given a RAG query has no session key, then all results SHALL be returned without metadata filtering (backward compatible)
+
+### REQ-EMB-014: VectorStore Search Options
+The VectorStore.Search method SHALL accept an optional `*SearchOptions` parameter for metadata filtering. Nil means no filtering.
+
+**Scenarios:**
+- Given Search is called with nil SearchOptions, then behavior SHALL be identical to the current implementation
+- Given Search is called with MetadataFilter containing key-value pairs, then results SHALL be post-filtered to match all specified metadata pairs, with 3x over-fetch to compensate

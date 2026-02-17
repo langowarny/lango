@@ -300,6 +300,68 @@ func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervis
 	}
 }
 
+// initConversationAnalysis creates the conversation analysis pipeline if both
+// knowledge and observational memory are enabled.
+func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents) *learning.AnalysisBuffer {
+	if kc == nil {
+		return nil
+	}
+	if !cfg.ObservationalMemory.Enabled {
+		return nil
+	}
+
+	// Create LLM proxy reusing the observational memory provider/model.
+	omProvider := cfg.ObservationalMemory.Provider
+	if omProvider == "" {
+		omProvider = cfg.Agent.Provider
+	}
+	omModel := cfg.ObservationalMemory.Model
+	if omModel == "" {
+		omModel = cfg.Agent.Model
+	}
+
+	proxy := supervisor.NewProviderProxy(sv, omProvider, omModel)
+	generator := &providerTextGenerator{proxy: proxy}
+
+	aLogger := logger()
+
+	analyzer := learning.NewConversationAnalyzer(generator, kc.store, aLogger)
+	learner := learning.NewSessionLearner(generator, kc.store, aLogger)
+
+	// Wire graph callbacks if graph store is available.
+	if gc != nil && gc.buffer != nil {
+		graphCB := func(triples []graph.Triple) {
+			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+		}
+		analyzer.SetGraphCallback(graphCB)
+		learner.SetGraphCallback(graphCB)
+	}
+
+	// Message provider.
+	getMessages := func(sessionKey string) ([]session.Message, error) {
+		sess, err := store.Get(sessionKey)
+		if err != nil {
+			return nil, err
+		}
+		if sess == nil {
+			return nil, nil
+		}
+		return sess.History, nil
+	}
+
+	turnThreshold := cfg.Knowledge.AnalysisTurnThreshold
+	tokenThreshold := cfg.Knowledge.AnalysisTokenThreshold
+
+	buf := learning.NewAnalysisBuffer(analyzer, learner, getMessages, turnThreshold, tokenThreshold, aLogger)
+
+	logger().Infow("conversation analysis initialized",
+		"turnThreshold", turnThreshold,
+		"tokenThreshold", tokenThreshold,
+	)
+
+	return buf
+}
+
 // graphComponents holds optional graph store components.
 type graphComponents struct {
 	store      graph.Store
@@ -519,6 +581,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
+				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
@@ -542,6 +605,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			ragOpts := embedding.RetrieveOptions{
 				Limit:       cfg.Embedding.RAG.MaxResults,
 				Collections: cfg.Embedding.RAG.Collections,
+				MaxDistance:  cfg.Embedding.RAG.MaxDistance,
 			}
 			if ragOpts.Limit <= 0 {
 				ragOpts.Limit = 5
@@ -730,6 +794,7 @@ func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts gra
 		Collections: opts.Collections,
 		Limit:       opts.Limit,
 		SessionKey:  opts.SessionKey,
+		MaxDistance:  opts.MaxDistance,
 	}
 
 	results, err := a.inner.Retrieve(ctx, query, embOpts)

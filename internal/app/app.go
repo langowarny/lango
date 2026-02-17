@@ -148,6 +148,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 		initGraphRAG(cfg, gc, ec)
 	}
 
+	// 5d''. Conversation Analysis (optional)
+	ab := initConversationAnalysis(cfg, sv, store, kc, gc)
+	if ab != nil {
+		app.AnalysisBuffer = ab
+	}
+
 	// 5e. Graph tools (optional)
 	if gc != nil {
 		tools = append(tools, buildGraphTools(gc.store)...)
@@ -245,6 +251,12 @@ func (a *App) Start(ctx context.Context) error {
 		logger().Info("graph buffer started")
 	}
 
+	// Start analysis buffer if enabled
+	if a.AnalysisBuffer != nil {
+		a.AnalysisBuffer.Start(&a.wg)
+		logger().Info("conversation analysis buffer started")
+	}
+
 	logger().Info("starting channels...")
 	for _, ch := range a.Channels {
 		a.wg.Add(1)
@@ -282,6 +294,12 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.EmbeddingBuffer != nil {
 		a.EmbeddingBuffer.Stop()
 		logger().Info("embedding buffer stopped")
+	}
+
+	// Stop analysis buffer
+	if a.AnalysisBuffer != nil {
+		a.AnalysisBuffer.Stop()
+		logger().Info("conversation analysis buffer stopped")
 	}
 
 	// Stop graph buffer

@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -25,6 +26,7 @@ type GraphBuffer struct {
 
 	batchSize    int
 	batchTimeout time.Duration
+	dropCount    atomic.Int64
 	logger       *zap.SugaredLogger
 }
 
@@ -57,8 +59,15 @@ func (b *GraphBuffer) Enqueue(req GraphRequest) {
 	select {
 	case b.queue <- req:
 	default:
-		b.logger.Debugw("graph queue full, dropping request", "triples", len(req.Triples))
+		b.dropCount.Add(1)
+		b.logger.Warnw("graph queue full, dropping request",
+			"triples", len(req.Triples), "totalDropped", b.dropCount.Load())
 	}
+}
+
+// DroppedCount returns the total number of dropped graph requests.
+func (b *GraphBuffer) DroppedCount() int64 {
+	return b.dropCount.Load()
 }
 
 // Stop signals the background goroutine to drain and exit.

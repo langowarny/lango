@@ -132,7 +132,7 @@ func (e *Engine) handleSuccess(ctx context.Context, toolName string) {
 	}
 
 	for _, entity := range entities {
-		if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1); boostErr != nil {
+		if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1, 0.0); boostErr != nil {
 			e.logger.Warnw("boost learning confidence:", "error", boostErr)
 		}
 	}

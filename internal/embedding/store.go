@@ -22,12 +22,19 @@ type SearchResult struct {
 	Metadata   map[string]string
 }
 
+// SearchOptions configures optional vector search filtering.
+type SearchOptions struct {
+	// MetadataFilter post-filters results by metadata key-value pairs.
+	MetadataFilter map[string]string
+}
+
 // VectorStore provides vector storage and similarity search.
 type VectorStore interface {
 	// Upsert inserts or replaces vector records.
 	Upsert(ctx context.Context, records []VectorRecord) error
 	// Search finds the most similar vectors in a collection.
-	Search(ctx context.Context, collection string, query []float32, limit int) ([]SearchResult, error)
+	// Pass nil for opts to use default behavior (no filtering).
+	Search(ctx context.Context, collection string, query []float32, limit int, opts *SearchOptions) ([]SearchResult, error)
 	// Delete removes vectors by collection and source IDs.
 	Delete(ctx context.Context, collection string, ids []string) error
 	// Close releases any resources held by the store.

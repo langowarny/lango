@@ -198,6 +198,10 @@ func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, 
 		Collections: m.ragOpts.Collections,
 		Limit:       m.ragOpts.Limit,
 		SessionKey:  m.ragOpts.SessionKey,
+		MaxDistance:  m.ragOpts.MaxDistance,
+	}
+	if m.sessionKey != "" {
+		opts.SessionKey = m.sessionKey
 	}
 	result, err := m.graphRAG.Retrieve(ctx, query, opts)
 	if err != nil {
@@ -209,7 +213,11 @@ func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, 
 
 // assembleRAGSection builds a "Semantic Context" section from RAG retrieval results.
 func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query string) string {
-	results, err := m.ragService.Retrieve(ctx, query, m.ragOpts)
+	opts := m.ragOpts
+	if m.sessionKey != "" {
+		opts.SessionKey = m.sessionKey
+	}
+	results, err := m.ragService.Retrieve(ctx, query, opts)
 	if err != nil {
 		m.logger.Warnw("rag retrieval error", "error", err)
 		return ""

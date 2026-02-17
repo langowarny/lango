@@ -66,6 +66,12 @@ type KnowledgeConfig struct {
 
 	// Maximum new skills per day
 	MaxSkillsPerDay int `mapstructure:"maxSkillsPerDay" json:"maxSkillsPerDay"`
+
+	// AnalysisTurnThreshold is the number of new turns before triggering conversation analysis (default: 10).
+	AnalysisTurnThreshold int `mapstructure:"analysisTurnThreshold" json:"analysisTurnThreshold"`
+
+	// AnalysisTokenThreshold is the token count before triggering conversation analysis (default: 2000).
+	AnalysisTokenThreshold int `mapstructure:"analysisTokenThreshold" json:"analysisTokenThreshold"`
 }
 
 // ObservationalMemoryConfig defines Observational Memory settings
@@ -129,6 +135,8 @@ type RAGConfig struct {
 	MaxResults int `mapstructure:"maxResults" json:"maxResults"`
 	// Collections to search (empty means all).
 	Collections []string `mapstructure:"collections" json:"collections"`
+	// MaxDistance is the maximum cosine distance for RAG results (0.0 = disabled).
+	MaxDistance float32 `mapstructure:"maxDistance" json:"maxDistance"`
 }
 
 // AuthConfig defines authentication settings

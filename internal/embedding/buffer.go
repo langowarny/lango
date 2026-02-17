@@ -3,6 +3,7 @@ package embedding
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -29,6 +30,7 @@ type EmbeddingBuffer struct {
 
 	batchSize    int
 	batchTimeout time.Duration
+	dropCount    atomic.Int64
 	logger       *zap.SugaredLogger
 }
 
@@ -66,8 +68,15 @@ func (b *EmbeddingBuffer) Enqueue(req EmbedRequest) {
 	select {
 	case b.queue <- req:
 	default:
-		b.logger.Debugw("embedding queue full, dropping request", "id", req.ID, "collection", req.Collection)
+		b.dropCount.Add(1)
+		b.logger.Warnw("embedding queue full, dropping request",
+			"id", req.ID, "collection", req.Collection, "totalDropped", b.dropCount.Load())
 	}
+}
+
+// DroppedCount returns the total number of dropped embed requests.
+func (b *EmbeddingBuffer) DroppedCount() int64 {
+	return b.dropCount.Load()
 }
 
 // Stop signals the background goroutine to drain and exit.

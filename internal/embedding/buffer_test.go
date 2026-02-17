@@ -45,7 +45,7 @@ func (s *mockStore) Upsert(_ context.Context, recs []VectorRecord) error {
 	return nil
 }
 
-func (s *mockStore) Search(_ context.Context, _ string, _ []float32, _ int) ([]SearchResult, error) {
+func (s *mockStore) Search(_ context.Context, _ string, _ []float32, _ int, _ *SearchOptions) ([]SearchResult, error) {
 	return nil, nil
 }
 

@@ -99,9 +99,15 @@ func (s *SQLiteVecStore) Upsert(ctx context.Context, records []VectorRecord) err
 }
 
 // Search finds the most similar vectors in a collection.
-func (s *SQLiteVecStore) Search(ctx context.Context, collection string, query []float32, limit int) ([]SearchResult, error) {
+// When opts is non-nil and MetadataFilter is set, over-fetches by 3x and post-filters.
+func (s *SQLiteVecStore) Search(ctx context.Context, collection string, query []float32, limit int, opts *SearchOptions) ([]SearchResult, error) {
 	if limit <= 0 {
 		limit = 5
+	}
+
+	fetchLimit := limit
+	if opts != nil && len(opts.MetadataFilter) > 0 {
+		fetchLimit = limit * 3
 	}
 
 	serialized, err := sqlite_vec.SerializeFloat32(query)
@@ -115,7 +121,7 @@ func (s *SQLiteVecStore) Search(ctx context.Context, collection string, query []
 		 WHERE embedding MATCH ? AND collection = ?
 		 ORDER BY distance
 		 LIMIT ?`,
-		serialized, collection, limit,
+		serialized, collection, fetchLimit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search vec_embeddings: %w", err)
@@ -139,7 +145,41 @@ func (s *SQLiteVecStore) Search(ctx context.Context, collection string, query []
 
 		results = append(results, r)
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Post-filter by metadata if options specified.
+	if opts != nil && len(opts.MetadataFilter) > 0 {
+		results = filterByMetadata(results, opts.MetadataFilter)
+	}
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results, nil
+}
+
+// filterByMetadata returns only results whose metadata matches all filter key-value pairs.
+func filterByMetadata(results []SearchResult, filter map[string]string) []SearchResult {
+	filtered := make([]SearchResult, 0, len(results))
+	for _, r := range results {
+		if matchesMetadata(r.Metadata, filter) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// matchesMetadata returns true if metadata contains all filter key-value pairs.
+func matchesMetadata(metadata, filter map[string]string) bool {
+	for k, v := range filter {
+		if metadata[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // Delete removes vectors by collection and source IDs.

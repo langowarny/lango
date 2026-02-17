@@ -138,12 +138,9 @@ func (e *GraphEngine) propagateSuccess(ctx context.Context, toolName string) {
 				continue
 			}
 			for _, entity := range entities {
-				// Apply propagation rate to confidence boost.
-				delta := int(float64(1) * e.propagation)
-				if delta < 1 {
-					delta = 1
-				}
-				if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, delta); boostErr != nil {
+				// Apply propagation rate as fractional confidence boost (e.g., 0.1 * 0.3 = 0.03).
+				confidenceBoost := 0.1 * e.propagation
+				if boostErr := e.store.BoostLearningConfidence(ctx, entity.ID, 1, confidenceBoost); boostErr != nil {
 					e.logger.Debugw("propagate confidence", "error", boostErr)
 				}
 			}

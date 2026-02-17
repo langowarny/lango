@@ -32,3 +32,10 @@ The ContextAwareModelAdapter SHALL inject Graph RAG results into the system prom
 #### Scenario: Graph RAG section in system prompt
 - **WHEN** a query triggers RAG retrieval with graph enabled
 - **THEN** the system prompt SHALL include both "Semantic Context (RAG)" and "Graph-Expanded Context" sections
+
+### Requirement: VectorRetrieveOptions supports MaxDistance
+VectorRetrieveOptions SHALL include a MaxDistance field that is passed through to the underlying vector retrieval.
+
+#### Scenario: MaxDistance passed to vector retriever
+- **WHEN** Graph RAG retrieval is invoked with MaxDistance set
+- **THEN** the MaxDistance value SHALL be forwarded to the VectorRetriever's RetrieveOptions

@@ -445,7 +445,7 @@ func TestBoostLearningConfidence(t *testing.T) {
 		initialSuccess := entities[0].SuccessCount
 		initialOccurrence := entities[0].OccurrenceCount
 
-		if err := store.BoostLearningConfidence(ctx, id, 1); err != nil {
+		if err := store.BoostLearningConfidence(ctx, id, 1, 0.0); err != nil {
 			t.Fatalf("BoostLearningConfidence: %v", err)
 		}
 
@@ -482,7 +482,7 @@ func TestBoostLearningConfidence(t *testing.T) {
 		id := entities[0].ID
 
 		// Boost with negative success delta to push confidence down
-		if err := store.BoostLearningConfidence(ctx, id, -100); err != nil {
+		if err := store.BoostLearningConfidence(ctx, id, -100, 0.0); err != nil {
 			t.Fatalf("BoostLearningConfidence: %v", err)
 		}
 
