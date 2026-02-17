@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: Executor, Researcher, Planner, and MemoryManager. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, planner, and chronicler. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (Executor, Researcher, Planner, and MemoryManager)
+- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, planner, chronicler)
 
 #### Scenario: Orchestrator has no direct tools
 - **WHEN** the orchestrator is created
@@ -17,20 +17,35 @@ The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that crea
 - **THEN** the system SHALL create a single flat agent with all tools
 
 ### Requirement: Tool partitioning by prefix
-Tools SHALL be partitioned to sub-agents based on name prefixes: `exec/fs_/browser_/crypto_/skill_/payment_` → Executor, `search_/rag_/graph_/save_knowledge/save_learning` → Researcher, `memory_/observe_/reflect_` → MemoryManager, unmatched → Executor.
+Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, unmatched → Unmatched bucket (not assigned to any agent).
 
-#### Scenario: Graph tools routed to Researcher
-- **WHEN** tools named `graph_traverse` and `graph_query` are registered
-- **THEN** they SHALL be assigned to the Researcher sub-agent
+#### Scenario: Operator gets shell, file, and skill tools
+- **WHEN** tools named `exec_shell`, `fs_read`, `skill_deploy` are registered
+- **THEN** they SHALL be assigned to the operator sub-agent
 
-#### Scenario: Unmatched tools default to Executor
+#### Scenario: Navigator gets browser tools
+- **WHEN** tools named `browser_navigate`, `browser_screenshot` are registered
+- **THEN** they SHALL be assigned to the navigator sub-agent
+
+#### Scenario: Vault gets crypto, secrets, and payment tools
+- **WHEN** tools named `crypto_sign`, `secrets_get`, `payment_send` are registered
+- **THEN** they SHALL be assigned to the vault sub-agent
+
+#### Scenario: Librarian gets search, RAG, graph, and skill management tools
+- **WHEN** tools named `search_web`, `rag_query`, `graph_traverse`, `save_knowledge_item`, `create_skill_x`, `list_skills` are registered
+- **THEN** they SHALL be assigned to the librarian sub-agent
+
+#### Scenario: Chronicler gets memory tools
+- **WHEN** tools named `memory_store`, `observe_event`, `reflect_summary` are registered
+- **THEN** they SHALL be assigned to the chronicler sub-agent
+
+#### Scenario: Unmatched tools tracked separately
 - **WHEN** a tool with an unrecognized prefix is present
-- **THEN** it SHALL be assigned to the Executor sub-agent
+- **THEN** it SHALL be placed in the Unmatched bucket and NOT assigned to any sub-agent
 
-#### Scenario: Payment tools routed to Executor
-- **WHEN** tools with prefix `payment_` are registered
-- **THEN** they SHALL be assigned to the Executor sub-agent
-- **AND** the capabilityMap SHALL describe them as "blockchain payments (USDC on Base)"
+#### Scenario: Librarian prefix priority over operator
+- **WHEN** tools like `save_knowledge_data` or `create_skill_new` are registered
+- **THEN** they SHALL match librarian prefixes before reaching operator matching
 
 ### Requirement: Graph, RAG, and Memory agent tools
 The system SHALL provide dedicated tools for sub-agents: `graph_traverse`, `graph_query` (graph store), `rag_retrieve` (RAG service), `memory_list_observations`, `memory_list_reflections` (memory store).
@@ -59,12 +74,16 @@ The orchestrator SHALL accept remote A2A agents and append them to its sub-agent
 - **THEN** the agent SHALL be skipped with a warning log, and the orchestrator SHALL continue with local sub-agents
 
 ### Requirement: Capability-based sub-agent descriptions
-Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capability summaries instead of raw tool names. A `capabilityMap` SHALL map tool name prefixes to natural-language descriptions (e.g., `browser_` → "web browsing", `exec` → "command execution"). The `capabilityDescription()` function SHALL deduplicate capabilities across a tool set.
+Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capability summaries instead of raw tool names. The `capabilityMap` SHALL include entries for all tool prefixes including `secrets_`, `create_skill`, and `list_skills`. The `capabilityDescription()` function SHALL deduplicate capabilities across a tool set.
 
-#### Scenario: Executor description uses capabilities
-- **WHEN** the executor sub-agent has tools `exec_shell`, `fs_read`, `browser_navigate`
-- **THEN** its description SHALL contain "command execution, file operations, web browsing"
-- **AND** it SHALL NOT contain raw tool names like "exec_shell" or "browser_navigate"
+#### Scenario: Operator description uses capabilities
+- **WHEN** the operator sub-agent has tools `exec_shell`, `fs_read`
+- **THEN** its description SHALL contain "command execution, file operations"
+- **AND** it SHALL NOT contain raw tool names
+
+#### Scenario: Vault description uses capabilities
+- **WHEN** the vault sub-agent has tools `crypto_sign`, `secrets_get`, `payment_send`
+- **THEN** its description SHALL contain "cryptography, secret management, blockchain payments (USDC on Base)"
 
 #### Scenario: Duplicate capabilities are deduplicated
 - **WHEN** two tools share the same prefix (e.g., `exec_shell` and `exec_run`)
@@ -75,7 +94,7 @@ Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capab
 - **THEN** its capability SHALL be "general actions"
 
 ### Requirement: Orchestrator instruction guides delegation-only execution
-The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL list all valid sub-agent names with exact spelling, explicitly prohibit inventing or abbreviating agent names, and instruct the LLM that it has no tools of its own. The instruction SHALL NOT contain words that could be confused with agent names (e.g., avoid listing action types like "browser" that might be mistaken for an agent name). Sub-agent entries in the instruction SHALL use capability descriptions, not raw tool name lists.
+The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL include a routing table with exact agent names, a decision protocol, and rejection handling. Sub-agent entries SHALL use capability descriptions, not raw tool name lists. The instruction SHALL NOT contain words that could be confused with agent names.
 
 #### Scenario: Tool-requiring task
 - **WHEN** a user requests any task requiring tool execution
@@ -83,11 +102,7 @@ The orchestrator instruction SHALL enforce mandatory delegation for all tool-req
 
 #### Scenario: Agent name exactness
 - **WHEN** the orchestrator delegates to a sub-agent
-- **THEN** it SHALL use the EXACT name (e.g. "executor", NOT "exec", "browser", or any abbreviation)
-
-#### Scenario: Delegation rules by sub-agent role
-- **WHEN** the orchestrator instruction is generated
-- **THEN** it SHALL specify: executor for actions, researcher for information lookup, planner for multi-step planning, memory-manager for memory operations
+- **THEN** it SHALL use the EXACT name (e.g. "operator", NOT "exec", "browser", or any abbreviation)
 
 #### Scenario: Invalid agent name prevention
 - **WHEN** the orchestrator instruction is generated
@@ -127,19 +142,24 @@ The EventsAdapter SHALL use the stored `msg.Author` when available, falling back
 - **THEN** the rootAgentName SHALL be `"lango-agent"` and used for assistant events
 
 ### Requirement: Conditional Sub-Agent Creation
-The `BuildAgentTree` function SHALL only create sub-agents that have tools assigned by `PartitionTools`. The Planner sub-agent SHALL always be created as it is LLM-only.
+The `BuildAgentTree` function SHALL create sub-agents data-driven from the agentSpecs registry. Agents with no tools SHALL be skipped unless AlwaysInclude is set. The planner sub-agent SHALL always be created as it is LLM-only.
 
 #### Scenario: All tool categories have tools
-- **WHEN** tools exist for executor, researcher, and memory-manager roles
-- **THEN** all four sub-agents (executor, researcher, planner, memory-manager) SHALL be created
+- **WHEN** tools exist for operator, navigator, vault, librarian, and chronicler roles
+- **THEN** all six sub-agents (operator, navigator, vault, librarian, planner, chronicler) SHALL be created
 
-#### Scenario: No memory tools assigned
-- **WHEN** no tools match memory prefixes
-- **THEN** the memory-manager sub-agent SHALL NOT be created
+#### Scenario: Partial tools — only operator and librarian
+- **WHEN** only operator and librarian tools are provided
+- **THEN** only operator, librarian, and planner sub-agents SHALL be created
 
 #### Scenario: No tools at all
 - **WHEN** the tool list is empty
 - **THEN** only the planner sub-agent SHALL be created
+
+#### Scenario: Unmatched-only tools
+- **WHEN** all tools have unrecognized prefixes
+- **THEN** only the planner sub-agent SHALL be created
+- **AND** no unmatched tools SHALL be adapted
 
 ### Requirement: Orchestrator Short-Circuit for Simple Queries
 The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, opinions, general knowledge) without delegating to sub-agents.
@@ -160,27 +180,38 @@ The `Config` struct SHALL include a `MaxDelegationRounds` field. The orchestrato
 - **THEN** the default limit of 5 rounds SHALL be used in the orchestrator prompt
 
 ### Requirement: Dynamic Orchestrator Instruction
-The orchestrator instruction SHALL be dynamically generated to list only the sub-agents that were actually created, rather than hardcoding all four agent names.
+The orchestrator instruction SHALL be dynamically generated to list only the sub-agents that were actually created, rather than hardcoding all agent names.
 
-#### Scenario: Only executor and planner created
-- **WHEN** only executor and planner sub-agents are created
-- **THEN** the orchestrator instruction SHALL only mention executor and planner
+#### Scenario: Only operator and planner created
+- **WHEN** only operator and planner sub-agents are created
+- **THEN** the orchestrator instruction SHALL only mention operator and planner
 
 ### Requirement: Sub-Agent Result Reporting
-Each sub-agent instruction SHALL include guidance to report results clearly after completing their task.
+Each sub-agent instruction SHALL include guidance to report results clearly after completing their task, structured with What You Do, Input Format, Output Format, and Constraints sections.
 
-#### Scenario: Executor result reporting
-- **WHEN** the executor sub-agent completes an action
+#### Scenario: Operator result reporting
+- **WHEN** the operator sub-agent completes an action
 - **THEN** its instruction SHALL guide it to provide results clearly
 
-#### Scenario: Researcher result reporting
-- **WHEN** the researcher sub-agent completes research
-- **THEN** its instruction SHALL guide it to summarize findings clearly
+#### Scenario: Librarian result reporting
+- **WHEN** the librarian sub-agent completes research
+- **THEN** its instruction SHALL guide it to organize results clearly
 
 #### Scenario: Planner result reporting
 - **WHEN** the planner sub-agent completes planning
 - **THEN** its instruction SHALL guide it to present the plan for review
 
-#### Scenario: Memory Manager result reporting
-- **WHEN** the memory-manager sub-agent completes memory operations
+#### Scenario: Chronicler result reporting
+- **WHEN** the chronicler sub-agent completes memory operations
 - **THEN** its instruction SHALL guide it to report what was stored or retrieved
+
+### Requirement: RoleToolSet has six roles plus Unmatched
+The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, and Unmatched. Each field is a slice of `*agent.Tool`.
+
+#### Scenario: RoleToolSet structure
+- **WHEN** PartitionTools is called
+- **THEN** it SHALL return a RoleToolSet with seven fields (six roles + Unmatched)
+
+#### Scenario: Planner tools always empty
+- **WHEN** PartitionTools is called with any input
+- **THEN** the Planner field SHALL always be nil/empty

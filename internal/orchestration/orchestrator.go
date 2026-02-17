@@ -2,7 +2,6 @@ package orchestration
 
 import (
 	"fmt"
-	"strings"
 
 	adk_agent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -36,8 +35,8 @@ type Config struct {
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
-// and specialized sub-agents. Sub-agents are only created when they have
-// tools assigned (except Planner which is LLM-only and always included).
+// and specialized sub-agents. Sub-agents are created data-driven from agentSpecs.
+// Agents with no tools are skipped unless AlwaysInclude is set (e.g. Planner).
 func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 	if cfg.AdaptTool == nil {
 		return nil, fmt.Errorf("build agent tree: AdaptTool is required")
@@ -46,123 +45,64 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 	rs := PartitionTools(cfg.Tools)
 
 	var subAgents []adk_agent.Agent
-	var agentDescriptions []string
+	var routingEntries []routingEntry
 
-	// Executor: only if tools are assigned.
-	if len(rs.Executor) > 0 {
-		executorTools, err := adaptTools(cfg.AdaptTool, rs.Executor)
-		if err != nil {
-			return nil, fmt.Errorf("adapt executor tools: %w", err)
+	for _, spec := range agentSpecs {
+		tools := toolsForSpec(spec, rs)
+		if len(tools) == 0 && !spec.AlwaysInclude {
+			continue
 		}
-		caps := capabilityDescription(rs.Executor)
+
+		var adkTools []adk_tool.Tool
+		if len(tools) > 0 {
+			var err error
+			adkTools, err = adaptTools(cfg.AdaptTool, tools)
+			if err != nil {
+				return nil, fmt.Errorf("adapt %s tools: %w", spec.Name, err)
+			}
+		}
+
+		caps := capabilityDescription(tools)
+		desc := spec.Description
+		if caps != "" {
+			desc = fmt.Sprintf("%s. Capabilities: %s", spec.Description, caps)
+		}
+
 		a, err := llmagent.New(llmagent.Config{
-			Name:        "executor",
-			Description: fmt.Sprintf("Executes actions. Capabilities: %s", caps),
+			Name:        spec.Name,
+			Description: desc,
 			Model:       cfg.Model,
-			Tools:       executorTools,
-			Instruction: "You are the Executor agent. Execute tool calls precisely as requested. Report results accurately. After completing the requested action, provide the results clearly. If a tool fails, report the error without retrying unless explicitly asked.",
+			Tools:       adkTools,
+			Instruction: spec.Instruction,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create executor agent: %w", err)
+			return nil, fmt.Errorf("create %s agent: %w", spec.Name, err)
 		}
-		subAgents = append(subAgents, a)
-		agentDescriptions = append(agentDescriptions,
-			fmt.Sprintf("- \"executor\": %s", caps))
-	}
 
-	// Researcher: only if tools are assigned.
-	if len(rs.Researcher) > 0 {
-		researcherTools, err := adaptTools(cfg.AdaptTool, rs.Researcher)
-		if err != nil {
-			return nil, fmt.Errorf("adapt researcher tools: %w", err)
-		}
-		caps := capabilityDescription(rs.Researcher)
-		a, err := llmagent.New(llmagent.Config{
-			Name:        "researcher",
-			Description: fmt.Sprintf("Searches knowledge bases and retrieves relevant information. Capabilities: %s", caps),
-			Model:       cfg.Model,
-			Tools:       researcherTools,
-			Instruction: "You are the Researcher agent. Search and retrieve relevant information from knowledge bases, semantic search, and the knowledge graph. Provide comprehensive, well-organized results. After completing research, summarize your findings clearly.",
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create researcher agent: %w", err)
-		}
 		subAgents = append(subAgents, a)
-		agentDescriptions = append(agentDescriptions,
-			fmt.Sprintf("- \"researcher\": %s", caps))
-	}
-
-	// Planner: always included (LLM-only reasoning agent).
-	{
-		a, err := llmagent.New(llmagent.Config{
-			Name:        "planner",
-			Description: "Decomposes complex tasks into steps and designs execution plans. Has no tools — uses LLM reasoning only.",
-			Model:       cfg.Model,
-			Instruction: "You are the Planner agent. Break complex tasks into clear, actionable steps. Consider dependencies between steps. Output structured plans. After planning, present the plan for review.",
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create planner agent: %w", err)
-		}
-		subAgents = append(subAgents, a)
-		agentDescriptions = append(agentDescriptions,
-			"- \"planner\": task decomposition and planning (no tools, LLM reasoning only)")
-	}
-
-	// Memory Manager: only if memory tools are assigned.
-	if len(rs.MemoryManager) > 0 {
-		memoryTools, err := adaptTools(cfg.AdaptTool, rs.MemoryManager)
-		if err != nil {
-			return nil, fmt.Errorf("adapt memory tools: %w", err)
-		}
-		caps := capabilityDescription(rs.MemoryManager)
-		a, err := llmagent.New(llmagent.Config{
-			Name:        "memory-manager",
-			Description: fmt.Sprintf("Manages conversational memory including observations and reflections. Capabilities: %s", caps),
-			Model:       cfg.Model,
-			Tools:       memoryTools,
-			Instruction: "You are the Memory Manager agent. Manage observations, reflections, and the memory graph. Organize and retrieve relevant past interactions. After completing memory operations, report what was stored or retrieved.",
-		})
-		if err != nil {
-			return nil, fmt.Errorf("create memory agent: %w", err)
-		}
-		subAgents = append(subAgents, a)
-		agentDescriptions = append(agentDescriptions,
-			fmt.Sprintf("- \"memory-manager\": %s", caps))
+		routingEntries = append(routingEntries, buildRoutingEntry(spec, caps))
 	}
 
 	// Append remote A2A agents if configured.
-	subAgents = append(subAgents, cfg.RemoteAgents...)
 	for _, ra := range cfg.RemoteAgents {
-		agentDescriptions = append(agentDescriptions,
-			fmt.Sprintf("- %s: %s (remote A2A agent)", ra.Name(), ra.Description()))
+		subAgents = append(subAgents, ra)
+		routingEntries = append(routingEntries, routingEntry{
+			Name:        ra.Name(),
+			Description: fmt.Sprintf("%s (remote A2A agent)", ra.Description()),
+			Keywords:    nil,
+			Accepts:     "Varies by remote agent capability",
+			Returns:     "Varies by remote agent capability",
+		})
 	}
 
-	// Build orchestrator instruction focused on delegation.
-	// The orchestrator has NO tools — it must delegate all tool-requiring
-	// tasks to the appropriate sub-agent.
 	maxRounds := cfg.MaxDelegationRounds
 	if maxRounds <= 0 {
 		maxRounds = 5
 	}
 
-	orchestratorInstruction := cfg.SystemPrompt + fmt.Sprintf(`
-
-You are the orchestrator. You coordinate specialized sub-agents to fulfill user requests.
-
-## Your Role
-You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropriate sub-agent using transfer_to_agent.
-
-## Available Sub-Agents (use EXACTLY these names)
-%s
-
-## Delegation Rules
-1. For any action that requires tools: delegate to the sub-agent listed above whose description best matches.
-2. For simple conversational messages (greetings, opinions, general knowledge): respond directly without delegation.
-3. Maximum %d delegation rounds per user turn.
-
-## CRITICAL
-- You MUST use the EXACT agent name from the list above (e.g. "executor", NOT "exec", "browser", or any abbreviation).
-- NEVER invent or abbreviate agent names. If unsure, pick the closest match from the list above.`, strings.Join(agentDescriptions, "\n"), maxRounds)
+	orchestratorInstruction := buildOrchestratorInstruction(
+		cfg.SystemPrompt, routingEntries, maxRounds, rs.Unmatched,
+	)
 
 	orchestrator, err := llmagent.New(llmagent.Config{
 		Name:        "lango-orchestrator",
