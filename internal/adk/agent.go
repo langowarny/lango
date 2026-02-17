@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"regexp"
 	"strings"
 
 	"go.uber.org/zap"
@@ -106,7 +107,34 @@ func (a *Agent) Run(ctx context.Context, sessionID string, input string) iter.Se
 }
 
 // RunAndCollect executes the agent and returns the full text response.
+// If the agent encounters a "failed to find agent" error (hallucinated agent
+// name), it sends a correction message and retries once.
 func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (string, error) {
+	resp, err := a.runAndCollectOnce(ctx, sessionID, input)
+	if err == nil {
+		return resp, nil
+	}
+
+	badAgent := extractMissingAgent(err)
+	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+		return "", err
+	}
+
+	// Build correction message and retry once.
+	names := subAgentNames(a.adkAgent)
+	correction := fmt.Sprintf(
+		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
+		badAgent, strings.Join(names, ", "))
+	logger().Warnw("agent name hallucination detected, retrying",
+		"hallucinated", badAgent,
+		"valid_agents", names,
+		"session", sessionID)
+
+	return a.runAndCollectOnce(ctx, sessionID, correction)
+}
+
+// runAndCollectOnce executes a single agent run and collects text output.
+func (a *Agent) runAndCollectOnce(ctx context.Context, sessionID, input string) (string, error) {
 	var b strings.Builder
 
 	for event, err := range a.Run(ctx, sessionID, input) {
@@ -138,6 +166,29 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string) (str
 	}
 
 	return b.String(), nil
+}
+
+// reAgentNotFound matches ADK's "failed to find agent: <name>" error.
+var reAgentNotFound = regexp.MustCompile(`failed to find agent: (\S+)`)
+
+// extractMissingAgent returns the hallucinated agent name from an error,
+// or an empty string if the error does not match the pattern.
+func extractMissingAgent(err error) string {
+	m := reAgentNotFound.FindStringSubmatch(err.Error())
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+// subAgentNames returns the names of all immediate sub-agents.
+func subAgentNames(a adk_agent.Agent) []string {
+	subs := a.SubAgents()
+	names := make([]string, len(subs))
+	for i, s := range subs {
+		names[i] = s.Name()
+	}
+	return names
 }
 
 // hasText reports whether the event contains any non-empty text part.

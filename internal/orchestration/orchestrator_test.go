@@ -217,7 +217,7 @@ func TestBuildAgentTree_NoTools(t *testing.T) {
 	assert.Equal(t, "planner", root.SubAgents()[0].Name())
 }
 
-func TestBuildAgentTree_OrchestratorHasToolsAndSubAgents(t *testing.T) {
+func TestBuildAgentTree_OrchestratorHasNoDirectTools(t *testing.T) {
 	// Track which tools are adapted by the adapter.
 	var adaptedTools []string
 	trackingAdapter := func(tool *agent.Tool) (adk_tool.Tool, error) {
@@ -240,47 +240,20 @@ func TestBuildAgentTree_OrchestratorHasToolsAndSubAgents(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Sub-agents should still exist for complex delegation.
+	// Sub-agents should exist for delegation.
 	assert.Len(t, root.SubAgents(), 4,
-		"orchestrator should still have 4 sub-agents")
+		"orchestrator should have 4 sub-agents")
 
-	// Each tool should be adapted twice: once for the sub-agent and
-	// once for the orchestrator's direct tools.
+	// Each tool should be adapted exactly once — only for its sub-agent.
+	// The orchestrator has no direct tools, so no second adaptation.
 	toolAdaptCounts := make(map[string]int, len(tools))
 	for _, name := range adaptedTools {
 		toolAdaptCounts[name]++
 	}
 	for _, tool := range tools {
-		assert.Equal(t, 2, toolAdaptCounts[tool.Name],
-			"tool %q should be adapted for both sub-agent and orchestrator", tool.Name)
+		assert.Equal(t, 1, toolAdaptCounts[tool.Name],
+			"tool %q should be adapted only once (for sub-agent)", tool.Name)
 	}
-}
-
-func TestBuildAgentTree_OrchestratorAdaptError(t *testing.T) {
-	// When sub-agent tools adapt successfully but orchestrator tools fail,
-	// the error should reference "adapt orchestrator tools".
-	callCount := 0
-	failOnSecondBatch := func(tool *agent.Tool) (adk_tool.Tool, error) {
-		callCount++
-		// The first call batch is for executor sub-agent tools.
-		// After all sub-agents are created, orchestrator tools are adapted.
-		// With 1 tool that goes to executor, executor adaptTools adapts 1 tool,
-		// then orchestrator adaptTools will call again — fail on that.
-		if callCount > 1 {
-			return nil, fmt.Errorf("orchestrator adapt failure")
-		}
-		return &stubTool{name: tool.Name}, nil
-	}
-
-	// Use a single tool that maps to executor (unmatched prefix).
-	_, err := BuildAgentTree(Config{
-		Tools:        []*agent.Tool{newTestTool("custom_tool")},
-		Model:        nil,
-		SystemPrompt: "test",
-		AdaptTool:    failOnSecondBatch,
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "adapt orchestrator tools")
 }
 
 func TestPartitionTools_PrefixPriority(t *testing.T) {
@@ -294,6 +267,110 @@ func TestPartitionTools_PrefixPriority(t *testing.T) {
 
 	assert.Empty(t, got.Executor, "no tools should go to executor")
 	assert.Len(t, got.Researcher, 2, "both should be researcher")
+}
+
+func TestToolCapability(t *testing.T) {
+	tests := []struct {
+		give string
+		want string
+	}{
+		{give: "exec_shell", want: "command execution"},
+		{give: "fs_read", want: "file operations"},
+		{give: "browser_navigate", want: "web browsing"},
+		{give: "crypto_sign", want: "cryptography"},
+		{give: "skill_deploy", want: "skill management"},
+		{give: "search_web", want: "information search"},
+		{give: "rag_query", want: "knowledge retrieval (RAG)"},
+		{give: "graph_traverse", want: "knowledge graph traversal"},
+		{give: "save_knowledge_item", want: "knowledge persistence"},
+		{give: "save_learning_rule", want: "learning persistence"},
+		{give: "memory_store", want: "memory storage and recall"},
+		{give: "observe_event", want: "event observation"},
+		{give: "reflect_summary", want: "reflection and summarization"},
+		{give: "unknown_tool", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			got := toolCapability(tt.give)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCapabilityDescription(t *testing.T) {
+	tests := []struct {
+		name string
+		give []*agent.Tool
+		want string
+	}{
+		{
+			name: "executor tools are described as capabilities",
+			give: []*agent.Tool{
+				newTestTool("exec_shell"),
+				newTestTool("fs_read"),
+				newTestTool("browser_navigate"),
+			},
+			want: "command execution, file operations, web browsing",
+		},
+		{
+			name: "duplicate capabilities are deduplicated",
+			give: []*agent.Tool{
+				newTestTool("exec_shell"),
+				newTestTool("exec_run"),
+			},
+			want: "command execution",
+		},
+		{
+			name: "unknown tools get general actions",
+			give: []*agent.Tool{
+				newTestTool("custom_action"),
+			},
+			want: "general actions",
+		},
+		{
+			name: "empty tools",
+			give: nil,
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := capabilityDescription(tt.give)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestBuildAgentTree_DescriptionsUseCapabilities(t *testing.T) {
+	tools := []*agent.Tool{
+		newTestTool("exec_shell"),
+		newTestTool("browser_navigate"),
+		newTestTool("search_web"),
+		newTestTool("memory_store"),
+	}
+
+	root, err := BuildAgentTree(Config{
+		Tools:        tools,
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+	})
+	require.NoError(t, err)
+
+	// Verify sub-agent descriptions do NOT contain raw tool name prefixes.
+	for _, sa := range root.SubAgents() {
+		desc := sa.Description()
+		assert.NotContains(t, desc, "exec_shell",
+			"agent %q description should not contain raw tool names", sa.Name())
+		assert.NotContains(t, desc, "browser_navigate",
+			"agent %q description should not contain raw tool names", sa.Name())
+		assert.NotContains(t, desc, "search_web",
+			"agent %q description should not contain raw tool names", sa.Name())
+		assert.NotContains(t, desc, "memory_store",
+			"agent %q description should not contain raw tool names", sa.Name())
+	}
 }
 
 // toolNames extracts names from a tool slice for assertions.

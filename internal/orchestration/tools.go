@@ -53,3 +53,52 @@ func matchesPrefix(name string, prefixes []string) bool {
 	}
 	return false
 }
+
+// capabilityMap maps tool name prefixes to human-readable capability descriptions.
+// This prevents the LLM from seeing raw tool names (e.g. "browser_navigate")
+// and hallucinating agent names like "browser_agent".
+var capabilityMap = map[string]string{
+	"exec":           "command execution",
+	"fs_":            "file operations",
+	"browser_":       "web browsing",
+	"crypto_":        "cryptography",
+	"skill_":         "skill management",
+	"search_":        "information search",
+	"rag_":           "knowledge retrieval (RAG)",
+	"graph_":         "knowledge graph traversal",
+	"save_knowledge": "knowledge persistence",
+	"save_learning":  "learning persistence",
+	"memory_":        "memory storage and recall",
+	"observe_":       "event observation",
+	"reflect_":       "reflection and summarization",
+}
+
+// toolCapability returns a human-readable capability for a tool name based
+// on its prefix. Returns an empty string if no mapping exists.
+func toolCapability(name string) string {
+	for prefix, cap := range capabilityMap {
+		if strings.HasPrefix(name, prefix) {
+			return cap
+		}
+	}
+	return ""
+}
+
+// capabilityDescription builds a deduplicated, comma-separated capability
+// string from a tool list. Tool names are mapped to natural-language
+// descriptions so the LLM never sees raw tool name prefixes.
+func capabilityDescription(tools []*agent.Tool) string {
+	seen := make(map[string]struct{}, len(tools))
+	var caps []string
+	for _, t := range tools {
+		c := toolCapability(t.Name)
+		if c == "" {
+			c = "general actions"
+		}
+		if _, ok := seen[c]; !ok {
+			seen[c] = struct{}{}
+			caps = append(caps, c)
+		}
+	}
+	return strings.Join(caps, ", ")
+}

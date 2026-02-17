@@ -576,12 +576,24 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	if cfg.Agent.MultiAgent {
 		logger().Info("initializing multi-agent orchestration...")
 
+		// Build orchestrator-specific prompt: strip tool-related sections that
+		// cause the LLM to hallucinate agent names like "browser" or "exec".
+		orchBuilder := buildPromptBuilder(&cfg.Agent)
+		orchBuilder.Remove(prompt.SectionToolUsage)
+		orchBuilder.Add(prompt.NewStaticSection(
+			prompt.SectionIdentity, 100, "",
+			"You are Lango, a production-grade AI assistant built for developers and teams.\n"+
+				"You coordinate specialized sub-agents to handle tasks. "+
+				"You do not have direct access to tools — delegate to sub-agents instead.",
+		))
+		orchestratorPrompt := orchBuilder.Build()
+
 		orchCfg := orchestration.Config{
 			Tools:               tools,
 			Model:               llm,
-			SystemPrompt:        systemPrompt,
+			SystemPrompt:        orchestratorPrompt,
 			AdaptTool:           adk.AdaptTool,
-			MaxDelegationRounds: 3,
+			MaxDelegationRounds: 5,
 		}
 
 		// Load remote A2A agents BEFORE building the tree so they are included.

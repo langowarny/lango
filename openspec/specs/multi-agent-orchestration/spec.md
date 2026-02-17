@@ -1,16 +1,16 @@
 ## ADDED Requirements
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: Executor, Researcher, Planner, and MemoryManager. The orchestrator SHALL also receive ALL tools directly via `llmagent.Config.Tools` so it can handle simple tasks without delegation.
+The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: Executor, Researcher, Planner, and MemoryManager. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents.
 
 #### Scenario: Multi-agent mode enabled
 - **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has both direct tools AND sub-agents (Executor, Researcher, Planner, and MemoryManager)
+- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (Executor, Researcher, Planner, and MemoryManager)
 
-#### Scenario: Orchestrator direct tool access
-- **WHEN** the orchestrator is created with tools
-- **THEN** all tools from `cfg.Tools` SHALL be adapted and assigned to the orchestrator's `Tools` field
-- **AND** the same tools SHALL still be partitioned to their respective sub-agents
+#### Scenario: Orchestrator has no direct tools
+- **WHEN** the orchestrator is created
+- **THEN** the orchestrator's `Tools` field SHALL be `nil`
+- **AND** tools SHALL only be adapted for their respective sub-agents (each tool adapted exactly once)
 
 #### Scenario: Single-agent fallback
 - **WHEN** `agent.multiAgent` is false
@@ -53,21 +53,58 @@ The orchestrator SHALL accept remote A2A agents and append them to its sub-agent
 - **WHEN** a remote agent card URL is unreachable
 - **THEN** the agent SHALL be skipped with a warning log, and the orchestrator SHALL continue with local sub-agents
 
-### Requirement: Orchestrator instruction guides direct vs delegated execution
-The orchestrator instruction SHALL clearly distinguish between direct tool usage and sub-agent delegation. It SHALL list all valid sub-agent names and explicitly prohibit inventing agent names.
+### Requirement: Capability-based sub-agent descriptions
+Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capability summaries instead of raw tool names. A `capabilityMap` SHALL map tool name prefixes to natural-language descriptions (e.g., `browser_` → "web browsing", `exec` → "command execution"). The `capabilityDescription()` function SHALL deduplicate capabilities across a tool set.
 
-#### Scenario: Simple single-tool task
-- **WHEN** a user requests a simple task requiring a single tool call
-- **THEN** the orchestrator SHALL call the tool directly without delegating to a sub-agent
+#### Scenario: Executor description uses capabilities
+- **WHEN** the executor sub-agent has tools `exec_shell`, `fs_read`, `browser_navigate`
+- **THEN** its description SHALL contain "command execution, file operations, web browsing"
+- **AND** it SHALL NOT contain raw tool names like "exec_shell" or "browser_navigate"
 
-#### Scenario: Complex multi-step task
-- **WHEN** a user requests a complex task requiring multiple steps or specialized reasoning
+#### Scenario: Duplicate capabilities are deduplicated
+- **WHEN** two tools share the same prefix (e.g., `exec_shell` and `exec_run`)
+- **THEN** the capability "command execution" SHALL appear only once in the description
+
+#### Scenario: Unknown tool prefix falls back to general actions
+- **WHEN** a tool has no matching prefix in `capabilityMap`
+- **THEN** its capability SHALL be "general actions"
+
+### Requirement: Orchestrator instruction guides delegation-only execution
+The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL list all valid sub-agent names with exact spelling, explicitly prohibit inventing or abbreviating agent names, and instruct the LLM that it has no tools of its own. The instruction SHALL NOT contain words that could be confused with agent names (e.g., avoid listing action types like "browser" that might be mistaken for an agent name). Sub-agent entries in the instruction SHALL use capability descriptions, not raw tool name lists.
+
+#### Scenario: Tool-requiring task
+- **WHEN** a user requests any task requiring tool execution
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent using its exact registered name
+
+#### Scenario: Agent name exactness
+- **WHEN** the orchestrator delegates to a sub-agent
+- **THEN** it SHALL use the EXACT name (e.g. "executor", NOT "exec", "browser", or any abbreviation)
+
+#### Scenario: Delegation rules by sub-agent role
+- **WHEN** the orchestrator instruction is generated
+- **THEN** it SHALL specify: executor for actions, researcher for information lookup, planner for multi-step planning, memory-manager for memory operations
 
 #### Scenario: Invalid agent name prevention
 - **WHEN** the orchestrator instruction is generated
-- **THEN** it SHALL contain the text "NEVER invent agent names"
+- **THEN** it SHALL contain the text "NEVER invent or abbreviate agent names"
 - **AND** it SHALL list only the exact names of registered sub-agents
+
+#### Scenario: Sub-agent descriptions use capabilities not tool names
+- **WHEN** the orchestrator instruction lists sub-agents
+- **THEN** each sub-agent entry SHALL describe capabilities (e.g., "command execution, file operations")
+- **AND** SHALL NOT contain raw tool names (e.g., "exec_shell", "browser_navigate")
+
+### Requirement: Orchestrator system prompt isolation
+The orchestrator system prompt SHALL NOT include tool-category descriptions (SectionIdentity from AGENTS.md) or tool-usage guidelines (SectionToolUsage from TOOL_USAGE.md). These sections reference tool names like "Exec", "Browser", "Crypto" that the LLM may misinterpret as agent names.
+
+#### Scenario: Orchestrator prompt construction
+- **WHEN** multi-agent mode is enabled
+- **THEN** the orchestrator prompt SHALL replace SectionIdentity with a delegation-focused identity
+- **AND** the orchestrator prompt SHALL remove SectionToolUsage entirely
+
+#### Scenario: Single-agent prompt unaffected
+- **WHEN** multi-agent mode is disabled
+- **THEN** the single-agent prompt SHALL retain all sections including SectionIdentity and SectionToolUsage
 
 ### Requirement: Event Author Identity
 The EventsAdapter SHALL use the stored `msg.Author` when available, falling back to the `rootAgentName` for assistant messages when no stored author exists. The author SHALL NOT be hardcoded to a fixed agent name.
@@ -100,13 +137,13 @@ The `BuildAgentTree` function SHALL only create sub-agents that have tools assig
 - **THEN** only the planner sub-agent SHALL be created
 
 ### Requirement: Orchestrator Short-Circuit for Simple Queries
-The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, small talk, clarifying questions) without delegating to sub-agents.
+The orchestrator instruction SHALL direct the LLM to respond directly to simple conversational queries (greetings, opinions, general knowledge) without delegating to sub-agents.
 
 #### Scenario: Simple greeting
 - **WHEN** user sends a greeting like "hello"
 - **THEN** the orchestrator SHALL respond directly without delegation
 
-#### Scenario: Complex task requiring tools
+#### Scenario: Task requiring tools
 - **WHEN** user requests an action requiring tool execution
 - **THEN** the orchestrator SHALL delegate to the appropriate sub-agent
 
@@ -115,7 +152,7 @@ The `Config` struct SHALL include a `MaxDelegationRounds` field. The orchestrato
 
 #### Scenario: Default max rounds
 - **WHEN** `MaxDelegationRounds` is zero or unset
-- **THEN** the default limit of 3 rounds SHALL be used in the orchestrator prompt
+- **THEN** the default limit of 5 rounds SHALL be used in the orchestrator prompt
 
 ### Requirement: Dynamic Orchestrator Instruction
 The orchestrator instruction SHALL be dynamically generated to list only the sub-agents that were actually created, rather than hardcoding all four agent names.
@@ -123,3 +160,22 @@ The orchestrator instruction SHALL be dynamically generated to list only the sub
 #### Scenario: Only executor and planner created
 - **WHEN** only executor and planner sub-agents are created
 - **THEN** the orchestrator instruction SHALL only mention executor and planner
+
+### Requirement: Sub-Agent Result Reporting
+Each sub-agent instruction SHALL include guidance to report results clearly after completing their task.
+
+#### Scenario: Executor result reporting
+- **WHEN** the executor sub-agent completes an action
+- **THEN** its instruction SHALL guide it to provide results clearly
+
+#### Scenario: Researcher result reporting
+- **WHEN** the researcher sub-agent completes research
+- **THEN** its instruction SHALL guide it to summarize findings clearly
+
+#### Scenario: Planner result reporting
+- **WHEN** the planner sub-agent completes planning
+- **THEN** its instruction SHALL guide it to present the plan for review
+
+#### Scenario: Memory Manager result reporting
+- **WHEN** the memory-manager sub-agent completes memory operations
+- **THEN** its instruction SHALL guide it to report what was stored or retrieved
