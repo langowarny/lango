@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,11 +37,12 @@ import (
 
 // buildTools creates the set of tools available to the agent.
 // When browserSM is non-nil, browser tools are included.
-func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager) []*agent.Tool {
+// automationAvailable indicates which automation features are enabled (cron, background, workflow).
+func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *browser.SessionManager, automationAvailable map[string]bool) []*agent.Tool {
 	var tools []*agent.Tool
 
 	// Exec tools (delegated to Supervisor for security isolation)
-	tools = append(tools, buildExecTools(sv)...)
+	tools = append(tools, buildExecTools(sv, automationAvailable)...)
 
 	// Filesystem tools
 	fsTool := filesystem.New(fsCfg)
@@ -54,7 +56,43 @@ func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *b
 	return tools
 }
 
-func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
+// blockLangoExec checks if the command attempts to invoke the lango CLI for
+// automation features that have in-process equivalents. Returns a guidance
+// message if blocked, or empty string if allowed.
+func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
+	lower := strings.ToLower(strings.TrimSpace(cmd))
+
+	type guard struct {
+		prefix  string
+		feature string
+		tools   string
+	}
+	guards := []guard{
+		{"lango cron", "cron", "cron_add, cron_list, cron_pause, cron_resume, cron_remove, cron_history"},
+		{"lango bg", "background", "bg_submit, bg_status, bg_list, bg_result, bg_cancel"},
+		{"lango background", "background", "bg_submit, bg_status, bg_list, bg_result, bg_cancel"},
+		{"lango workflow", "workflow", "workflow_run, workflow_status, workflow_list, workflow_cancel, workflow_save"},
+	}
+
+	for _, g := range guards {
+		if strings.HasPrefix(lower, g.prefix) {
+			if automationAvailable[g.feature] {
+				return fmt.Sprintf(
+					"Do not use exec to run '%s' — use the built-in %s tools instead (%s). "+
+						"Spawning a new lango process requires passphrase authentication and will fail.",
+					g.prefix, g.feature, g.tools)
+			}
+			return fmt.Sprintf(
+				"Cannot run '%s' via exec — spawning a new lango process requires passphrase authentication. "+
+					"Enable the %s feature in Settings to use the built-in tools (%s).",
+				g.prefix, g.feature, g.tools)
+		}
+	}
+
+	return ""
+}
+
+func buildExecTools(sv *supervisor.Supervisor, automationAvailable map[string]bool) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "exec",
@@ -74,6 +112,9 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 				cmd, ok := params["command"].(string)
 				if !ok {
 					return nil, fmt.Errorf("missing command parameter")
+				}
+				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
+					return map[string]interface{}{"blocked": true, "message": msg}, nil
 				}
 				return sv.ExecuteTool(ctx, cmd)
 			},
@@ -96,6 +137,9 @@ func buildExecTools(sv *supervisor.Supervisor) []*agent.Tool {
 				cmd, ok := params["command"].(string)
 				if !ok {
 					return nil, fmt.Errorf("missing command parameter")
+				}
+				if msg := blockLangoExec(cmd, automationAvailable); msg != "" {
+					return map[string]interface{}{"blocked": true, "message": msg}, nil
 				}
 				return sv.StartBackground(cmd)
 			},

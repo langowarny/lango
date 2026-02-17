@@ -39,3 +39,36 @@ The `UpdateConfigFromForm` method SHALL map the following field keys to config p
 #### Scenario: Apply skill form values
 - **WHEN** a form containing `skill_enabled` and `skill_dir` fields is processed by `UpdateConfigFromForm`
 - **THEN** the values SHALL be written to `config.Skill.Enabled` and `config.Skill.SkillsDir` respectively
+
+### Cron field mappings in UpdateConfigFromForm
+The `UpdateConfigFromForm` method SHALL map the following field keys to config paths:
+- `cron_enabled` → `config.Cron.Enabled` (boolean)
+- `cron_timezone` → `config.Cron.Timezone` (string)
+- `cron_max_jobs` → `config.Cron.MaxConcurrentJobs` (integer)
+- `cron_session_mode` → `config.Cron.DefaultSessionMode` (string)
+- `cron_history_retention` → `config.Cron.HistoryRetention` (string)
+
+#### Scenario: Apply cron form values
+- **WHEN** a form containing cron fields is processed by `UpdateConfigFromForm`
+- **THEN** the values SHALL be written to the corresponding `config.Cron` fields
+
+### Background field mappings in UpdateConfigFromForm
+The `UpdateConfigFromForm` method SHALL map the following field keys to config paths:
+- `bg_enabled` → `config.Background.Enabled` (boolean)
+- `bg_yield_ms` → `config.Background.YieldMs` (integer)
+- `bg_max_tasks` → `config.Background.MaxConcurrentTasks` (integer)
+
+#### Scenario: Apply background form values
+- **WHEN** a form containing background fields is processed by `UpdateConfigFromForm`
+- **THEN** the values SHALL be written to the corresponding `config.Background` fields
+
+### Workflow field mappings in UpdateConfigFromForm
+The `UpdateConfigFromForm` method SHALL map the following field keys to config paths:
+- `wf_enabled` → `config.Workflow.Enabled` (boolean)
+- `wf_max_steps` → `config.Workflow.MaxConcurrentSteps` (integer)
+- `wf_timeout` → `config.Workflow.DefaultTimeout` (duration parsed from string)
+- `wf_state_dir` → `config.Workflow.StateDir` (string)
+
+#### Scenario: Apply workflow form values
+- **WHEN** a form containing workflow fields is processed by `UpdateConfigFromForm`
+- **THEN** the values SHALL be written to the corresponding `config.Workflow` fields

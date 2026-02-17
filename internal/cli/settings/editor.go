@@ -264,6 +264,18 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewPaymentForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "cron":
+		e.activeForm = NewCronForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "background":
+		e.activeForm = NewBackgroundForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "workflow":
+		e.activeForm = NewWorkflowForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "auth":
 		e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
 		e.step = StepAuthProvidersList

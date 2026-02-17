@@ -79,7 +79,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 		logger().Info("browser tools enabled")
 	}
 
-	tools := buildTools(sv, fsConfig, browserSM)
+	automationAvailable := map[string]bool{
+		"cron":       cfg.Cron.Enabled,
+		"background": cfg.Background.Enabled,
+		"workflow":   cfg.Workflow.Enabled,
+	}
+	tools := buildTools(sv, fsConfig, browserSM, automationAvailable)
 
 	// 4b. Crypto/Secrets tools (if security is enabled)
 	// RefStore holds opaque references; plaintext never reaches agent context.

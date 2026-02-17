@@ -1300,6 +1300,10 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 `)
 	}
 
+	parts = append(parts, `### Important
+- ALWAYS use the built-in automation tools above. NEVER use exec to run "lango cron", "lango bg", or "lango workflow" commands — this will fail because spawning a new lango process requires passphrase authentication.
+`)
+
 	content := strings.Join(parts, "\n")
 	return prompt.NewStaticSection(prompt.SectionAutomation, 450, "Automation", content)
 }

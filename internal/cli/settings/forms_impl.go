@@ -667,6 +667,96 @@ func NewPaymentForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
+// NewCronForm creates the Cron Scheduler configuration form.
+func NewCronForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Cron Scheduler Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "cron_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Cron.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "cron_timezone", Label: "Timezone", Type: tuicore.InputText,
+		Value:       cfg.Cron.Timezone,
+		Placeholder: "UTC or Asia/Seoul",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "cron_max_jobs", Label: "Max Concurrent Jobs", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Cron.MaxConcurrentJobs),
+	})
+
+	sessionMode := cfg.Cron.DefaultSessionMode
+	if sessionMode == "" {
+		sessionMode = "isolated"
+	}
+	form.AddField(&tuicore.Field{
+		Key: "cron_session_mode", Label: "Session Mode", Type: tuicore.InputSelect,
+		Value:   sessionMode,
+		Options: []string{"isolated", "main"},
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "cron_history_retention", Label: "History Retention", Type: tuicore.InputText,
+		Value:       cfg.Cron.HistoryRetention,
+		Placeholder: "30d or 720h",
+	})
+
+	return &form
+}
+
+// NewBackgroundForm creates the Background Tasks configuration form.
+func NewBackgroundForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Background Tasks Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "bg_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Background.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "bg_yield_ms", Label: "Yield Time (ms)", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Background.YieldMs),
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "bg_max_tasks", Label: "Max Concurrent Tasks", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Background.MaxConcurrentTasks),
+	})
+
+	return &form
+}
+
+// NewWorkflowForm creates the Workflow Engine configuration form.
+func NewWorkflowForm(cfg *config.Config) *tuicore.FormModel {
+	form := tuicore.NewFormModel("Workflow Engine Configuration")
+
+	form.AddField(&tuicore.Field{
+		Key: "wf_enabled", Label: "Enabled", Type: tuicore.InputBool,
+		Checked: cfg.Workflow.Enabled,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "wf_max_steps", Label: "Max Concurrent Steps", Type: tuicore.InputInt,
+		Value: strconv.Itoa(cfg.Workflow.MaxConcurrentSteps),
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "wf_timeout", Label: "Default Timeout", Type: tuicore.InputText,
+		Value:       cfg.Workflow.DefaultTimeout.String(),
+		Placeholder: "10m",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "wf_state_dir", Label: "State Directory", Type: tuicore.InputText,
+		Value:       cfg.Workflow.StateDir,
+		Placeholder: "~/.lango/workflows",
+	})
+
+	return &form
+}
+
 // NewProviderForm creates a Provider configuration form.
 func NewProviderForm(id string, cfg config.ProviderConfig) *tuicore.FormModel {
 	title := "Edit Provider: " + id

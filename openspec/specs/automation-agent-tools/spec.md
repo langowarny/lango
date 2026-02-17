@@ -75,3 +75,10 @@ The system SHALL provide human-readable approval summaries for dangerous/moderat
 #### Scenario: Approval summary for workflow_run
 - **WHEN** the approval system generates a summary for `workflow_run` with a file_path
 - **THEN** the summary SHALL include the file path
+
+### Requirement: Exec prohibition in automation prompt
+The automation prompt section SHALL include an explicit instruction prohibiting the use of exec to run lango automation CLI commands.
+
+#### Scenario: Prompt includes exec prohibition
+- **WHEN** any automation feature (cron, background, or workflow) is enabled
+- **THEN** the automation prompt section SHALL contain text instructing the agent to NEVER use exec to run "lango cron", "lango bg", or "lango workflow" commands, with explanation that spawning a new lango process requires passphrase authentication

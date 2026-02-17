@@ -229,6 +229,46 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		case "a2a_agent_desc":
 			s.Current.A2A.AgentDescription = val
 
+		// Cron
+		case "cron_enabled":
+			s.Current.Cron.Enabled = f.Checked
+		case "cron_timezone":
+			s.Current.Cron.Timezone = val
+		case "cron_max_jobs":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Cron.MaxConcurrentJobs = i
+			}
+		case "cron_session_mode":
+			s.Current.Cron.DefaultSessionMode = val
+		case "cron_history_retention":
+			s.Current.Cron.HistoryRetention = val
+
+		// Background
+		case "bg_enabled":
+			s.Current.Background.Enabled = f.Checked
+		case "bg_yield_ms":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Background.YieldMs = i
+			}
+		case "bg_max_tasks":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Background.MaxConcurrentTasks = i
+			}
+
+		// Workflow
+		case "wf_enabled":
+			s.Current.Workflow.Enabled = f.Checked
+		case "wf_max_steps":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Workflow.MaxConcurrentSteps = i
+			}
+		case "wf_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Workflow.DefaultTimeout = d
+			}
+		case "wf_state_dir":
+			s.Current.Workflow.StateDir = val
+
 		// Payment
 		case "payment_enabled":
 			s.Current.Payment.Enabled = f.Checked
