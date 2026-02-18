@@ -1,0 +1,24 @@
+services:
+  lango:
+    build: .
+    image: lango:latest
+    container_name: lango
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - lango-data:/data
+    secrets:
+      - lango_config
+      - lango_passphrase
+    environment:
+      - LANGO_PROFILE=default
+
+secrets:
+  lango_config:
+    file: ./config.json
+  lango_passphrase:
+    file: ./passphrase.txt
+
+volumes:
+  lango-data:

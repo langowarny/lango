@@ -1,0 +1,102 @@
+## ADDED Requirements
+
+### Requirement: AgentSpec registry defines sub-agent identity and routing metadata
+The system SHALL define an `AgentSpec` type with fields: Name, Description, Instruction, Prefixes, Keywords, Accepts, Returns, CannotDo, and AlwaysInclude. A `var agentSpecs` registry SHALL contain specs for all 6 sub-agents in creation order.
+
+#### Scenario: AgentSpec type has all required fields
+- **WHEN** the AgentSpec type is defined
+- **THEN** it SHALL include Name (string), Description (string), Instruction (string), Prefixes ([]string), Keywords ([]string), Accepts (string), Returns (string), CannotDo ([]string), and AlwaysInclude (bool)
+
+#### Scenario: Registry contains exactly 6 specs
+- **WHEN** agentSpecs is initialized
+- **THEN** it SHALL contain specs for operator, navigator, vault, librarian, planner, and chronicler in that order
+
+#### Scenario: Each spec has unique name
+- **WHEN** agentSpecs is iterated
+- **THEN** no two specs SHALL have the same Name
+
+#### Scenario: Librarian prefixes include all skill management tools
+- **WHEN** the librarian spec's Prefixes are checked
+- **THEN** they SHALL include `create_skill`, `list_skills`, and `import_skill`
+
+#### Scenario: import_skill routes to librarian
+- **WHEN** a tool named `import_skill` is partitioned via `PartitionTools`
+- **THEN** it SHALL be assigned to the Librarian role tool set
+
+#### Scenario: import_skill has capability description
+- **WHEN** `toolCapability` is called with a tool name starting with `import_skill`
+- **THEN** it SHALL return a non-empty capability description
+
+### Requirement: Routing table in orchestrator prompt
+The orchestrator instruction SHALL contain a structured routing table listing each sub-agent with its role, keywords, accepts/returns format, and cannot-do constraints.
+
+#### Scenario: Routing table format
+- **WHEN** the orchestrator instruction is generated
+- **THEN** it SHALL contain a `### <agent-name>` section for each active sub-agent
+- **AND** each section SHALL include Role, Keywords, Accepts, Returns, and Cannot fields
+
+#### Scenario: Only active agents in routing table
+- **WHEN** some agents have no tools and are not AlwaysInclude
+- **THEN** the routing table SHALL only list agents that were actually created
+
+### Requirement: Decision protocol in orchestrator prompt
+The orchestrator instruction SHALL include a 5-step decision protocol: CLASSIFY, MATCH, SELECT, VERIFY, DELEGATE.
+
+#### Scenario: Decision protocol presence
+- **WHEN** the orchestrator instruction is generated
+- **THEN** it SHALL contain the steps CLASSIFY, MATCH, SELECT, VERIFY, and DELEGATE
+
+### Requirement: Reject protocol for misrouted tasks
+Each sub-agent instruction SHALL include a `[REJECT]` response protocol. When a sub-agent receives a task outside its capabilities, it SHALL respond with `[REJECT] This task requires <correct_agent>. I handle: <capabilities>.`
+
+#### Scenario: All sub-agent instructions contain reject protocol
+- **WHEN** any sub-agent's instruction is checked
+- **THEN** it SHALL contain the string `[REJECT]`
+
+#### Scenario: Orchestrator handles rejections
+- **WHEN** a sub-agent rejects a task
+- **THEN** the orchestrator SHALL try the next most relevant agent or handle directly
+
+### Requirement: Keywords for routing decisions
+Each AgentSpec SHALL define keywords that the orchestrator uses to match user requests to agents.
+
+#### Scenario: All specs have keywords
+- **WHEN** agentSpecs is iterated
+- **THEN** every spec SHALL have a non-empty Keywords slice
+
+#### Scenario: Operator keywords
+- **WHEN** the operator spec is checked
+- **THEN** its Keywords SHALL include: run, execute, command, shell, file
+
+#### Scenario: Navigator keywords
+- **WHEN** the navigator spec is checked
+- **THEN** its Keywords SHALL include: browse, web, url, page, navigate
+
+#### Scenario: Vault keywords
+- **WHEN** the vault spec is checked
+- **THEN** its Keywords SHALL include: encrypt, decrypt, sign, secret, payment, wallet
+
+### Requirement: Unmatched tools reported in orchestrator prompt
+When tools match no agent prefix, the orchestrator instruction SHALL list them under an "Unmatched Tools" section.
+
+#### Scenario: Unmatched tools present
+- **WHEN** unmatched tools exist
+- **THEN** the orchestrator instruction SHALL contain "Unmatched Tools" with the tool names listed
+
+#### Scenario: No unmatched tools
+- **WHEN** all tools match a prefix
+- **THEN** the orchestrator instruction SHALL NOT contain "Unmatched Tools"
+
+### Requirement: Sub-agent instructions follow structured format
+Every sub-agent instruction SHALL contain four sections: "What You Do", "Input Format", "Output Format", and "Constraints".
+
+#### Scenario: Instruction structure
+- **WHEN** any agentSpec's instruction is checked
+- **THEN** it SHALL contain `## What You Do`, `## Input Format`, `## Output Format`, and `## Constraints`
+
+### Requirement: Accepts and Returns metadata
+Every AgentSpec SHALL define Accepts (input format description) and Returns (output format description) for the routing table.
+
+#### Scenario: All specs have I/O metadata
+- **WHEN** agentSpecs is iterated
+- **THEN** every spec SHALL have non-empty Accepts and Returns fields

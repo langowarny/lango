@@ -28,5 +28,23 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+*.json
+passphrase.txt
+
+!lango.example.json
+/lango
+
+.cursor/
+.vscode/
+.claude/
+
+# Build output
+bin/
+
+# Coverage reports
+.coverage/
+
+tmp/

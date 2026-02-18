@@ -1,0 +1,149 @@
+## Purpose
+
+Discord channel adapter for the Lango agent. Connects to Discord via Bot API, handles message reception (DMs and mentions), slash commands, approval workflows, and typing indicators.
+## Requirements
+### Requirement: Discord bot connection
+The system SHALL connect to Discord using the Bot API with a provided bot token.
+
+#### Scenario: Successful bot connection
+- **WHEN** the application starts with a valid DISCORD_BOT_TOKEN
+- **THEN** the system SHALL establish a gateway connection to Discord
+
+#### Scenario: Gateway reconnection
+- **WHEN** the Discord gateway connection drops
+- **THEN** the system SHALL automatically reconnect with session resumption
+
+### Requirement: Message reception
+The system SHALL receive and process incoming messages from Discord channels.
+
+#### Scenario: Direct message received
+- **WHEN** a user sends a DM to the bot
+- **THEN** the message SHALL be forwarded to the agent
+
+#### Scenario: Channel message with mention
+- **WHEN** a user mentions the bot in a text channel
+- **THEN** the message SHALL be processed if the channel is configured
+
+### Requirement: Discord message handler context propagation
+The Discord `Channel` SHALL propagate the `Start(ctx)` context to message handler callbacks. The `Channel` struct SHALL store the context passed to `Start(ctx)` and use it when invoking the message handler in `onMessageCreate`, instead of using `context.Background()`.
+
+#### Scenario: Start context propagated to handler
+- **WHEN** `Channel.Start(ctx)` is called with a context containing cancellation or deadline
+- **AND** a message is received via `onMessageCreate`
+- **THEN** the handler SHALL be invoked with the stored `Start` context (not `context.Background()`)
+
+#### Scenario: Context carries session key downstream
+- **WHEN** a Discord message triggers `onMessageCreate`
+- **AND** the handler injects a session key into the propagated context
+- **THEN** downstream approval providers SHALL be able to extract the session key via `session.SessionKeyFromContext`
+
+### Requirement: Slash command support
+The system SHALL register and handle Discord slash commands.
+
+#### Scenario: Slash command registration
+- **WHEN** the bot connects to Discord
+- **THEN** configured slash commands SHALL be registered with the Discord API
+
+#### Scenario: Slash command invocation
+- **WHEN** a user invokes a slash command
+- **THEN** the system SHALL execute the corresponding handler
+
+### Requirement: Message sending
+The system SHALL send agent responses back to Discord channels.
+
+#### Scenario: Send text response
+- **WHEN** the agent generates a response
+- **THEN** the response SHALL be sent to the originating channel
+
+#### Scenario: Discord markdown formatting
+- **WHEN** a response contains markdown
+- **THEN** the response SHALL use Discord-compatible markdown syntax
+
+### Requirement: Guild configuration
+The system SHALL support per-guild configuration for Discord servers.
+
+#### Scenario: Guild-specific settings
+- **WHEN** a guild has custom configuration
+- **THEN** the bot SHALL use guild-specific settings for that server
+
+### Requirement: Discord approval provider
+The Discord channel SHALL provide an approval provider that uses Message Component buttons for tool execution approval.
+
+#### Scenario: Approval message sent
+- **WHEN** a sensitive tool approval is requested for a Discord session
+- **THEN** the system SHALL send a message with an ActionsRow containing "Approve" (success style) and "Deny" (danger style) buttons to the originating channel
+
+#### Scenario: User approves
+- **WHEN** the user clicks the "Approve" button
+- **THEN** the interaction SHALL be responded to with an updated message (buttons removed)
+- **AND** the tool execution SHALL proceed
+
+#### Scenario: User denies
+- **WHEN** the user clicks the "Deny" button
+- **THEN** the interaction SHALL be responded to with an updated message (buttons removed)
+- **AND** the tool execution SHALL be denied
+
+#### Scenario: Approval timeout
+- **WHEN** no button is clicked within the timeout period
+- **THEN** the approval request SHALL be denied with a timeout error
+
+### Requirement: Interaction handler registration
+The Discord channel SHALL register an InteractionCreate handler at startup to route message component interactions to the approval provider.
+
+#### Scenario: InteractionCreate received
+- **WHEN** an InteractionCreate event of type InteractionMessageComponent is received
+- **THEN** the event SHALL be routed to the approval provider's HandleInteraction method
+
+### Requirement: Session interface extensions
+The Discord Session interface SHALL include `InteractionRespond` and `ChannelMessageEditComplex` methods for approval interaction handling.
+
+#### Scenario: Respond to interaction
+- **WHEN** a button interaction needs to be acknowledged
+- **THEN** the system SHALL use `InteractionRespond` to update the original message
+
+### Requirement: Approval message editing on timeout and cancellation
+The Discord approval provider SHALL edit the approval message to display "Expired" status and remove button components when the approval times out or the context is cancelled.
+
+#### Scenario: Timeout removes buttons
+- **WHEN** an approval request times out without user response
+- **THEN** the system SHALL call ChannelMessageEditComplex with content "🔐 Tool approval — ⏱ Expired" and empty Components slice
+
+#### Scenario: Context cancellation removes buttons
+- **WHEN** the approval request context is cancelled
+- **THEN** the system SHALL call ChannelMessageEditComplex with expired content and empty Components
+
+### Requirement: Message ID capture for timeout editing
+The Discord approval provider SHALL capture the message ID from ChannelMessageSendComplex return value and store it in an approvalPending struct for use in timeout/cancellation message editing.
+
+#### Scenario: Sent message ID stored in pending struct
+- **WHEN** an approval message is sent successfully
+- **THEN** the system SHALL store the returned message ID alongside the response channel and channel ID in an approvalPending struct
+
+### Requirement: Typing indicator during processing
+The Discord channel SHALL show a typing indicator while the message handler processes a user message. The `Session` interface SHALL include `ChannelTyping`. The typing indicator SHALL be sent via `ChannelTyping` immediately and refreshed every 8 seconds until the handler returns.
+
+#### Scenario: Typing indicator during processing
+- **WHEN** a user sends a message (DM or mention) to the Discord bot
+- **THEN** the bot SHALL call `ChannelTyping` on the channel before calling the handler
+- **AND** SHALL refresh the typing indicator every 8 seconds
+- **AND** SHALL stop refreshing when the handler returns
+
+#### Scenario: Typing indicator API failure
+- **WHEN** the `ChannelTyping` call fails
+- **THEN** the bot SHALL log a warning and continue processing normally
+
+### Requirement: Public StartTyping with context support
+The Discord channel SHALL expose a public `StartTyping(ctx context.Context, channelID string) func()` method that calls `ChannelTyping` and refreshes every 8 seconds until the stop function is called or the context is cancelled.
+
+#### Scenario: Context cancellation stops typing
+- **WHEN** `StartTyping` is called and the context is subsequently cancelled
+- **THEN** the typing indicator goroutine SHALL exit without requiring the stop function to be called
+
+#### Scenario: Stop function is idempotent
+- **WHEN** the returned stop function is called multiple times
+- **THEN** no panic SHALL occur (protected by `sync.Once`)
+
+#### Scenario: Initial typing failure is non-blocking
+- **WHEN** the initial `ChannelTyping` request fails
+- **THEN** the error SHALL be logged at Warn level and a valid stop function SHALL still be returned
+
