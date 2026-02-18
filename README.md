@@ -1,6 +1,14 @@
-# Lango 🚀
+<div align="center">
+<img src="./logo.png" alt="Lango Logo">
+</div>
+<br>
+
+# Lango 🐿️
 
 A high-performance AI agent built with Go, supporting multiple AI providers, channels (Telegram, Discord, Slack), and a self-learning knowledge system.
+
+## ⚠️ **Note**
+This project includes experimental AI Agent features and is currently in an unstable state. Please use with caution, as significant breaking changes may occur in future updates.
 
 ## Features
 
@@ -8,7 +16,7 @@ A high-performance AI agent built with Go, supporting multiple AI providers, cha
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
-- 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system, observational memory, proactive knowledge librarian
+- 🧠 **Self-Learning** - Knowledge store, learning engine, file-based skill system with GitHub import (git clone + HTTP fallback), observational memory, proactive knowledge librarian
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
@@ -180,7 +188,7 @@ lango/
 │   │   └── openai/         #   OpenAI-compatible (GPT, Ollama, etc.)
 │   ├── security/           # Crypto providers, key registry, secrets store, companion discovery
 │   ├── session/            # Ent-based SQLite session store
-│   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor)
+│   ├── skill/              # File-based skill system (SKILL.md parser, FileSkillStore, registry, executor, GitHub importer with git clone + HTTP fallback, resource directories)
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
@@ -307,13 +315,13 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `graph.maxExpansionResults` | int | `10` | Maximum graph-expanded results to return |
 | **Multi-Agent** | | | |
 | `agent.multiAgent` | bool | `false` | Enable hierarchical multi-agent orchestration |
-| **A2A Protocol** | | | |
+| **A2A Protocol** (🧪 Experimental Features) | | | |
 | `a2a.enabled` | bool | `false` | Enable A2A protocol support |
 | `a2a.baseUrl` | string | - | External URL where this agent is reachable |
 | `a2a.agentName` | string | - | Name advertised in the Agent Card |
 | `a2a.agentDescription` | string | - | Description in the Agent Card |
 | `a2a.remoteAgents` | []object | - | External A2A agents to integrate (name + agentCardUrl) |
-| **Payment** | | | |
+| **Payment** (🧪 Experimental Features) | | | |
 | `payment.enabled` | bool | `false` | Enable blockchain payment features |
 | `payment.walletProvider` | string | `local` | Wallet backend: `local`, `rpc`, or `composite` |
 | `payment.network.chainId` | int | `84532` | EVM chain ID (84532 = Base Sepolia, 8453 = Base) |
@@ -331,18 +339,18 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `cron.defaultSessionMode` | string | `isolated` | Default session mode (`isolated` or `main`) |
 | `cron.historyRetention` | duration | `720h` | How long to retain execution history |
 | `cron.defaultDeliverTo` | []string | `[]` | Default delivery channels for job results (e.g. `["telegram:123"]`) |
-| **Background Execution** | | | |
+| **Background Execution** (🧪 Experimental Features) | | | |
 | `background.enabled` | bool | `false` | Enable background task execution |
 | `background.yieldMs` | int | `30000` | Auto-yield threshold in milliseconds |
 | `background.maxConcurrentTasks` | int | `3` | Max concurrent background tasks |
 | `background.defaultDeliverTo` | []string | `[]` | Default delivery channels for task results |
-| **Workflow Engine** | | | |
+| **Workflow Engine** (🧪 Experimental Features) | | | |
 | `workflow.enabled` | bool | `false` | Enable workflow engine |
 | `workflow.maxConcurrentSteps` | int | `4` | Max concurrent workflow steps per run |
 | `workflow.defaultTimeout` | duration | `10m` | Default timeout per workflow step |
 | `workflow.stateDir` | string | `~/.lango/workflows/` | Directory for workflow state files |
 | `workflow.defaultDeliverTo` | []string | `[]` | Default delivery channels for workflow results |
-| **Librarian** | | | |
+| **Librarian** (🧪 Experimental Features) | | | |
 | `librarian.enabled` | bool | `false` | Enable proactive knowledge librarian |
 | `librarian.observationThreshold` | int | `2` | Min observations to trigger analysis |
 | `librarian.inquiryCooldownTurns` | int | `3` | Turns between inquiries per session |
@@ -362,7 +370,7 @@ Lango ships with production-quality default prompts embedded in the binary. No c
 | `AGENTS.md` | Identity | 100 | Agent name, role, tool capabilities, knowledge system |
 | `SAFETY.md` | Safety | 200 | Secret protection, destructive op confirmation, PII |
 | `CONVERSATION_RULES.md` | Conversation Rules | 300 | Anti-repetition rules, channel limits, consistency |
-| `TOOL_USAGE.md` | Tool Usage | 400 | Per-tool guidelines for exec, filesystem, browser, crypto, secrets |
+| `TOOL_USAGE.md` | Tool Usage | 400 | Per-tool guidelines for exec, filesystem, browser, crypto, secrets, skills |
 
 ### Customizing Prompts
 
@@ -496,7 +504,7 @@ The orchestrator uses a keyword-based routing table and 5-step decision protocol
 
 Enable via `lango onboard` > Multi-Agent menu or set `agent.multiAgent: true` in import JSON. Use `lango agent status` and `lango agent list` to inspect.
 
-## A2A Protocol
+## A2A Protocol (🧪 Experimental Features)
 
 Lango supports the Agent-to-Agent (A2A) protocol for inter-agent communication:
 
@@ -508,7 +516,7 @@ Configure via `lango onboard` > A2A Protocol menu. Remote agents (name + URL pai
 
 > **Note:** All settings are stored in the encrypted profile database — no plaintext config files. Use `lango onboard` for interactive configuration or `lango config import/export` for programmatic configuration.
 
-## Blockchain Payments
+## Blockchain Payments (🧪 Experimental Features)
 
 Lango includes a blockchain payment system for USDC transactions on Base L2 (EVM), with built-in spending limits and X402 protocol support.
 
@@ -615,7 +623,7 @@ lango cron history news
 
 Each job runs in an isolated session (`cron:<name>:<timestamp>`) by default. Use `--isolated=false` for shared session mode.
 
-## Background Execution
+## Background Execution (🧪 Experimental Features)
 
 Lango provides an in-memory background task manager for async agent operations with concurrency control.
 
@@ -628,7 +636,7 @@ Lango provides an in-memory background task manager for async agent operations w
 
 Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
 
-## Workflow Engine
+## Workflow Engine (🧪 Experimental Features)
 
 Lango includes a DAG-based workflow engine that executes multi-step workflows defined in YAML. Steps run in parallel when dependencies allow, with results flowing between steps via template variables.
 
@@ -697,7 +705,7 @@ Lango includes a self-learning knowledge system that improves agent performance 
 
 - **Knowledge Store** - Persistent storage for facts, patterns, and external references
 - **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies
-- **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports script (shell), template (Go template), and composite (multi-step) skill types. Ships with 30 embedded default skills deployed on first run. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
+- **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Ships with 30 embedded default skills deployed on first run. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:
   1. Tool Registry — available tools and capabilities
   2. User Knowledge — rules, preferences, definitions, facts
@@ -772,7 +780,7 @@ When blockchain payments are enabled, wallet private keys are protected by the s
 - **RPC mode**: Signing operations are delegated to the companion app / hardware signer.
 - **Spending limits**: Per-transaction and daily limits prevent runaway spending. Limits are enforced in the `wallet.SpendingLimiter` before any transaction is signed.
 
-### Companion App Discovery (RPC Mode)
+### Companion App Discovery (RPC Mode) (🧪 Experimental Features)
 
 Lango supports optional companion apps for hardware-backed security. Companion discovery is handled within the `internal/security` module:
 
@@ -826,7 +834,7 @@ Auth endpoints (`/auth/login/*`, `/auth/callback/*`, `/auth/logout`) are throttl
 
 ### Docker Image
 
-The Docker image includes Chromium for browser automation:
+The Docker image includes Chromium for browser automation, plus `git` and `curl` for skill import and general-purpose operations:
 
 ```bash
 docker build -t lango:latest .
