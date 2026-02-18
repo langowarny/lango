@@ -5,10 +5,11 @@ package skill
 type SkillEntry struct {
 	Name             string
 	Description      string
-	Type             string // composite, script, template
+	Type             string // composite, script, template, instruction
 	Definition       map[string]interface{}
 	Parameters       map[string]interface{}
 	Status           string // active, draft, disabled
 	CreatedBy        string
 	RequiresApproval bool
+	Source           string // import source URL (empty for locally created)
 }

@@ -40,6 +40,13 @@ func (e *Executor) Execute(ctx context.Context, skill SkillEntry, params map[str
 		return e.executeScript(ctx, skill)
 	case "template":
 		return e.executeTemplate(skill, params)
+	case "instruction":
+		content, _ := skill.Definition["content"].(string)
+		return map[string]interface{}{
+			"skill":   skill.Name,
+			"type":    "instruction",
+			"content": content,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown skill type: %s", skill.Type)
 	}

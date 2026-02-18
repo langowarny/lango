@@ -755,6 +755,137 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				}, nil
 			},
 		},
+		{
+			Name: "import_skill",
+			Description: "Import skills from a GitHub repository or URL. " +
+				"Supports bulk import (all skills from a repo) or single skill import.",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"url": map[string]interface{}{
+						"type":        "string",
+						"description": "GitHub repository URL or direct URL to a SKILL.md file",
+					},
+					"skill_name": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional: import only this specific skill from the repo",
+					},
+				},
+				"required": []string{"url"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if registry == nil {
+					return nil, fmt.Errorf("skill system is not enabled")
+				}
+
+				url, _ := params["url"].(string)
+				skillName, _ := params["skill_name"].(string)
+
+				if url == "" {
+					return nil, fmt.Errorf("url is required")
+				}
+
+				importer := skill.NewImporter(logger())
+
+				if skill.IsGitHubURL(url) {
+					ref, err := skill.ParseGitHubURL(url)
+					if err != nil {
+						return nil, fmt.Errorf("parse GitHub URL: %w", err)
+					}
+
+					if skillName != "" {
+						// Single skill import from GitHub.
+						raw, err := importer.FetchSkillMD(ctx, ref, skillName)
+						if err != nil {
+							return nil, fmt.Errorf("fetch skill %q: %w", skillName, err)
+						}
+						entry, err := importer.ImportSingle(ctx, raw, url, registry.Store())
+						if err != nil {
+							return nil, fmt.Errorf("import skill: %w", err)
+						}
+						if err := registry.LoadSkills(ctx); err != nil {
+							return nil, fmt.Errorf("reload skills: %w", err)
+						}
+						if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+							Action: "skill_import",
+							Actor:  "agent",
+							Target: entry.Name,
+							Details: map[string]interface{}{
+								"source": url,
+								"type":   entry.Type,
+							},
+						}); err != nil {
+							logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
+						}
+						return map[string]interface{}{
+							"status":  "imported",
+							"name":    entry.Name,
+							"type":    entry.Type,
+							"message": fmt.Sprintf("Skill '%s' imported from %s", entry.Name, url),
+						}, nil
+					}
+
+					// Bulk import from GitHub repo.
+					result, err := importer.ImportFromRepo(ctx, ref, registry.Store())
+					if err != nil {
+						return nil, fmt.Errorf("import from repo: %w", err)
+					}
+					if err := registry.LoadSkills(ctx); err != nil {
+						return nil, fmt.Errorf("reload skills: %w", err)
+					}
+					if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+						Action: "skill_import_bulk",
+						Actor:  "agent",
+						Target: url,
+						Details: map[string]interface{}{
+							"imported": result.Imported,
+							"skipped":  result.Skipped,
+							"errors":   result.Errors,
+						},
+					}); err != nil {
+						logger().Warnw("audit log save failed", "action", "skill_import_bulk", "error", err)
+					}
+					return map[string]interface{}{
+						"status":   "completed",
+						"imported": result.Imported,
+						"skipped":  result.Skipped,
+						"errors":   result.Errors,
+						"message":  fmt.Sprintf("Imported %d skills, skipped %d, errors %d", len(result.Imported), len(result.Skipped), len(result.Errors)),
+					}, nil
+				}
+
+				// Direct URL import.
+				raw, err := importer.FetchFromURL(ctx, url)
+				if err != nil {
+					return nil, fmt.Errorf("fetch from URL: %w", err)
+				}
+				entry, err := importer.ImportSingle(ctx, raw, url, registry.Store())
+				if err != nil {
+					return nil, fmt.Errorf("import skill: %w", err)
+				}
+				if err := registry.LoadSkills(ctx); err != nil {
+					return nil, fmt.Errorf("reload skills: %w", err)
+				}
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+					Action: "skill_import",
+					Actor:  "agent",
+					Target: entry.Name,
+					Details: map[string]interface{}{
+						"source": url,
+						"type":   entry.Type,
+					},
+				}); err != nil {
+					logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
+				}
+				return map[string]interface{}{
+					"status":  "imported",
+					"name":    entry.Name,
+					"type":    entry.Type,
+					"message": fmt.Sprintf("Skill '%s' imported from %s", entry.Name, url),
+				}, nil
+			},
+		},
 	}
 }
 

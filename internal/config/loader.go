@@ -63,8 +63,9 @@ func DefaultConfig() *Config {
 			MaxContextPerLayer: 5,
 		},
 		Skill: SkillConfig{
-			Enabled:   true,
-			SkillsDir: "~/.lango/skills",
+			Enabled:     true,
+			SkillsDir:   "~/.lango/skills",
+			AllowImport: true,
 		},
 		Graph: GraphConfig{
 			Enabled:             false,

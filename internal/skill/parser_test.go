@@ -144,6 +144,111 @@ func TestParseSkillMD_MissingName(t *testing.T) {
 	}
 }
 
+func TestParseSkillMD_Instruction(t *testing.T) {
+	content := `---
+name: obsidian-markdown
+description: Obsidian-flavored Markdown reference guide
+---
+
+# Obsidian Markdown
+
+Use **bold** and *italic* in Obsidian.
+
+## Links
+
+Use [[wikilinks]] for internal links.`
+
+	entry, err := ParseSkillMD([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseSkillMD: %v", err)
+	}
+
+	if entry.Name != "obsidian-markdown" {
+		t.Errorf("Name = %q, want %q", entry.Name, "obsidian-markdown")
+	}
+	// No explicit type → defaults to "instruction".
+	if entry.Type != "instruction" {
+		t.Errorf("Type = %q, want %q", entry.Type, "instruction")
+	}
+	if entry.Status != "active" {
+		t.Errorf("Status = %q, want %q", entry.Status, "active")
+	}
+
+	body, ok := entry.Definition["content"].(string)
+	if !ok {
+		t.Fatal("Definition[\"content\"] not a string")
+	}
+	if !strings.Contains(body, "[[wikilinks]]") {
+		t.Errorf("content missing [[wikilinks]], got %q", body)
+	}
+}
+
+func TestRenderSkillMD_Instruction(t *testing.T) {
+	original := &SkillEntry{
+		Name:        "guide-skill",
+		Description: "A guide",
+		Type:        "instruction",
+		Status:      "active",
+		Definition:  map[string]interface{}{"content": "# Guide\n\nSome instructions."},
+		Source:      "https://github.com/owner/repo",
+	}
+
+	rendered, err := RenderSkillMD(original)
+	if err != nil {
+		t.Fatalf("RenderSkillMD: %v", err)
+	}
+
+	parsed, err := ParseSkillMD(rendered)
+	if err != nil {
+		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
+	}
+
+	if parsed.Type != "instruction" {
+		t.Errorf("Type = %q, want %q", parsed.Type, "instruction")
+	}
+	if parsed.Source != "https://github.com/owner/repo" {
+		t.Errorf("Source = %q, want %q", parsed.Source, "https://github.com/owner/repo")
+	}
+	content, _ := parsed.Definition["content"].(string)
+	if !strings.Contains(content, "Some instructions.") {
+		t.Errorf("content = %q, want to contain 'Some instructions.'", content)
+	}
+}
+
+func TestParseSkillMD_WithSource(t *testing.T) {
+	content := `---
+name: imported-skill
+description: An imported skill
+type: instruction
+source: https://github.com/owner/repo
+---
+
+Reference content here.`
+
+	entry, err := ParseSkillMD([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseSkillMD: %v", err)
+	}
+
+	if entry.Source != "https://github.com/owner/repo" {
+		t.Errorf("Source = %q, want %q", entry.Source, "https://github.com/owner/repo")
+	}
+
+	// Render and re-parse to test roundtrip.
+	rendered, err := RenderSkillMD(entry)
+	if err != nil {
+		t.Fatalf("RenderSkillMD: %v", err)
+	}
+
+	reparsed, err := ParseSkillMD(rendered)
+	if err != nil {
+		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
+	}
+	if reparsed.Source != entry.Source {
+		t.Errorf("Source roundtrip = %q, want %q", reparsed.Source, entry.Source)
+	}
+}
+
 func TestRenderSkillMD_Roundtrip(t *testing.T) {
 	original := &SkillEntry{
 		Name:        "test-skill",

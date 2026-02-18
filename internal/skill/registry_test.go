@@ -33,7 +33,7 @@ func TestRegistry_CreateSkill_Validation(t *testing.T) {
 		{
 			give:    "invalid type",
 			entry:   SkillEntry{Name: "foo", Type: "unknown", Definition: map[string]interface{}{"steps": []interface{}{}}},
-			wantErr: "skill type must be composite, script, or template",
+			wantErr: "skill type must be composite, script, template, or instruction",
 		},
 		{
 			give:    "empty definition",
@@ -235,6 +235,130 @@ func TestRegistry_GetSkillTool(t *testing.T) {
 		_, found := registry.GetSkillTool("does_not_exist")
 		if found {
 			t.Error("GetSkillTool returned true for non-existent skill, want false")
+		}
+	})
+}
+
+func TestRegistry_InstructionSkillAsTool(t *testing.T) {
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	// Create an instruction skill.
+	err := registry.CreateSkill(ctx, SkillEntry{
+		Name:        "obsidian-ref",
+		Description: "Obsidian Markdown reference guide",
+		Type:        "instruction",
+		Definition:  map[string]interface{}{"content": "# Obsidian\n\nUse wikilinks."},
+		Source:      "https://github.com/owner/repo",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkill: %v", err)
+	}
+
+	err = registry.ActivateSkill(ctx, "obsidian-ref")
+	if err != nil {
+		t.Fatalf("ActivateSkill: %v", err)
+	}
+
+	// Verify tool is registered.
+	tool, found := registry.GetSkillTool("obsidian-ref")
+	if !found {
+		t.Fatal("GetSkillTool returned false for instruction skill")
+	}
+	if tool.Name != "skill_obsidian-ref" {
+		t.Errorf("tool.Name = %q, want %q", tool.Name, "skill_obsidian-ref")
+	}
+}
+
+func TestRegistry_InstructionTool_ReturnsContent(t *testing.T) {
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	err := registry.CreateSkill(ctx, SkillEntry{
+		Name:        "my-guide",
+		Description: "My guide",
+		Type:        "instruction",
+		Definition:  map[string]interface{}{"content": "Guide content here."},
+		Source:      "https://example.com/guide",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkill: %v", err)
+	}
+
+	err = registry.ActivateSkill(ctx, "my-guide")
+	if err != nil {
+		t.Fatalf("ActivateSkill: %v", err)
+	}
+
+	tool, found := registry.GetSkillTool("my-guide")
+	if !found {
+		t.Fatal("GetSkillTool returned false")
+	}
+
+	// Call the handler.
+	result, err := tool.Handler(ctx, map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map[string]interface{}", result)
+	}
+
+	if resultMap["content"] != "Guide content here." {
+		t.Errorf("content = %q, want %q", resultMap["content"], "Guide content here.")
+	}
+	if resultMap["source"] != "https://example.com/guide" {
+		t.Errorf("source = %q, want %q", resultMap["source"], "https://example.com/guide")
+	}
+	if resultMap["type"] != "instruction" {
+		t.Errorf("type = %q, want %q", resultMap["type"], "instruction")
+	}
+}
+
+func TestRegistry_InstructionTool_Description(t *testing.T) {
+	registry := newTestRegistry(t)
+	ctx := context.Background()
+
+	t.Run("custom description preserved", func(t *testing.T) {
+		err := registry.CreateSkill(ctx, SkillEntry{
+			Name:        "custom-desc",
+			Description: "Use this when working with Obsidian Markdown syntax",
+			Type:        "instruction",
+			Definition:  map[string]interface{}{"content": "content"},
+		})
+		if err != nil {
+			t.Fatalf("CreateSkill: %v", err)
+		}
+		err = registry.ActivateSkill(ctx, "custom-desc")
+		if err != nil {
+			t.Fatalf("ActivateSkill: %v", err)
+		}
+
+		tool, _ := registry.GetSkillTool("custom-desc")
+		if tool.Description != "Use this when working with Obsidian Markdown syntax" {
+			t.Errorf("Description = %q, want original", tool.Description)
+		}
+	})
+
+	t.Run("empty description gets default", func(t *testing.T) {
+		err := registry.CreateSkill(ctx, SkillEntry{
+			Name:       "no-desc",
+			Type:       "instruction",
+			Definition: map[string]interface{}{"content": "content"},
+		})
+		if err != nil {
+			t.Fatalf("CreateSkill: %v", err)
+		}
+		err = registry.ActivateSkill(ctx, "no-desc")
+		if err != nil {
+			t.Fatalf("ActivateSkill: %v", err)
+		}
+
+		tool, _ := registry.GetSkillTool("no-desc")
+		if tool.Description != "Reference guide for no-desc" {
+			t.Errorf("Description = %q, want default", tool.Description)
 		}
 	})
 }

@@ -48,6 +48,20 @@ func BuildScriptSkill(name, description, script string, params map[string]interf
 	return entry
 }
 
+// BuildInstructionSkill creates a SkillEntry for an instruction-based reference skill.
+// Instruction skills are agent reference documents, not executable code.
+func BuildInstructionSkill(name, description, content, source string) SkillEntry {
+	return SkillEntry{
+		Name:        name,
+		Description: description,
+		Type:        "instruction",
+		Definition:  map[string]interface{}{"content": content},
+		Source:      source,
+		Status:      "active",
+		CreatedBy:   "import",
+	}
+}
+
 // BuildTemplateSkill creates a SkillEntry for a template-based skill.
 func BuildTemplateSkill(name, description, tmpl string, params map[string]interface{}) SkillEntry {
 	entry := SkillEntry{

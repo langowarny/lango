@@ -67,10 +67,10 @@ func (r *Registry) CreateSkill(ctx context.Context, entry SkillEntry) error {
 	if entry.Name == "" {
 		return fmt.Errorf("skill name is required")
 	}
-	if entry.Type != "composite" && entry.Type != "script" && entry.Type != "template" {
-		return fmt.Errorf("skill type must be composite, script, or template")
+	if entry.Type != "composite" && entry.Type != "script" && entry.Type != "template" && entry.Type != "instruction" {
+		return fmt.Errorf("skill type must be composite, script, template, or instruction")
 	}
-	if len(entry.Definition) == 0 {
+	if entry.Type != "instruction" && len(entry.Definition) == 0 {
 		return fmt.Errorf("skill definition is required")
 	}
 
@@ -129,8 +129,51 @@ func (r *Registry) ListActiveSkills(ctx context.Context) ([]SkillEntry, error) {
 	return r.store.ListActive(ctx)
 }
 
+// Store returns the underlying SkillStore for direct access (e.g. by the importer).
+func (r *Registry) Store() SkillStore {
+	return r.store
+}
+
 func (r *Registry) skillToTool(sk SkillEntry) *agent.Tool {
 	skillEntry := sk
+
+	// instruction skills: Description is the agent's reasoning basis for when to invoke.
+	// Handler returns the full reference document for agent context loading.
+	if skillEntry.Type == "instruction" {
+		desc := skillEntry.Description
+		if desc == "" {
+			desc = fmt.Sprintf("Reference guide for %s", skillEntry.Name)
+		}
+
+		params := map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"topic": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional: specific topic or section to focus on within the skill reference",
+				},
+			},
+		}
+		if skillEntry.Parameters != nil && len(skillEntry.Parameters) > 0 {
+			params = skillEntry.Parameters
+		}
+
+		return &agent.Tool{
+			Name:        "skill_" + skillEntry.Name,
+			Description: desc,
+			Parameters:  params,
+			Handler: func(ctx context.Context, p map[string]interface{}) (interface{}, error) {
+				content, _ := skillEntry.Definition["content"].(string)
+				return map[string]interface{}{
+					"skill":       skillEntry.Name,
+					"type":        "instruction",
+					"content":     content,
+					"source":      skillEntry.Source,
+					"description": skillEntry.Description,
+				}, nil
+			},
+		}
+	}
 
 	params := map[string]interface{}{
 		"type":       "object",

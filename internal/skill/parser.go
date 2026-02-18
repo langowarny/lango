@@ -18,6 +18,7 @@ type frontmatter struct {
 	Status           string `yaml:"status"`
 	CreatedBy        string `yaml:"created_by"`
 	RequiresApproval bool   `yaml:"requires_approval"`
+	Source           string `yaml:"source,omitempty"`
 }
 
 var _codeBlockRe = regexp.MustCompile("(?s)```(\\w+)?\\s*\n(.*?)```")
@@ -39,7 +40,7 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		return nil, fmt.Errorf("skill name is required in frontmatter")
 	}
 	if meta.Type == "" {
-		meta.Type = "script"
+		meta.Type = "instruction"
 	}
 	if meta.Status == "" {
 		meta.Status = "active"
@@ -52,6 +53,7 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		Status:           meta.Status,
 		CreatedBy:        meta.CreatedBy,
 		RequiresApproval: meta.RequiresApproval,
+		Source:           meta.Source,
 	}
 
 	definition, params, err := parseBody(meta.Type, body)
@@ -78,6 +80,7 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		Status:           status,
 		CreatedBy:        entry.CreatedBy,
 		RequiresApproval: entry.RequiresApproval,
+		Source:           entry.Source,
 	}
 
 	fmBytes, err := yaml.Marshal(meta)
@@ -120,6 +123,13 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 			buf.WriteString("```json\n")
 			buf.Write(stepJSON)
 			buf.WriteString("\n```\n\n")
+		}
+
+	case "instruction":
+		content, _ := entry.Definition["content"].(string)
+		buf.WriteString(content)
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			buf.WriteString("\n")
 		}
 	}
 
@@ -199,6 +209,15 @@ func parseBody(skillType, body string) (definition map[string]interface{}, param
 		if len(steps) > 0 {
 			definition["steps"] = steps
 		}
+
+	case "instruction":
+		// Store the entire body as content (markdown reference document).
+		// Strip the ## Parameters section if present — it is parsed separately below.
+		content := body
+		if idx := strings.Index(content, "## Parameters"); idx >= 0 {
+			content = strings.TrimSpace(content[:idx])
+		}
+		definition["content"] = content
 	}
 
 	// Extract parameters section (last json block after ## Parameters header)

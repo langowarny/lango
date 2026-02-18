@@ -150,6 +150,9 @@ type SkillConfig struct {
 
 	// SkillsDir is the directory containing skill files (default: ~/.lango/skills).
 	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
+
+	// AllowImport enables importing skills from external URLs and GitHub repositories.
+	AllowImport bool `mapstructure:"allowImport" json:"allowImport"`
 }
 
 // KnowledgeConfig defines self-learning knowledge system settings
