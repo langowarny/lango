@@ -35,10 +35,6 @@ The system SHALL process incoming Slack events using the Events API. Message han
 ### Requirement: Message sending
 The Slack channel SHALL auto-convert standard Markdown to Slack mrkdwn format in the Send() method before posting messages. The conversion SHALL apply to the text content passed via MsgOptionText.
 
-#### Scenario: Send to channel
-- **WHEN** the agent generates a response to a channel message
-- **THEN** the response SHALL be posted to that channel
-
 #### Scenario: Auto-format standard Markdown
 - **WHEN** Send() is called with an OutgoingMessage
 - **THEN** the system converts the text via FormatMrkdwn() before creating MsgOptionText

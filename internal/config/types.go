@@ -153,6 +153,15 @@ type SkillConfig struct {
 
 	// AllowImport enables importing skills from external URLs and GitHub repositories.
 	AllowImport bool `mapstructure:"allowImport" json:"allowImport"`
+
+	// MaxBulkImport limits the number of skills in a single bulk import operation (default: 50).
+	MaxBulkImport int `mapstructure:"maxBulkImport" json:"maxBulkImport"`
+
+	// ImportConcurrency sets the number of concurrent HTTP requests during bulk import (default: 5).
+	ImportConcurrency int `mapstructure:"importConcurrency" json:"importConcurrency"`
+
+	// ImportTimeout is the overall timeout for skill import operations (default: 2m).
+	ImportTimeout time.Duration `mapstructure:"importTimeout" json:"importTimeout"`
 }
 
 // KnowledgeConfig defines self-learning knowledge system settings
@@ -349,6 +358,12 @@ type AgentConfig struct {
 	// MultiAgent enables hierarchical sub-agent orchestration.
 	// When false (default), a single monolithic agent handles all tasks.
 	MultiAgent bool `mapstructure:"multiAgent" json:"multiAgent"`
+
+	// RequestTimeout is the maximum duration for a single agent request (default: 5m).
+	RequestTimeout time.Duration `mapstructure:"requestTimeout" json:"requestTimeout"`
+
+	// ToolTimeout is the maximum duration for a single tool call execution (default: 2m).
+	ToolTimeout time.Duration `mapstructure:"toolTimeout" json:"toolTimeout"`
 }
 
 // ProviderConfig defines AI provider settings

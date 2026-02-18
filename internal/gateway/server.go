@@ -54,6 +54,7 @@ type Config struct {
 	WebSocketEnabled bool
 	AllowedOrigins   []string
 	ApprovalTimeout  time.Duration
+	RequestTimeout   time.Duration
 }
 
 // Client represents a connected WebSocket client
@@ -173,7 +174,14 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 		"sessionKey": sessionKey,
 	})
 
-	ctx := session.WithSessionKey(context.Background(), sessionKey)
+	timeout := s.config.RequestTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
 		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
 			"sessionKey": sessionKey,

@@ -40,6 +40,14 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Agent.FallbackProvider = val
 		case "fallback_model":
 			s.Current.Agent.FallbackModel = val
+		case "request_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Agent.RequestTimeout = d
+			}
+		case "tool_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Agent.ToolTimeout = d
+			}
 
 		// Server
 		case "host":
@@ -152,6 +160,20 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Skill.Enabled = f.Checked
 		case "skill_dir":
 			s.Current.Skill.SkillsDir = val
+		case "skill_allow_import":
+			s.Current.Skill.AllowImport = f.Checked
+		case "skill_max_bulk":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Skill.MaxBulkImport = i
+			}
+		case "skill_import_concurrency":
+			if i, err := strconv.Atoi(val); err == nil {
+				s.Current.Skill.ImportConcurrency = i
+			}
+		case "skill_import_timeout":
+			if d, err := time.ParseDuration(val); err == nil {
+				s.Current.Skill.ImportTimeout = d
+			}
 
 			// Observational Memory
 		case "om_enabled":

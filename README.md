@@ -229,6 +229,8 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `agent.temperature` | float | `0.7` | Generation temperature |
 | `agent.systemPromptPath` | string | - | Legacy: single file to override the Identity section only |
 | `agent.promptsDir` | string | - | Directory of `.md` files to override default prompt sections (takes precedence over `systemPromptPath`) |
+| `agent.requestTimeout` | duration | `5m` | Max time for a single agent request (prevents indefinite hangs) |
+| `agent.toolTimeout` | duration | `2m` | Max time for a single tool call execution |
 | **Providers** | | | |
 | `providers.<id>.type` | string | - | Provider type (openai, anthropic, gemini) |
 | `providers.<id>.apiKey` | string | - | Provider API key |
@@ -274,6 +276,10 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | **Skill System** | | | |
 | `skill.enabled` | bool | `false` | Enable file-based skill system |
 | `skill.skillsDir` | string | `~/.lango/skills` | Directory containing skill files (`<name>/SKILL.md`) |
+| `skill.allowImport` | bool | `false` | Allow importing skills from external URLs and GitHub repos |
+| `skill.maxBulkImport` | int | `50` | Max skills to import in a single bulk operation |
+| `skill.importConcurrency` | int | `5` | Concurrent HTTP requests during bulk import |
+| `skill.importTimeout` | duration | `2m` | Overall timeout for skill import operations |
 | **Observational Memory** | | | |
 | `observationalMemory.enabled` | bool | `false` | Enable observational memory system |
 | `observationalMemory.provider` | string | - | LLM provider for observer/reflector (empty = agent default) |

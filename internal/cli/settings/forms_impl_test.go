@@ -29,6 +29,7 @@ func TestNewAgentForm_AllFields(t *testing.T) {
 	wantKeys := []string{
 		"provider", "model", "maxtokens", "temp",
 		"prompts_dir", "fallback_provider", "fallback_model",
+		"request_timeout", "tool_timeout",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -419,6 +420,37 @@ func TestNewMenuModel_HasKnowledgeCategory(t *testing.T) {
 	}
 	if !found {
 		t.Error("menu missing 'knowledge' category")
+	}
+}
+
+func TestNewSkillForm_AllFields(t *testing.T) {
+	cfg := defaultTestConfig()
+	form := NewSkillForm(cfg)
+
+	wantKeys := []string{
+		"skill_enabled", "skill_dir",
+		"skill_allow_import", "skill_max_bulk",
+		"skill_import_concurrency", "skill_import_timeout",
+	}
+
+	if len(form.Fields) != len(wantKeys) {
+		t.Fatalf("expected %d fields, got %d", len(wantKeys), len(form.Fields))
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f == nil {
+			t.Errorf("missing field %q", key)
+		}
+	}
+
+	if f := fieldByKey(form, "skill_enabled"); !f.Checked {
+		t.Error("skill_enabled: want true by default")
+	}
+	if f := fieldByKey(form, "skill_max_bulk"); f.Value != "50" {
+		t.Errorf("skill_max_bulk: want %q, got %q", "50", f.Value)
+	}
+	if f := fieldByKey(form, "skill_import_concurrency"); f.Value != "5" {
+		t.Errorf("skill_import_concurrency: want %q, got %q", "5", f.Value)
 	}
 }
 

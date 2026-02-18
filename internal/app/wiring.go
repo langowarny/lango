@@ -598,10 +598,11 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
 func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Config, store session.Store, tools []*agent.Tool, kc *knowledgeComponents, mc *memoryComponents, ec *embeddingComponents, gc *graphComponents, scanner *agent.SecretScanner, sr *skill.Registry, lc *librarianComponents) (*adk.Agent, error) {
-	// Adapt tools to ADK format
+	// Adapt tools to ADK format with optional per-tool timeout.
+	toolTimeout := cfg.Agent.ToolTimeout
 	var adkTools []adk_tool.Tool
 	for _, t := range tools {
-		at, err := adk.AdaptTool(t)
+		at, err := adk.AdaptToolWithTimeout(t, toolTimeout)
 		if err != nil {
 			logger().Warnw("adapt tool error", "name", t.Name, "error", err)
 			continue
@@ -816,6 +817,7 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		HTTPEnabled:      cfg.Server.HTTPEnabled,
 		WebSocketEnabled: cfg.Server.WebSocketEnabled,
 		AllowedOrigins:   cfg.Server.AllowedOrigins,
+		RequestTimeout:   cfg.Agent.RequestTimeout,
 	}, adkAgent, nil, store, auth)
 }
 

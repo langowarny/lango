@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/channels/discord"
@@ -116,6 +117,13 @@ func (a *App) handleSlackMessage(ctx context.Context, msg *slack.IncomingMessage
 // (approval providers, learning engine, etc.) can route by channel.
 // After each agent turn, buffers (memory, analysis) are triggered for async processing.
 func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, error) {
+	timeout := a.Config.Agent.RequestTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	ctx = session.WithSessionKey(ctx, sessionKey)
 	response, err := a.Agent.RunAndCollect(ctx, sessionKey, input)
 
@@ -125,6 +133,10 @@ func (a *App) runAgent(ctx context.Context, sessionKey, input string) (string, e
 	}
 	if a.AnalysisBuffer != nil {
 		a.AnalysisBuffer.Trigger(sessionKey)
+	}
+
+	if err != nil && ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("request timed out after %v", timeout)
 	}
 
 	return response, err

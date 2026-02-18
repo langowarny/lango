@@ -8,10 +8,18 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+// ImportConfig holds configuration for bulk import operations.
+type ImportConfig struct {
+	MaxSkills   int
+	Concurrency int
+	Timeout     time.Duration
+}
 
 // Importer fetches SKILL.md files from GitHub repositories or arbitrary URLs.
 type Importer struct {
@@ -174,46 +182,98 @@ func (im *Importer) FetchFromURL(ctx context.Context, rawURL string) ([]byte, er
 }
 
 // ImportFromRepo discovers and imports all skills from a GitHub repository.
-func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store SkillStore) (*ImportResult, error) {
+// cfg controls concurrency, max skills, and timeout for the operation.
+func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store SkillStore, cfg ImportConfig) (*ImportResult, error) {
+	// Apply overall import timeout.
+	if cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+	}
+
 	skillNames, err := im.DiscoverSkills(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
 
-	sourceURL := fmt.Sprintf("https://github.com/%s/%s", ref.Owner, ref.Repo)
-	result := &ImportResult{}
-
-	for _, name := range skillNames {
-		raw, err := im.FetchSkillMD(ctx, ref, name)
-		if err != nil {
-			im.logger.Warnw("skip skill: fetch failed", "skill", name, "error", err)
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", name, err))
-			continue
-		}
-
-		entry, err := ParseSkillMD(raw)
-		if err != nil {
-			im.logger.Warnw("skip skill: parse failed", "skill", name, "error", err)
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: parse: %v", name, err))
-			continue
-		}
-
-		// Override source to track import origin.
-		entry.Source = sourceURL
-
-		// Check if skill already exists.
-		if existing, _ := store.Get(ctx, entry.Name); existing != nil {
-			result.Skipped = append(result.Skipped, entry.Name)
-			continue
-		}
-
-		if err := store.Save(ctx, *entry); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: save: %v", name, err))
-			continue
-		}
-		result.Imported = append(result.Imported, entry.Name)
+	// Enforce max skills limit.
+	if cfg.MaxSkills > 0 && len(skillNames) > cfg.MaxSkills {
+		im.logger.Warnw("skill count exceeds max, truncating",
+			"discovered", len(skillNames), "max", cfg.MaxSkills)
+		skillNames = skillNames[:cfg.MaxSkills]
 	}
 
+	sourceURL := fmt.Sprintf("https://github.com/%s/%s", ref.Owner, ref.Repo)
+	result := &ImportResult{}
+	var mu sync.Mutex
+
+	concurrency := cfg.Concurrency
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, name := range skillNames {
+		// Check for context cancellation before starting each goroutine.
+		if ctx.Err() != nil {
+			mu.Lock()
+			result.Errors = append(result.Errors, fmt.Sprintf("cancelled: %v", ctx.Err()))
+			mu.Unlock()
+			break
+		}
+
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(skillName string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			raw, fetchErr := im.FetchSkillMD(ctx, ref, skillName)
+			if fetchErr != nil {
+				im.logger.Warnw("skip skill: fetch failed", "skill", skillName, "error", fetchErr)
+				mu.Lock()
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", skillName, fetchErr))
+				mu.Unlock()
+				return
+			}
+
+			entry, parseErr := ParseSkillMD(raw)
+			if parseErr != nil {
+				im.logger.Warnw("skip skill: parse failed", "skill", skillName, "error", parseErr)
+				mu.Lock()
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: parse: %v", skillName, parseErr))
+				mu.Unlock()
+				return
+			}
+
+			// Override source to track import origin.
+			entry.Source = sourceURL
+
+			// Check if skill already exists.
+			if existing, _ := store.Get(ctx, entry.Name); existing != nil {
+				mu.Lock()
+				result.Skipped = append(result.Skipped, entry.Name)
+				mu.Unlock()
+				return
+			}
+
+			if saveErr := store.Save(ctx, *entry); saveErr != nil {
+				mu.Lock()
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: save: %v", skillName, saveErr))
+				mu.Unlock()
+				return
+			}
+
+			mu.Lock()
+			result.Imported = append(result.Imported, entry.Name)
+			mu.Unlock()
+		}(name)
+	}
+
+	wg.Wait()
 	return result, nil
 }
 

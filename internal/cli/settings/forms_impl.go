@@ -75,6 +75,18 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "e.g. gpt-4o",
 	})
 
+	form.AddField(&tuicore.Field{
+		Key: "request_timeout", Label: "Request Timeout", Type: tuicore.InputText,
+		Value:       cfg.Agent.RequestTimeout.String(),
+		Placeholder: "5m (e.g. 30s, 2m, 5m)",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "tool_timeout", Label: "Tool Timeout", Type: tuicore.InputText,
+		Value:       cfg.Agent.ToolTimeout.String(),
+		Placeholder: "2m (e.g. 30s, 1m, 2m)",
+	})
+
 	return &form
 }
 
@@ -326,6 +338,29 @@ func NewSkillForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "skill_dir", Label: "Skills Directory", Type: tuicore.InputText,
 		Value:       cfg.Skill.SkillsDir,
 		Placeholder: "~/.lango/skills",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_allow_import", Label: "Allow Import", Type: tuicore.InputBool,
+		Checked: cfg.Skill.AllowImport,
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_max_bulk", Label: "Max Bulk Import", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Skill.MaxBulkImport),
+		Placeholder: "50",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_import_concurrency", Label: "Import Concurrency", Type: tuicore.InputInt,
+		Value:       strconv.Itoa(cfg.Skill.ImportConcurrency),
+		Placeholder: "5",
+	})
+
+	form.AddField(&tuicore.Field{
+		Key: "skill_import_timeout", Label: "Import Timeout", Type: tuicore.InputText,
+		Value:       cfg.Skill.ImportTimeout.String(),
+		Placeholder: "2m (e.g. 30s, 1m, 5m)",
 	})
 
 	return &form

@@ -132,7 +132,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = wrapped
 
 		// Add meta-tools
-		metaTools := buildMetaTools(kc.store, kc.engine, registry)
+		metaTools := buildMetaTools(kc.store, kc.engine, registry, cfg.Skill)
 		tools = append(tools, metaTools...)
 	}
 

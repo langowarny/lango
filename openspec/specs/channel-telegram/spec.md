@@ -36,10 +36,6 @@ The system SHALL receive and process incoming messages from Telegram chats. Mess
 ### Requirement: Message sending
 The Telegram channel SHALL auto-convert standard Markdown to Telegram v1 format in the Send() method when ParseMode is not explicitly set. On API parse failure, the system SHALL fallback to sending plain text without ParseMode. Messages with explicit ParseMode SHALL be sent as-is.
 
-#### Scenario: Send text response
-- **WHEN** the agent generates a text response
-- **THEN** the response SHALL be sent to the originating chat
-
 #### Scenario: Auto-format standard Markdown
 - **WHEN** Send() is called with an OutgoingMessage where ParseMode is empty
 - **THEN** the system converts the text via FormatMarkdown() and sends with ParseMode "Markdown"

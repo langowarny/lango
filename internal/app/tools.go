@@ -482,7 +482,7 @@ func buildBrowserTools(sm *browser.SessionManager) []*agent.Tool {
 }
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
-func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry) []*agent.Tool {
+func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
@@ -809,17 +809,21 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 						if err := registry.LoadSkills(ctx); err != nil {
 							return nil, fmt.Errorf("reload skills: %w", err)
 						}
-						if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
-							Action: "skill_import",
-							Actor:  "agent",
-							Target: entry.Name,
-							Details: map[string]interface{}{
-								"source": url,
-								"type":   entry.Type,
-							},
-						}); err != nil {
-							logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
-						}
+						go func() {
+							auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer auditCancel()
+							if err := store.SaveAuditLog(auditCtx, knowledge.AuditEntry{
+								Action: "skill_import",
+								Actor:  "agent",
+								Target: entry.Name,
+								Details: map[string]interface{}{
+									"source": url,
+									"type":   entry.Type,
+								},
+							}); err != nil {
+								logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
+							}
+						}()
 						return map[string]interface{}{
 							"status":  "imported",
 							"name":    entry.Name,
@@ -829,25 +833,34 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					}
 
 					// Bulk import from GitHub repo.
-					result, err := importer.ImportFromRepo(ctx, ref, registry.Store())
+					importCfg := skill.ImportConfig{
+						MaxSkills:   skillCfg.MaxBulkImport,
+						Concurrency: skillCfg.ImportConcurrency,
+						Timeout:     skillCfg.ImportTimeout,
+					}
+					result, err := importer.ImportFromRepo(ctx, ref, registry.Store(), importCfg)
 					if err != nil {
 						return nil, fmt.Errorf("import from repo: %w", err)
 					}
 					if err := registry.LoadSkills(ctx); err != nil {
 						return nil, fmt.Errorf("reload skills: %w", err)
 					}
-					if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
-						Action: "skill_import_bulk",
-						Actor:  "agent",
-						Target: url,
-						Details: map[string]interface{}{
-							"imported": result.Imported,
-							"skipped":  result.Skipped,
-							"errors":   result.Errors,
-						},
-					}); err != nil {
-						logger().Warnw("audit log save failed", "action", "skill_import_bulk", "error", err)
-					}
+					go func() {
+						auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer auditCancel()
+						if err := store.SaveAuditLog(auditCtx, knowledge.AuditEntry{
+							Action: "skill_import_bulk",
+							Actor:  "agent",
+							Target: url,
+							Details: map[string]interface{}{
+								"imported": result.Imported,
+								"skipped":  result.Skipped,
+								"errors":   result.Errors,
+							},
+						}); err != nil {
+							logger().Warnw("audit log save failed", "action", "skill_import_bulk", "error", err)
+						}
+					}()
 					return map[string]interface{}{
 						"status":   "completed",
 						"imported": result.Imported,
@@ -869,17 +882,21 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				if err := registry.LoadSkills(ctx); err != nil {
 					return nil, fmt.Errorf("reload skills: %w", err)
 				}
-				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
-					Action: "skill_import",
-					Actor:  "agent",
-					Target: entry.Name,
-					Details: map[string]interface{}{
-						"source": url,
-						"type":   entry.Type,
-					},
-				}); err != nil {
-					logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
-				}
+				go func() {
+					auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer auditCancel()
+					if err := store.SaveAuditLog(auditCtx, knowledge.AuditEntry{
+						Action: "skill_import",
+						Actor:  "agent",
+						Target: entry.Name,
+						Details: map[string]interface{}{
+							"source": url,
+							"type":   entry.Type,
+						},
+					}); err != nil {
+						logger().Warnw("audit log save failed", "action", "skill_import", "error", err)
+					}
+				}()
 				return map[string]interface{}{
 					"status":  "imported",
 					"name":    entry.Name,

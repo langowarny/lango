@@ -22,10 +22,12 @@ func DefaultConfig() *Config {
 			WebSocketEnabled: true,
 		},
 		Agent: AgentConfig{
-			Provider:    "anthropic",
-			Model:       "",
-			MaxTokens:   4096,
-			Temperature: 0.7,
+			Provider:       "anthropic",
+			Model:          "",
+			MaxTokens:      4096,
+			Temperature:    0.7,
+			RequestTimeout: 5 * time.Minute,
+			ToolTimeout:    2 * time.Minute,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -63,9 +65,12 @@ func DefaultConfig() *Config {
 			MaxContextPerLayer: 5,
 		},
 		Skill: SkillConfig{
-			Enabled:     true,
-			SkillsDir:   "~/.lango/skills",
-			AllowImport: true,
+			Enabled:           true,
+			SkillsDir:         "~/.lango/skills",
+			AllowImport:       true,
+			MaxBulkImport:     50,
+			ImportConcurrency: 5,
+			ImportTimeout:     2 * time.Minute,
 		},
 		Graph: GraphConfig{
 			Enabled:             false,
@@ -135,6 +140,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("agent.model", defaults.Agent.Model)
 	v.SetDefault("agent.maxTokens", defaults.Agent.MaxTokens)
 	v.SetDefault("agent.temperature", defaults.Agent.Temperature)
+	v.SetDefault("agent.requestTimeout", defaults.Agent.RequestTimeout)
+	v.SetDefault("agent.toolTimeout", defaults.Agent.ToolTimeout)
 	v.SetDefault("logging.level", defaults.Logging.Level)
 	v.SetDefault("logging.format", defaults.Logging.Format)
 	v.SetDefault("session.databasePath", defaults.Session.DatabasePath)
@@ -182,6 +189,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
 	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
 	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
+	v.SetDefault("skill.enabled", defaults.Skill.Enabled)
+	v.SetDefault("skill.skillsDir", defaults.Skill.SkillsDir)
+	v.SetDefault("skill.allowImport", defaults.Skill.AllowImport)
+	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
+	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
+	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
 
 	// Configure viper
 	v.SetConfigType("json")
