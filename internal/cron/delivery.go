@@ -78,7 +78,7 @@ func (d *Delivery) DeliverStart(ctx context.Context, jobName string, targets []s
 		return
 	}
 
-	msg := fmt.Sprintf("[Cron] Starting: %s", jobName)
+	msg := fmt.Sprintf("[⏰ Cron] Starting: %s", jobName)
 
 	for _, target := range targets {
 		if err := d.sender.SendMessage(ctx, target, msg); err != nil {
