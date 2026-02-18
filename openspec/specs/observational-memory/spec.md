@@ -59,7 +59,7 @@ The system SHALL support asynchronous observation generation via background goro
 - **AND** complete any in-progress observation before exiting
 
 ### Requirement: Context Assembly with Observations
-The system SHALL include observations and reflections in the context sent to the LLM.
+The system SHALL include observations and reflections in the context sent to the LLM. The session key for memory retrieval SHALL be resolved at call time from the request context via `session.SessionKeyFromContext(ctx)`, not from a field set at initialization.
 
 #### Scenario: Context ordering
 - **WHEN** assembling the augmented system prompt
@@ -73,6 +73,26 @@ The system SHALL include observations and reflections in the context sent to the
 - **WHEN** observations are included in the prompt
 - **THEN** they SHALL be formatted under a "## Conversation Memory" section
 - **AND** reflections SHALL appear before observations within that section
+
+#### Scenario: Session key resolved from request context
+- **WHEN** `GenerateContent` is called with a context containing a session key (set by gateway or channel adapter)
+- **THEN** the adapter SHALL extract the session key via `session.SessionKeyFromContext(ctx)`
+- **AND** use it for memory retrieval, RAG session filtering, and runtime context updates
+
+#### Scenario: No session key in context skips memory
+- **WHEN** `GenerateContent` is called with a context that has no session key
+- **THEN** the adapter SHALL skip memory retrieval entirely
+- **AND** the LLM response SHALL not include a Conversation Memory section
+
+#### Scenario: Session key propagated to RuntimeContextAdapter
+- **WHEN** a session key is resolved from context
+- **THEN** the adapter SHALL call `RuntimeContextAdapter.SetSession(sessionKey)`
+- **AND** the runtime context SHALL reflect the correct session key and derived channel type
+
+#### Scenario: Session key propagated to RAG retrieval
+- **WHEN** a session key is resolved from context and RAG is enabled
+- **THEN** the adapter SHALL pass the session key to RAG/GraphRAG retrieval options
+- **AND** results SHALL be filtered by the session key
 
 ### Requirement: OM Configuration
 The system SHALL support configuration of Observational Memory parameters.

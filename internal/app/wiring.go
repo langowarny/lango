@@ -672,7 +672,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 
 		// Wire in observational memory if available
 		if mc != nil {
-			ctxAdapter.WithMemory(mc.store, "")
+			ctxAdapter.WithMemory(mc.store)
 
 			// Apply memory context limits from config.
 			maxRef := cfg.ObservationalMemory.MaxReflectionsInContext
@@ -708,7 +708,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	} else if mc != nil {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
-		ctxAdapter.WithMemory(mc.store, "")
+		ctxAdapter.WithMemory(mc.store)
 
 		// Apply memory context limits from config.
 		maxRef := cfg.ObservationalMemory.MaxReflectionsInContext

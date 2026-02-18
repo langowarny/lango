@@ -16,6 +16,7 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/prompt"
+	"github.com/langowarny/lango/internal/session"
 )
 
 // MemoryProvider retrieves observations and reflections for a session.
@@ -37,7 +38,6 @@ type ContextAwareModelAdapter struct {
 	ragOpts         embedding.RetrieveOptions
 	graphRAG        *graph.GraphRAGService
 	runtimeAdapter  *RuntimeContextAdapter
-	sessionKey      string
 	basePrompt      string
 	maxReflections  int
 	maxObservations int
@@ -62,9 +62,10 @@ func NewContextAwareModelAdapter(
 }
 
 // WithMemory adds observational memory support to the adapter.
-func (m *ContextAwareModelAdapter) WithMemory(provider MemoryProvider, sessionKey string) *ContextAwareModelAdapter {
+// The session key is resolved at call time from the request context
+// via session.SessionKeyFromContext.
+func (m *ContextAwareModelAdapter) WithMemory(provider MemoryProvider) *ContextAwareModelAdapter {
 	m.memoryProvider = provider
-	m.sessionKey = sessionKey
 	return m
 }
 
@@ -105,9 +106,12 @@ func (m *ContextAwareModelAdapter) Name() string {
 func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	prompt := m.basePrompt
 
+	// Resolve session key from request context (set by gateway/channels).
+	sessionKey := session.SessionKeyFromContext(ctx)
+
 	// Update runtime session state before retrieval
-	if m.runtimeAdapter != nil && m.sessionKey != "" {
-		m.runtimeAdapter.SetSession(m.sessionKey)
+	if m.runtimeAdapter != nil && sessionKey != "" {
+		m.runtimeAdapter.SetSession(sessionKey)
 	}
 
 	userQuery := extractLastUserMessage(req.Contents)
@@ -144,21 +148,21 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 	if userQuery != "" {
 		if m.graphRAG != nil {
 			g.Go(func() error {
-				ragSection = m.assembleGraphRAGSection(gCtx, userQuery)
+				ragSection = m.assembleGraphRAGSection(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		} else if m.ragService != nil {
 			g.Go(func() error {
-				ragSection = m.assembleRAGSection(gCtx, userQuery)
+				ragSection = m.assembleRAGSection(gCtx, userQuery, sessionKey)
 				return nil
 			})
 		}
 	}
 
 	// Memory retrieval
-	if m.memoryProvider != nil && m.sessionKey != "" {
+	if m.memoryProvider != nil && sessionKey != "" {
 		g.Go(func() error {
-			memorySection = m.assembleMemorySection(gCtx)
+			memorySection = m.assembleMemorySection(gCtx, sessionKey)
 			return nil
 		})
 	}
@@ -190,24 +194,24 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 }
 
 // assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
-func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context) string {
+func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context, sessionKey string) string {
 	var reflections []memory.Reflection
 	var observations []memory.Observation
 	var err error
 
 	if m.maxReflections > 0 {
-		reflections, err = m.memoryProvider.ListRecentReflections(ctx, m.sessionKey, m.maxReflections)
+		reflections, err = m.memoryProvider.ListRecentReflections(ctx, sessionKey, m.maxReflections)
 	} else {
-		reflections, err = m.memoryProvider.ListReflections(ctx, m.sessionKey)
+		reflections, err = m.memoryProvider.ListReflections(ctx, sessionKey)
 	}
 	if err != nil {
 		m.logger.Warnw("memory reflection retrieval error", "error", err)
 	}
 
 	if m.maxObservations > 0 {
-		observations, err = m.memoryProvider.ListRecentObservations(ctx, m.sessionKey, m.maxObservations)
+		observations, err = m.memoryProvider.ListRecentObservations(ctx, sessionKey, m.maxObservations)
 	} else {
-		observations, err = m.memoryProvider.ListObservations(ctx, m.sessionKey)
+		observations, err = m.memoryProvider.ListObservations(ctx, sessionKey)
 	}
 	if err != nil {
 		m.logger.Warnw("memory observation retrieval error", "error", err)
@@ -241,15 +245,15 @@ func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context) st
 }
 
 // assembleGraphRAGSection builds a combined section from vector search + graph expansion.
-func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, query string) string {
+func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, query, sessionKey string) string {
 	opts := graph.VectorRetrieveOptions{
 		Collections: m.ragOpts.Collections,
 		Limit:       m.ragOpts.Limit,
 		SessionKey:  m.ragOpts.SessionKey,
 		MaxDistance:  m.ragOpts.MaxDistance,
 	}
-	if m.sessionKey != "" {
-		opts.SessionKey = m.sessionKey
+	if sessionKey != "" {
+		opts.SessionKey = sessionKey
 	}
 	result, err := m.graphRAG.Retrieve(ctx, query, opts)
 	if err != nil {
@@ -260,10 +264,10 @@ func (m *ContextAwareModelAdapter) assembleGraphRAGSection(ctx context.Context, 
 }
 
 // assembleRAGSection builds a "Semantic Context" section from RAG retrieval results.
-func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query string) string {
+func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query, sessionKey string) string {
 	opts := m.ragOpts
-	if m.sessionKey != "" {
-		opts.SessionKey = m.sessionKey
+	if sessionKey != "" {
+		opts.SessionKey = sessionKey
 	}
 	results, err := m.ragService.Retrieve(ctx, query, opts)
 	if err != nil {
