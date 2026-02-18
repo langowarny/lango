@@ -129,7 +129,7 @@ Frame questions conversationally — not as a survey or checklist.
 - Never manage conversational memory (observations, reflections).
 - If a task does not match your capabilities, REJECT it by responding:
   "[REJECT] This task requires <correct_agent>. I handle: search, RAG, graph traversal, knowledge/skill management, inquiries."`,
-		Prefixes: []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "create_skill", "list_skills", "librarian_"},
+		Prefixes: []string{"search_", "rag_", "graph_", "save_knowledge", "save_learning", "create_skill", "list_skills", "import_skill", "librarian_"},
 		Keywords: []string{"search", "find", "lookup", "knowledge", "learning", "retrieve", "graph", "RAG", "inquiry", "question", "gap"},
 		Accepts:  "A search query, knowledge to persist, skill to create/list, or inquiry operation",
 		Returns:  "Search results with scores, knowledge save confirmation, skill listings, or inquiry details",
@@ -312,6 +312,7 @@ var capabilityMap = map[string]string{
 	"save_learning":  "learning persistence",
 	"create_skill":   "skill creation",
 	"list_skills":    "skill listing",
+	"import_skill":   "skill import from external sources",
 	"memory_":        "memory storage and recall",
 	"observe_":       "event observation",
 	"reflect_":       "reflection and summarization",

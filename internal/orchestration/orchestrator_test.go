@@ -93,11 +93,12 @@ func TestPartitionTools(t *testing.T) {
 				newTestTool("save_learning_rule"),
 				newTestTool("create_skill_x"),
 				newTestTool("list_skills"),
+				newTestTool("import_skill"),
 			},
 			wantLibrarian: []string{
 				"search_web", "rag_query", "graph_traverse",
 				"save_knowledge_item", "save_learning_rule",
-				"create_skill_x", "list_skills",
+				"create_skill_x", "list_skills", "import_skill",
 			},
 		},
 		{
@@ -603,6 +604,7 @@ func TestToolCapability(t *testing.T) {
 		{give: "save_learning_rule", want: "learning persistence"},
 		{give: "create_skill_x", want: "skill creation"},
 		{give: "list_skills", want: "skill listing"},
+		{give: "import_skill", want: "skill import from external sources"},
 		{give: "memory_store", want: "memory storage and recall"},
 		{give: "observe_event", want: "event observation"},
 		{give: "reflect_summary", want: "reflection and summarization"},

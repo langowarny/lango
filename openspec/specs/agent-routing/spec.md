@@ -15,6 +15,18 @@ The system SHALL define an `AgentSpec` type with fields: Name, Description, Inst
 - **WHEN** agentSpecs is iterated
 - **THEN** no two specs SHALL have the same Name
 
+#### Scenario: Librarian prefixes include all skill management tools
+- **WHEN** the librarian spec's Prefixes are checked
+- **THEN** they SHALL include `create_skill`, `list_skills`, and `import_skill`
+
+#### Scenario: import_skill routes to librarian
+- **WHEN** a tool named `import_skill` is partitioned via `PartitionTools`
+- **THEN** it SHALL be assigned to the Librarian role tool set
+
+#### Scenario: import_skill has capability description
+- **WHEN** `toolCapability` is called with a tool name starting with `import_skill`
+- **THEN** it SHALL return a non-empty capability description
+
 ### Requirement: Routing table in orchestrator prompt
 The orchestrator instruction SHALL contain a structured routing table listing each sub-agent with its role, keywords, accepts/returns format, and cannot-do constraints.
 
