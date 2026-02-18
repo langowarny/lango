@@ -34,7 +34,7 @@ func DefaultConfig() *Config {
 			Format: "console",
 		},
 		Session: SessionConfig{
-			DatabasePath:    "~/.lango/data.db",
+			DatabasePath:    "~/.lango/lango.db",
 			TTL:             24 * time.Hour,
 			MaxHistoryTurns: 50,
 		},

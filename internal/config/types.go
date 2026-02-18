@@ -441,9 +441,12 @@ type LoggingConfig struct {
 	OutputPath string `mapstructure:"outputPath" json:"outputPath"`
 }
 
-// SessionConfig defines session storage settings
+// SessionConfig defines session storage settings.
+// The primary database is always ~/.lango/lango.db (opened during bootstrap).
+// DatabasePath is used as a fallback for standalone CLI commands.
 type SessionConfig struct {
-	// Database path (SQLite)
+	// Database path for standalone CLI access (defaults to ~/.lango/lango.db).
+	// In normal operation the bootstrap Ent client is reused instead.
 	DatabasePath string `mapstructure:"databasePath" json:"databasePath"`
 
 	// Session TTL before expiration

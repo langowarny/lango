@@ -200,11 +200,6 @@ func NewSessionForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Session Configuration")
 
 	form.AddField(&tuicore.Field{
-		Key: "db_path", Label: "Database Path", Type: tuicore.InputText,
-		Value: cfg.Session.DatabasePath,
-	})
-
-	form.AddField(&tuicore.Field{
 		Key: "ttl", Label: "Session TTL", Type: tuicore.InputText,
 		Value: cfg.Session.TTL.String(),
 	})

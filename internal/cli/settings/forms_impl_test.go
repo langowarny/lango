@@ -83,7 +83,7 @@ func TestNewSessionForm_AllFields(t *testing.T) {
 	form := NewSessionForm(cfg)
 
 	wantKeys := []string{
-		"db_path", "ttl", "max_history_turns",
+		"ttl", "max_history_turns",
 	}
 
 	if len(form.Fields) != len(wantKeys) {

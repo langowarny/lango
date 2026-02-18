@@ -12,7 +12,7 @@ The settings editor SHALL support editing all configuration sections previously 
 3. **Server** — Host, Port, HTTP/WebSocket toggles
 4. **Channels** — Telegram, Discord, Slack enable/disable + tokens
 5. **Tools** — Exec timeout, Browser, Filesystem limits
-6. **Session** — Database path, TTL, Max history turns
+6. **Session** — TTL, Max history turns
 7. **Security** — Interceptor (PII, policy, timeout, tools), Signer (provider, RPC, KeyID)
 8. **Auth** — OIDC provider management (add, edit, delete)
 9. **Knowledge** — Enabled, max learnings/knowledge/context

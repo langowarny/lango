@@ -52,7 +52,7 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 - `server.port`: `18789`
 - `server.httpEnabled`: `true`
 - `server.wsEnabled`: `true`
-- `session.databasePath`: `"~/.lango/data.db"`
+- `session.databasePath`: `"~/.lango/lango.db"`
 - `session.maxHistoryTurns`: `100`
 - `logging.level`: `"info"`
 - `logging.format`: `"console"`
@@ -73,6 +73,11 @@ The configuration system SHALL apply sensible defaults for all non-credential fi
 - **WHEN** a configuration field is not specified
 - **THEN** the system SHALL use the default value listed above
 - **THEN** no error or warning SHALL be emitted for missing optional fields
+
+#### Scenario: Session database path defaults to lango.db
+- **WHEN** `session.databasePath` is not specified in the configuration
+- **THEN** the system SHALL default to `"~/.lango/lango.db"`
+- **THEN** standalone CLI commands (doctor, memory list) SHALL open this path as fallback
 
 #### Scenario: Minimal configuration startup
 - **WHEN** config contains only `agent.provider`, one provider entry with `type` and `apiKey`, and one channel with `enabled: true` and token

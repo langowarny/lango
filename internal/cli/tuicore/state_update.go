@@ -102,8 +102,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 
 		// Session
-		case "db_path":
-			s.Current.Session.DatabasePath = val
 		case "ttl":
 			if d, err := time.ParseDuration(val); err == nil {
 				s.Current.Session.TTL = d
