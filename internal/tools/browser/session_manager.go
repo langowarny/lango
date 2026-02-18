@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -19,6 +20,7 @@ func NewSessionManager(tool *Tool) *SessionManager {
 }
 
 // EnsureSession returns the active session ID, creating one if none exists.
+// On ErrBrowserPanic, it closes and reconnects once before returning an error.
 func (sm *SessionManager) EnsureSession() (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -28,6 +30,13 @@ func (sm *SessionManager) EnsureSession() (string, error) {
 	}
 
 	id, err := sm.tool.NewSession()
+	if err != nil && errors.Is(err, ErrBrowserPanic) {
+		// Connection likely dead — close and retry once
+		logger.Warnw("browser panic on session create, reconnecting", "error", err)
+		sm.sessionID = ""
+		_ = sm.tool.Close()
+		id, err = sm.tool.NewSession()
+	}
 	if err != nil {
 		return "", fmt.Errorf("create browser session: %w", err)
 	}

@@ -53,7 +53,8 @@ services:
       - LANGO_PROFILE=default
       - ROD_BROWSER_WS=ws://chrome:9222
     depends_on:
-      - chrome
+      chrome:
+        condition: service_healthy
     profiles:
       - browser-sidecar
 
@@ -65,6 +66,12 @@ services:
       resources:
         limits:
           memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9222/json/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     profiles:
       - browser-sidecar
 

@@ -231,6 +231,7 @@ func TestNewObservationalMemoryForm_ProviderIsSelect(t *testing.T) {
 	wantKeys := []string{
 		"om_enabled", "om_provider", "om_model",
 		"om_msg_threshold", "om_obs_threshold", "om_max_budget",
+		"om_max_reflections", "om_max_observations",
 	}
 
 	if len(form.Fields) != len(wantKeys) {

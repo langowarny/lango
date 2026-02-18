@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -15,6 +16,31 @@ import (
 )
 
 var logger = logging.SubsystemSugar("tool.browser")
+
+// ErrBrowserPanic is returned when a rod/CDP panic is recovered.
+var ErrBrowserPanic = errors.New("browser panic recovered")
+
+// safeRodCall wraps a rod call, converting any panic into an error.
+func safeRodCall(fn func() error) (retErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorw("rod panic recovered", "panic", r)
+			retErr = fmt.Errorf("%w: %v", ErrBrowserPanic, r)
+		}
+	}()
+	return fn()
+}
+
+// safeRodCallValue wraps a rod call that returns a value, converting any panic into an error.
+func safeRodCallValue[T any](fn func() (T, error)) (ret T, retErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorw("rod panic recovered", "panic", r)
+			retErr = fmt.Errorf("%w: %v", ErrBrowserPanic, r)
+		}
+	}()
+	return fn()
+}
 
 // Config holds browser tool configuration
 type Config struct {
@@ -135,20 +161,22 @@ func (t *Tool) NewSession() (string, error) {
 		return "", err
 	}
 
-	page, err := t.browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	page, err := safeRodCallValue(func() (*rod.Page, error) {
+		return t.browser.Page(proto.TargetCreateTarget{URL: "about:blank"})
+	})
 	if err != nil {
-		return "", fmt.Errorf("failed to create page: %w", err)
+		return "", fmt.Errorf("create page: %w", err)
 	}
 
 	id := fmt.Sprintf("session-%d", time.Now().UnixNano())
-	session := &Session{
+	sess := &Session{
 		ID:        id,
 		Page:      page,
 		CreatedAt: time.Now(),
 	}
 
 	t.mu.Lock()
-	t.sessions[id] = session
+	t.sessions[id] = sess
 	t.mu.Unlock()
 
 	logger.Infow("session created", "id", id)
@@ -194,18 +222,21 @@ func (t *Tool) getSession(sessionID string) (*Session, error) {
 
 // Navigate navigates to a URL
 func (t *Tool) Navigate(ctx context.Context, sessionID, url string) error {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return err
 	}
 
-	if err := session.Page.Navigate(url); err != nil {
-		return fmt.Errorf("navigation failed: %w", err)
-	}
-
-	// Wait for load
-	if err := session.Page.WaitLoad(); err != nil {
-		return fmt.Errorf("wait load failed: %w", err)
+	if err := safeRodCall(func() error {
+		if err := sess.Page.Navigate(url); err != nil {
+			return fmt.Errorf("navigation: %w", err)
+		}
+		if err := sess.Page.WaitLoad(); err != nil {
+			return fmt.Errorf("wait load: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	logger.Infow("navigated", "session", sessionID, "url", url)
@@ -214,19 +245,16 @@ func (t *Tool) Navigate(ctx context.Context, sessionID, url string) error {
 
 // Screenshot captures a screenshot
 func (t *Tool) Screenshot(sessionID string, fullPage bool) (*ScreenshotResult, error) {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	var data []byte
-	if fullPage {
-		data, err = session.Page.Screenshot(true, nil)
-	} else {
-		data, err = session.Page.Screenshot(false, nil)
-	}
+	data, err := safeRodCallValue(func() ([]byte, error) {
+		return sess.Page.Screenshot(fullPage, nil)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("screenshot failed: %w", err)
+		return nil, fmt.Errorf("screenshot: %w", err)
 	}
 
 	return &ScreenshotResult{
@@ -237,18 +265,22 @@ func (t *Tool) Screenshot(sessionID string, fullPage bool) (*ScreenshotResult, e
 
 // Click clicks on an element
 func (t *Tool) Click(ctx context.Context, sessionID, selector string) error {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return err
 	}
 
-	el, err := session.Page.Element(selector)
-	if err != nil {
-		return fmt.Errorf("element not found: %s", selector)
-	}
-
-	if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
-		return fmt.Errorf("click failed: %w", err)
+	if err := safeRodCall(func() error {
+		el, err := sess.Page.Element(selector)
+		if err != nil {
+			return fmt.Errorf("element not found: %s", selector)
+		}
+		if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
+			return fmt.Errorf("click: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	logger.Infow("clicked", "session", sessionID, "selector", selector)
@@ -257,18 +289,22 @@ func (t *Tool) Click(ctx context.Context, sessionID, selector string) error {
 
 // Type types text into an element
 func (t *Tool) Type(ctx context.Context, sessionID, selector, text string) error {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return err
 	}
 
-	el, err := session.Page.Element(selector)
-	if err != nil {
-		return fmt.Errorf("element not found: %s", selector)
-	}
-
-	if err := el.Input(text); err != nil {
-		return fmt.Errorf("type failed: %w", err)
+	if err := safeRodCall(func() error {
+		el, err := sess.Page.Element(selector)
+		if err != nil {
+			return fmt.Errorf("element not found: %s", selector)
+		}
+		if err := el.Input(text); err != nil {
+			return fmt.Errorf("type: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	logger.Infow("typed", "session", sessionID, "selector", selector, "length", len(text))
@@ -277,102 +313,111 @@ func (t *Tool) Type(ctx context.Context, sessionID, selector, text string) error
 
 // GetText gets text content of an element
 func (t *Tool) GetText(sessionID, selector string) (string, error) {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return "", err
 	}
 
-	el, err := session.Page.Element(selector)
-	if err != nil {
-		return "", fmt.Errorf("element not found: %s", selector)
-	}
-
-	text, err := el.Text()
-	if err != nil {
-		return "", fmt.Errorf("get text failed: %w", err)
-	}
-
-	return text, nil
+	return safeRodCallValue(func() (string, error) {
+		el, err := sess.Page.Element(selector)
+		if err != nil {
+			return "", fmt.Errorf("element not found: %s", selector)
+		}
+		text, err := el.Text()
+		if err != nil {
+			return "", fmt.Errorf("get text: %w", err)
+		}
+		return text, nil
+	})
 }
 
 // GetSnapshot returns basic page info (title and snippet)
 func (t *Tool) GetSnapshot(sessionID string) (map[string]string, error) {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	info, err := session.Page.Info()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get page info: %w", err)
-	}
+	return safeRodCallValue(func() (map[string]string, error) {
+		info, err := sess.Page.Info()
+		if err != nil {
+			return nil, fmt.Errorf("get page info: %w", err)
+		}
 
-	body, err := session.Page.Element("body")
-	text := ""
-	if err == nil {
-		text, _ = body.Text()
-	}
+		body, err := sess.Page.Element("body")
+		text := ""
+		if err == nil {
+			text, _ = body.Text()
+		}
 
-	// Limit snippet
-	if len(text) > 1000 {
-		text = text[:1000] + "..."
-	}
+		if len(text) > 1000 {
+			text = text[:1000] + "..."
+		}
 
-	return map[string]string{
-		"title":   info.Title,
-		"url":     info.URL,
-		"snippet": text,
-	}, nil
+		return map[string]string{
+			"title":   info.Title,
+			"url":     info.URL,
+			"snippet": text,
+		}, nil
+	})
 }
 
 // GetElementInfo gets information about an element
 func (t *Tool) GetElementInfo(sessionID, selector string) (*ElementInfo, error) {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	el, err := session.Page.Element(selector)
-	if err != nil {
-		return nil, fmt.Errorf("element not found: %s", selector)
-	}
+	return safeRodCallValue(func() (*ElementInfo, error) {
+		el, err := sess.Page.Element(selector)
+		if err != nil {
+			return nil, fmt.Errorf("element not found: %s", selector)
+		}
 
-	tagName, _ := el.Eval(`() => this.tagName`)
-	id, _ := el.Eval(`() => this.id`)
-	className, _ := el.Eval(`() => this.className`)
-	innerText, _ := el.Text()
-	href, _ := el.Eval(`() => this.href || ""`)
-	value, _ := el.Eval(`() => this.value || ""`)
+		tagName, _ := el.Eval(`() => this.tagName`)
+		id, _ := el.Eval(`() => this.id`)
+		className, _ := el.Eval(`() => this.className`)
+		innerText, _ := el.Text()
+		href, _ := el.Eval(`() => this.href || ""`)
+		value, _ := el.Eval(`() => this.value || ""`)
 
-	return &ElementInfo{
-		TagName:   tagName.Value.String(),
-		ID:        id.Value.String(),
-		ClassName: className.Value.String(),
-		InnerText: innerText,
-		Href:      href.Value.String(),
-		Value:     value.Value.String(),
-	}, nil
+		return &ElementInfo{
+			TagName:   tagName.Value.String(),
+			ID:        id.Value.String(),
+			ClassName: className.Value.String(),
+			InnerText: innerText,
+			Href:      href.Value.String(),
+			Value:     value.Value.String(),
+		}, nil
+	})
 }
 
 // Eval executes JavaScript on the page
 func (t *Tool) Eval(sessionID, script string) (interface{}, error) {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := session.Page.Eval(script)
+	result, err := safeRodCallValue(func() (interface{}, error) {
+		res, err := sess.Page.Eval(script)
+		if err != nil {
+			return nil, fmt.Errorf("eval: %w", err)
+		}
+		return res.Value.Val(), nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("eval failed: %w", err)
+		return nil, err
 	}
 
 	logger.Infow("eval executed", "session", sessionID)
-	return result.Value.Val(), nil
+	return result, nil
 }
 
 // WaitForSelector waits for an element to appear
 func (t *Tool) WaitForSelector(ctx context.Context, sessionID, selector string, timeout time.Duration) error {
-	session, err := t.getSession(sessionID)
+	sess, err := t.getSession(sessionID)
 	if err != nil {
 		return err
 	}
@@ -381,13 +426,14 @@ func (t *Tool) WaitForSelector(ctx context.Context, sessionID, selector string, 
 		timeout = 10 * time.Second
 	}
 
-	session.Page.Timeout(timeout)
-	_, err = session.Page.Element(selector)
-	if err != nil {
-		return fmt.Errorf("timeout waiting for: %s", selector)
-	}
-
-	return nil
+	return safeRodCall(func() error {
+		sess.Page.Timeout(timeout)
+		_, err := sess.Page.Element(selector)
+		if err != nil {
+			return fmt.Errorf("timeout waiting for: %s", selector)
+		}
+		return nil
+	})
 }
 
 // Close closes all sessions and the browser
@@ -395,13 +441,13 @@ func (t *Tool) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	for id, session := range t.sessions {
-		session.Page.Close()
+	for id, sess := range t.sessions {
+		_ = safeRodCall(func() error { sess.Page.Close(); return nil })
 		delete(t.sessions, id)
 	}
 
 	if t.browser != nil {
-		t.browser.Close()
+		_ = safeRodCall(func() error { t.browser.Close(); return nil })
 		t.browser = nil
 	}
 

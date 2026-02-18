@@ -1,76 +1,167 @@
-.PHONY: build test lint clean dev
+.DEFAULT_GOAL := build
 
 # Build variables
-BINARY_NAME=lango
-VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
+BINARY_NAME  := lango
+VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME   := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS      := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
+# Go parameters (CGO required for sqlite3/sqlite-vec)
+GOCMD    := go
+GOBUILD  := CGO_ENABLED=1 $(GOCMD) build
+GOCLEAN  := $(GOCMD) clean
+GOTEST   := CGO_ENABLED=1 $(GOCMD) test
+GOMOD    := $(GOCMD) mod
 
-# Build targets
+# Docker
+REGISTRY     ?=
+COVERAGE_DIR := .coverage
+
+# ─── Build & Install ─────────────────────────────────────────────────────────
+
+## build: Build binary for current platform
 build:
 	$(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/lango
 
+## build-linux: Cross-compile for Linux amd64
 build-linux:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/lango
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GOCMD) build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/lango
 
+## build-darwin: Cross-compile for macOS arm64
 build-darwin:
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/lango
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 $(GOCMD) build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/lango
 
+## build-all: Build for all platforms
 build-all: build-linux build-darwin
 
-# Development
+## install: Install binary to $GOPATH/bin
+install:
+	$(GOBUILD) $(LDFLAGS) -o $(shell $(GOCMD) env GOPATH)/bin/$(BINARY_NAME) ./cmd/lango
+
+# ─── Development ─────────────────────────────────────────────────────────────
+
+## dev: Build and run server locally
 dev:
 	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/lango && ./bin/$(BINARY_NAME) serve
 
-# Testing
+## run: Run server from existing binary (skip build)
+run:
+	./bin/$(BINARY_NAME) serve
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+
+## test: Run tests with race detector and coverage
 test:
 	$(GOTEST) -v -race -cover ./...
 
+## test-short: Run short tests only
 test-short:
 	$(GOTEST) -v -short ./...
 
+## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
 
-# Linting
+## coverage: Generate HTML coverage report
+coverage:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/coverage.out ./...
+	$(GOCMD) tool cover -html=$(COVERAGE_DIR)/coverage.out -o $(COVERAGE_DIR)/coverage.html
+	@echo "Coverage report: $(COVERAGE_DIR)/coverage.html"
+
+# ─── Code Quality ────────────────────────────────────────────────────────────
+
+## fmt: Format code
+fmt:
+	gofmt -w -s .
+
+## fmt-check: Check code formatting (CI, no modification)
+fmt-check:
+	@test -z "$$(gofmt -l .)" || (echo "Files need formatting:"; gofmt -l .; exit 1)
+
+## vet: Run go vet
+vet:
+	$(GOCMD) vet ./...
+
+## lint: Run golangci-lint (auto-installs if missing)
 lint:
+	@which golangci-lint > /dev/null 2>&1 || (echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
 	golangci-lint run ./...
 
-# Dependencies
+## generate: Run go generate
+generate:
+	$(GOCMD) generate ./...
+
+## ci: Run full local CI pipeline (fmt-check → vet → lint → test)
+ci: fmt-check vet lint test
+
+# ─── Dependencies ────────────────────────────────────────────────────────────
+
+## deps: Download and tidy dependencies
 deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
-# Cleaning
+# ─── Docker Build ────────────────────────────────────────────────────────────
+
+## docker-build: Build Docker image
+docker-build:
+	docker build -t $(BINARY_NAME):$(VERSION) -t $(BINARY_NAME):latest .
+
+## docker-build-browser: Build Docker image with Chromium
+docker-build-browser:
+	docker build --build-arg WITH_BROWSER=true -t $(BINARY_NAME):browser .
+
+## docker-push: Push image to registry (requires REGISTRY variable)
+docker-push:
+	@test -n "$(REGISTRY)" || (echo "Error: REGISTRY is not set. Usage: make docker-push REGISTRY=your.registry.io"; exit 1)
+	docker tag $(BINARY_NAME):$(VERSION) $(REGISTRY)/$(BINARY_NAME):$(VERSION)
+	docker tag $(BINARY_NAME):latest $(REGISTRY)/$(BINARY_NAME):latest
+	docker push $(REGISTRY)/$(BINARY_NAME):$(VERSION)
+	docker push $(REGISTRY)/$(BINARY_NAME):latest
+
+# ─── Docker Compose ──────────────────────────────────────────────────────────
+
+## docker-up: Start default profile containers
+docker-up:
+	docker compose --profile default up -d
+
+## docker-up-browser: Start browser profile containers
+docker-up-browser:
+	docker compose --profile browser up -d
+
+## docker-up-sidecar: Start browser-sidecar profile containers
+docker-up-sidecar:
+	docker compose --profile browser-sidecar up -d
+
+## docker-down: Stop all containers
+docker-down:
+	docker compose --profile default --profile browser --profile browser-sidecar down
+
+## docker-logs: Tail container logs
+docker-logs:
+	docker compose logs -f
+
+# ─── Utility ─────────────────────────────────────────────────────────────────
+
+## health: Check running server health
+health:
+	@curl -sf http://localhost:18789/health && echo "" || echo "Server is not responding"
+
+## clean: Remove build artifacts and coverage reports
 clean:
 	$(GOCLEAN)
-	rm -rf bin/
+	rm -rf bin/ $(COVERAGE_DIR)/
 
-# Generate
-generate:
-	$(GOCMD) generate ./...
-
-# Docker
-docker-build:
-	docker build -t $(BINARY_NAME):$(VERSION) .
-
-# Help
+## help: Show available targets
 help:
-	@echo "Available targets:"
-	@echo "  build       - Build binary for current platform"
-	@echo "  build-linux - Build for Linux amd64"
-	@echo "  build-darwin- Build for macOS arm64"
-	@echo "  build-all   - Build for all platforms"
-	@echo "  dev         - Build and run locally"
-	@echo "  test        - Run tests with race detector"
-	@echo "  lint        - Run linter"
-	@echo "  deps        - Download and tidy dependencies"
-	@echo "  clean       - Remove build artifacts"
+	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //' | column -t -s ':'
+
+.PHONY: build build-linux build-darwin build-all install \
+        dev run \
+        test test-short bench coverage \
+        fmt fmt-check vet lint generate ci \
+        deps \
+        docker-build docker-build-browser docker-push \
+        docker-up docker-up-browser docker-up-sidecar docker-down docker-logs \
+        health clean help

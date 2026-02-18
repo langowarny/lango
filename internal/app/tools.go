@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"errors"
+
 	"github.com/langowarny/lango/internal/agent"
 	"github.com/langowarny/lango/internal/approval"
 	"github.com/langowarny/lango/internal/background"
@@ -48,9 +50,11 @@ func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *b
 	fsTool := filesystem.New(fsCfg)
 	tools = append(tools, buildFilesystemTools(fsTool)...)
 
-	// Browser tools (opt-in)
+	// Browser tools (opt-in), wrapped with panic recovery
 	if browserSM != nil {
-		tools = append(tools, buildBrowserTools(browserSM)...)
+		for _, bt := range buildBrowserTools(browserSM) {
+			tools = append(tools, wrapBrowserHandler(bt, browserSM))
+		}
 	}
 
 	return tools
@@ -885,6 +889,35 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					"message": fmt.Sprintf("Skill '%s' imported from %s", entry.Name, url),
 				}, nil
 			},
+		},
+	}
+}
+
+// wrapBrowserHandler wraps a browser tool handler with panic recovery and auto-reconnect.
+// On panic, it converts to an error. On ErrBrowserPanic, it closes the session and retries once.
+func wrapBrowserHandler(t *agent.Tool, sm *browser.SessionManager) *agent.Tool {
+	original := t.Handler
+	return &agent.Tool{
+		Name:        t.Name,
+		Description: t.Description,
+		Parameters:  t.Parameters,
+		SafetyLevel: t.SafetyLevel,
+		Handler: func(ctx context.Context, params map[string]interface{}) (result interface{}, retErr error) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger().Errorw("browser tool panic recovered", "tool", t.Name, "panic", r)
+					retErr = fmt.Errorf("%w: %v", browser.ErrBrowserPanic, r)
+				}
+			}()
+
+			result, retErr = original(ctx, params)
+			if retErr != nil && errors.Is(retErr, browser.ErrBrowserPanic) {
+				// Connection likely dead — close and retry once
+				logger().Warnw("browser panic detected, closing session and retrying", "tool", t.Name, "error", retErr)
+				_ = sm.Close()
+				result, retErr = original(ctx, params)
+			}
+			return
 		},
 	}
 }

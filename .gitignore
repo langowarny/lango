@@ -41,4 +41,10 @@ passphrase.txt
 .vscode/
 .claude/
 
+# Build output
+bin/
+
+# Coverage reports
+.coverage/
+
 tmp/

@@ -573,6 +573,9 @@ func (s *Server) broadcastToType(event string, payload interface{}, targetType s
 // readPump reads messages from WebSocket
 func (c *Client) readPump() {
 	defer func() {
+		if r := recover(); r != nil {
+			logger().Errorw("readPump panic recovered", "clientId", c.ID, "panic", r)
+		}
 		c.Server.removeClient(c.ID)
 		c.Close()
 	}()
@@ -603,20 +606,35 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		result, err := handler(c, req.Params)
-		if err != nil {
-			c.sendError(req.ID, -32000, err.Error())
-			continue
-		}
-
-		c.sendResult(req.ID, result)
+		c.handleRPC(req, handler)
 	}
+}
+
+// handleRPC executes an RPC handler with panic recovery so a single handler
+// panic does not tear down the entire readPump.
+func (c *Client) handleRPC(req RPCRequest, handler RPCHandler) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger().Errorw("RPC handler panic recovered", "clientId", c.ID, "method", req.Method, "panic", r)
+			c.sendError(req.ID, -32000, fmt.Sprintf("internal error: %v", r))
+		}
+	}()
+
+	result, err := handler(c, req.Params)
+	if err != nil {
+		c.sendError(req.ID, -32000, err.Error())
+		return
+	}
+	c.sendResult(req.ID, result)
 }
 
 // writePump writes messages to WebSocket
 func (c *Client) writePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
+		if r := recover(); r != nil {
+			logger().Errorw("writePump panic recovered", "clientId", c.ID, "panic", r)
+		}
 		ticker.Stop()
 		c.Close()
 	}()
