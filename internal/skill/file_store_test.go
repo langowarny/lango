@@ -192,6 +192,62 @@ func TestFileSkillStore_DeleteNotFound(t *testing.T) {
 	}
 }
 
+func TestFileSkillStore_SaveResource(t *testing.T) {
+	store := newTestFileStore(t)
+	ctx := context.Background()
+
+	// Ensure skill directory exists first.
+	if err := store.Save(ctx, SkillEntry{
+		Name:       "my-skill",
+		Type:       "instruction",
+		Status:     "active",
+		Definition: map[string]interface{}{"content": "test"},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data := []byte("#!/bin/bash\necho hello")
+	if err := store.SaveResource(ctx, "my-skill", "scripts/setup.sh", data); err != nil {
+		t.Fatalf("SaveResource: %v", err)
+	}
+
+	// Verify the file was written.
+	got, err := os.ReadFile(filepath.Join(store.dir, "my-skill", "scripts", "setup.sh"))
+	if err != nil {
+		t.Fatalf("read resource: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("resource content = %q, want %q", string(got), string(data))
+	}
+}
+
+func TestFileSkillStore_SaveResource_NestedDir(t *testing.T) {
+	store := newTestFileStore(t)
+	ctx := context.Background()
+
+	if err := store.Save(ctx, SkillEntry{
+		Name:       "nested-skill",
+		Type:       "instruction",
+		Status:     "active",
+		Definition: map[string]interface{}{"content": "test"},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data := []byte("reference content")
+	if err := store.SaveResource(ctx, "nested-skill", "references/deep/nested/doc.md", data); err != nil {
+		t.Fatalf("SaveResource: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(store.dir, "nested-skill", "references", "deep", "nested", "doc.md"))
+	if err != nil {
+		t.Fatalf("read resource: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("resource content = %q, want %q", string(got), string(data))
+	}
+}
+
 func TestFileSkillStore_EnsureDefaults(t *testing.T) {
 	store := newTestFileStore(t)
 

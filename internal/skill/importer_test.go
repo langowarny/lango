@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -242,6 +243,153 @@ Some reference content here.`
 	content, _ := entry.Definition["content"].(string)
 	if content != "Some reference content here." {
 		t.Errorf("content = %q, want %q", content, "Some reference content here.")
+	}
+}
+
+func TestHasGit(t *testing.T) {
+	// On most dev machines, git is available.
+	got := hasGit()
+	// We don't assert a specific value since CI might not have git,
+	// but we verify it doesn't panic.
+	t.Logf("hasGit() = %v", got)
+}
+
+func TestCopyResourceDirs(t *testing.T) {
+	logger := zap.NewNop().Sugar()
+	dir := filepath.Join(t.TempDir(), "skills")
+	store := NewFileSkillStore(dir, logger)
+	ctx := context.Background()
+
+	// Save a skill first.
+	if err := store.Save(ctx, SkillEntry{
+		Name:       "res-skill",
+		Type:       "instruction",
+		Status:     "active",
+		Definition: map[string]interface{}{"content": "test"},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Create a fake cloned skill directory with resources.
+	srcDir := t.TempDir()
+	scriptsDir := filepath.Join(srcDir, "scripts")
+	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scriptsDir, "setup.sh"), []byte("#!/bin/bash\necho hi"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	copyResourceDirs(ctx, srcDir, "res-skill", store)
+
+	// Verify the resource was copied.
+	got, err := os.ReadFile(filepath.Join(dir, "res-skill", "scripts", "setup.sh"))
+	if err != nil {
+		t.Fatalf("read resource: %v", err)
+	}
+	if string(got) != "#!/bin/bash\necho hi" {
+		t.Errorf("resource content = %q, want %q", string(got), "#!/bin/bash\necho hi")
+	}
+}
+
+func TestCopyResourceDirs_NoResources(t *testing.T) {
+	logger := zap.NewNop().Sugar()
+	dir := filepath.Join(t.TempDir(), "skills")
+	store := NewFileSkillStore(dir, logger)
+	ctx := context.Background()
+
+	if err := store.Save(ctx, SkillEntry{
+		Name:       "no-res-skill",
+		Type:       "instruction",
+		Status:     "active",
+		Definition: map[string]interface{}{"content": "test"},
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Empty source dir — should not panic.
+	srcDir := t.TempDir()
+	copyResourceDirs(ctx, srcDir, "no-res-skill", store)
+
+	// Verify no resource dirs were created.
+	for _, d := range resourceDirs {
+		path := filepath.Join(dir, "no-res-skill", d)
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("unexpected resource dir %s exists", d)
+		}
+	}
+}
+
+func TestImportViaGit_LocalCloneSimulation(t *testing.T) {
+	// Simulate what importViaGit does with a local directory structure.
+	logger := zap.NewNop().Sugar()
+	dir := filepath.Join(t.TempDir(), "skills")
+	store := NewFileSkillStore(dir, logger)
+	ctx := context.Background()
+
+	// Create a fake cloned repo structure.
+	cloneDir := t.TempDir()
+	skillDir := filepath.Join(cloneDir, "my-imported-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	skillContent := `---
+name: my-imported-skill
+description: An imported skill
+type: instruction
+status: active
+---
+
+This is imported content.`
+
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	// Add resource files.
+	assetsDir := filepath.Join(skillDir, "assets")
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		t.Fatalf("mkdir assets: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(assetsDir, "logo.png"), []byte("fake-png"), 0o644); err != nil {
+		t.Fatalf("write asset: %v", err)
+	}
+
+	// Read and parse SKILL.md like importViaGit does.
+	raw, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+
+	entry, err := ParseSkillMD(raw)
+	if err != nil {
+		t.Fatalf("parse SKILL.md: %v", err)
+	}
+	entry.Source = "https://github.com/test/repo"
+
+	if err := store.Save(ctx, *entry); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	copyResourceDirs(ctx, skillDir, entry.Name, store)
+
+	// Verify skill was saved.
+	got, err := store.Get(ctx, "my-imported-skill")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Source != "https://github.com/test/repo" {
+		t.Errorf("Source = %q, want %q", got.Source, "https://github.com/test/repo")
+	}
+
+	// Verify resource was copied.
+	asset, err := os.ReadFile(filepath.Join(dir, "my-imported-skill", "assets", "logo.png"))
+	if err != nil {
+		t.Fatalf("read asset: %v", err)
+	}
+	if string(asset) != "fake-png" {
+		t.Errorf("asset content = %q, want %q", string(asset), "fake-png")
 	}
 }
 

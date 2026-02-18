@@ -19,6 +19,7 @@ type frontmatter struct {
 	CreatedBy        string `yaml:"created_by"`
 	RequiresApproval bool   `yaml:"requires_approval"`
 	Source           string `yaml:"source,omitempty"`
+	AllowedTools     string `yaml:"allowed-tools,omitempty"`
 }
 
 var _codeBlockRe = regexp.MustCompile("(?s)```(\\w+)?\\s*\n(.*?)```")
@@ -46,6 +47,11 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		meta.Status = "active"
 	}
 
+	var allowedTools []string
+	if meta.AllowedTools != "" {
+		allowedTools = strings.Fields(meta.AllowedTools)
+	}
+
 	entry := &SkillEntry{
 		Name:             meta.Name,
 		Description:      meta.Description,
@@ -54,6 +60,7 @@ func ParseSkillMD(content []byte) (*SkillEntry, error) {
 		CreatedBy:        meta.CreatedBy,
 		RequiresApproval: meta.RequiresApproval,
 		Source:           meta.Source,
+		AllowedTools:     allowedTools,
 	}
 
 	definition, params, err := parseBody(meta.Type, body)
@@ -73,6 +80,11 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		status = "draft"
 	}
 
+	var allowedToolsStr string
+	if len(entry.AllowedTools) > 0 {
+		allowedToolsStr = strings.Join(entry.AllowedTools, " ")
+	}
+
 	meta := frontmatter{
 		Name:             entry.Name,
 		Description:      entry.Description,
@@ -81,6 +93,7 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		CreatedBy:        entry.CreatedBy,
 		RequiresApproval: entry.RequiresApproval,
 		Source:           entry.Source,
+		AllowedTools:     allowedToolsStr,
 	}
 
 	fmBytes, err := yaml.Marshal(meta)

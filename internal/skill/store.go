@@ -9,4 +9,5 @@ type SkillStore interface {
 	ListActive(ctx context.Context) ([]SkillEntry, error)
 	Activate(ctx context.Context, name string) error
 	Delete(ctx context.Context, name string) error
+	SaveResource(ctx context.Context, skillName, relPath string, data []byte) error
 }

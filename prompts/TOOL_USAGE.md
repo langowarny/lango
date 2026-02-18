@@ -63,6 +63,17 @@
 - `workflow_cancel` stops a running workflow. Steps already completed retain their results.
 - Workflow YAML defines steps with `id`, `agent`, `prompt`, and optional `depends_on` for DAG ordering. Use `{{step-id.result}}` to reference outputs from previous steps.
 
+### Skill Tool
+- `create_skill` creates a new reusable skill. Specify `name`, `description`, `type` (composite, script, template, or instruction), and `definition` (JSON).
+- `list_skills` lists all active skills. No parameters required.
+- `import_skill` imports skills from a GitHub repository or any URL. Provide `url` (GitHub repo URL or direct SKILL.md URL). Optionally provide `skill_name` to import one specific skill.
+- **Always use `import_skill` to download and install skills** — it automatically uses `git clone` when git is installed (faster, fetches full directory with resources) and falls back to GitHub HTTP API when git is unavailable. Results are always stored in `~/.lango/skills/`.
+- **Do NOT use exec with `git clone` or `curl` to manually download skills.** The `import_skill` tool handles this internally and ensures the correct storage path.
+- Skills are stored at `~/.lango/skills/<name>/` with `SKILL.md` and optional resource directories (`scripts/`, `references/`, `assets/`).
+- Bulk import: `import_skill(url: "https://github.com/owner/repo")`.
+- Single import: `import_skill(url: "https://github.com/owner/repo", skill_name: "skill-name")`.
+- Direct URL: `import_skill(url: "https://example.com/path/to/SKILL.md")`.
+
 ### Error Handling
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.

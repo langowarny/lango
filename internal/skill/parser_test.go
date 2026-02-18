@@ -249,6 +249,83 @@ Reference content here.`
 	}
 }
 
+func TestParseSkillMD_AllowedTools(t *testing.T) {
+	content := `---
+name: deploy-skill
+description: Deployment skill
+type: composite
+status: active
+allowed-tools: exec fs_write fs_read
+---
+
+### Step 1
+
+` + "```json\n{\"tool\": \"exec\", \"params\": {\"command\": \"deploy\"}}\n```\n"
+
+	entry, err := ParseSkillMD([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseSkillMD: %v", err)
+	}
+
+	if len(entry.AllowedTools) != 3 {
+		t.Fatalf("len(AllowedTools) = %d, want 3", len(entry.AllowedTools))
+	}
+	want := []string{"exec", "fs_write", "fs_read"}
+	for i, w := range want {
+		if entry.AllowedTools[i] != w {
+			t.Errorf("AllowedTools[%d] = %q, want %q", i, entry.AllowedTools[i], w)
+		}
+	}
+}
+
+func TestRenderSkillMD_AllowedTools_Roundtrip(t *testing.T) {
+	original := &SkillEntry{
+		Name:         "deploy-skill",
+		Description:  "Deployment skill",
+		Type:         "script",
+		Status:       "active",
+		Definition:   map[string]interface{}{"script": "echo deploy"},
+		AllowedTools: []string{"exec", "fs_write"},
+	}
+
+	rendered, err := RenderSkillMD(original)
+	if err != nil {
+		t.Fatalf("RenderSkillMD: %v", err)
+	}
+
+	parsed, err := ParseSkillMD(rendered)
+	if err != nil {
+		t.Fatalf("ParseSkillMD (roundtrip): %v", err)
+	}
+
+	if len(parsed.AllowedTools) != 2 {
+		t.Fatalf("len(AllowedTools) = %d, want 2", len(parsed.AllowedTools))
+	}
+	if parsed.AllowedTools[0] != "exec" || parsed.AllowedTools[1] != "fs_write" {
+		t.Errorf("AllowedTools = %v, want [exec fs_write]", parsed.AllowedTools)
+	}
+}
+
+func TestParseSkillMD_NoAllowedTools(t *testing.T) {
+	content := `---
+name: basic-skill
+description: Basic skill
+type: script
+status: active
+---
+
+` + "```sh\necho hello\n```\n"
+
+	entry, err := ParseSkillMD([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseSkillMD: %v", err)
+	}
+
+	if len(entry.AllowedTools) != 0 {
+		t.Errorf("len(AllowedTools) = %d, want 0", len(entry.AllowedTools))
+	}
+}
+
 func TestRenderSkillMD_Roundtrip(t *testing.T) {
 	original := &SkillEntry{
 		Name:        "test-skill",

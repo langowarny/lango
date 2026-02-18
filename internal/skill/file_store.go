@@ -134,6 +134,15 @@ func (s *FileSkillStore) Delete(_ context.Context, name string) error {
 	return nil
 }
 
+// SaveResource writes a resource file under a skill's directory.
+func (s *FileSkillStore) SaveResource(_ context.Context, skillName, relPath string, data []byte) error {
+	path := filepath.Join(s.dir, skillName, relPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create resource dir: %w", err)
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
 // EnsureDefaults deploys embedded default skills that don't already exist.
 func (s *FileSkillStore) EnsureDefaults(defaultFS fs.FS) error {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {

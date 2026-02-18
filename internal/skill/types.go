@@ -11,5 +11,6 @@ type SkillEntry struct {
 	Status           string // active, draft, disabled
 	CreatedBy        string
 	RequiresApproval bool
-	Source           string // import source URL (empty for locally created)
+	Source       string   // import source URL (empty for locally created)
+	AllowedTools []string // pre-approved tools (from "allowed-tools" frontmatter)
 }

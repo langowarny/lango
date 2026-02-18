@@ -7,12 +7,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+// resourceDirs lists the conventional subdirectories that may contain resource files.
+var resourceDirs = []string{"scripts", "references", "assets"}
 
 // ImportConfig holds configuration for bulk import operations.
 type ImportConfig struct {
@@ -181,22 +187,124 @@ func (im *Importer) FetchFromURL(ctx context.Context, rawURL string) ([]byte, er
 	return im.doGet(ctx, rawURL)
 }
 
-// ImportFromRepo discovers and imports all skills from a GitHub repository.
-// cfg controls concurrency, max skills, and timeout for the operation.
-func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store SkillStore, cfg ImportConfig) (*ImportResult, error) {
-	// Apply overall import timeout.
-	if cfg.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, cfg.Timeout)
-		defer cancel()
+// hasGit returns true if the git binary is available on PATH.
+func hasGit() bool {
+	_, err := exec.LookPath("git")
+	return err == nil
+}
+
+// cloneRepo clones a GitHub repo to a temp directory and returns the path.
+// Shallow clone (depth=1) for speed.
+func (im *Importer) cloneRepo(ctx context.Context, ref *GitHubRef) (string, error) {
+	tmpDir, err := os.MkdirTemp("", "lango-skill-import-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
 	}
 
+	repoURL := fmt.Sprintf("https://github.com/%s/%s.git", ref.Owner, ref.Repo)
+	cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", "--branch", ref.Branch, repoURL, tmpDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("git clone: %s: %w", string(out), err)
+	}
+
+	return tmpDir, nil
+}
+
+// copyResourceDirs copies conventional resource directories from a cloned skill dir to the store.
+func copyResourceDirs(ctx context.Context, srcDir, skillName string, store SkillStore) {
+	for _, dir := range resourceDirs {
+		resDir := filepath.Join(srcDir, dir)
+		entries, err := os.ReadDir(resDir)
+		if err != nil {
+			continue // directory doesn't exist — skip
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(resDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			_ = store.SaveResource(ctx, skillName, filepath.Join(dir, e.Name()), data)
+		}
+	}
+}
+
+// importViaGit clones the repo and imports skills from the local filesystem.
+func (im *Importer) importViaGit(ctx context.Context, ref *GitHubRef, store SkillStore, cfg ImportConfig) (*ImportResult, error) {
+	cloneDir, err := im.cloneRepo(ctx, ref)
+	if err != nil {
+		im.logger.Warnw("git clone failed, falling back to HTTP", "error", err)
+		return im.importViaHTTP(ctx, ref, store, cfg)
+	}
+	defer os.RemoveAll(cloneDir)
+
+	baseDir := cloneDir
+	if ref.Path != "" {
+		baseDir = filepath.Join(cloneDir, ref.Path)
+	}
+
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("read cloned dir: %w", err)
+	}
+
+	sourceURL := fmt.Sprintf("https://github.com/%s/%s", ref.Owner, ref.Repo)
+	result := &ImportResult{}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+
+		skillDir := filepath.Join(baseDir, e.Name())
+		mdPath := filepath.Join(skillDir, "SKILL.md")
+		raw, err := os.ReadFile(mdPath)
+		if err != nil {
+			continue // not a skill directory
+		}
+
+		if cfg.MaxSkills > 0 && len(result.Imported)+len(result.Skipped) >= cfg.MaxSkills {
+			break
+		}
+
+		entry, parseErr := ParseSkillMD(raw)
+		if parseErr != nil {
+			im.logger.Warnw("skip skill: parse failed", "skill", e.Name(), "error", parseErr)
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: parse: %v", e.Name(), parseErr))
+			continue
+		}
+
+		entry.Source = sourceURL
+
+		if existing, _ := store.Get(ctx, entry.Name); existing != nil {
+			result.Skipped = append(result.Skipped, entry.Name)
+			continue
+		}
+
+		if saveErr := store.Save(ctx, *entry); saveErr != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: save: %v", e.Name(), saveErr))
+			continue
+		}
+
+		// Copy resource directories (scripts/, references/, assets/).
+		copyResourceDirs(ctx, skillDir, entry.Name, store)
+
+		result.Imported = append(result.Imported, entry.Name)
+	}
+
+	return result, nil
+}
+
+// importViaHTTP imports skills using the GitHub Contents API (original HTTP approach).
+func (im *Importer) importViaHTTP(ctx context.Context, ref *GitHubRef, store SkillStore, cfg ImportConfig) (*ImportResult, error) {
 	skillNames, err := im.DiscoverSkills(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
 
-	// Enforce max skills limit.
 	if cfg.MaxSkills > 0 && len(skillNames) > cfg.MaxSkills {
 		im.logger.Warnw("skill count exceeds max, truncating",
 			"discovered", len(skillNames), "max", cfg.MaxSkills)
@@ -216,7 +324,6 @@ func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store Sk
 	var wg sync.WaitGroup
 
 	for _, name := range skillNames {
-		// Check for context cancellation before starting each goroutine.
 		if ctx.Err() != nil {
 			mu.Lock()
 			result.Errors = append(result.Errors, fmt.Sprintf("cancelled: %v", ctx.Err()))
@@ -249,10 +356,8 @@ func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store Sk
 				return
 			}
 
-			// Override source to track import origin.
 			entry.Source = sourceURL
 
-			// Check if skill already exists.
 			if existing, _ := store.Get(ctx, entry.Name); existing != nil {
 				mu.Lock()
 				result.Skipped = append(result.Skipped, entry.Name)
@@ -267,6 +372,9 @@ func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store Sk
 				return
 			}
 
+			// Fetch and save resource files via HTTP.
+			im.fetchAndSaveResources(ctx, ref, skillName, entry.Name, store)
+
 			mu.Lock()
 			result.Imported = append(result.Imported, entry.Name)
 			mu.Unlock()
@@ -275,6 +383,140 @@ func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store Sk
 
 	wg.Wait()
 	return result, nil
+}
+
+// fetchAndSaveResources fetches resource files for a skill from GitHub via the Contents API.
+func (im *Importer) fetchAndSaveResources(ctx context.Context, ref *GitHubRef, dirName, skillName string, store SkillStore) {
+	for _, dir := range resourceDirs {
+		resPath := dirName + "/" + dir
+		if ref.Path != "" {
+			resPath = ref.Path + "/" + resPath
+		}
+
+		apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
+			ref.Owner, ref.Repo, resPath, ref.Branch)
+
+		body, err := im.doGet(ctx, apiURL)
+		if err != nil {
+			continue // directory doesn't exist — skip
+		}
+
+		var entries []gitHubContentsEntry
+		if err := json.Unmarshal(body, &entries); err != nil {
+			continue
+		}
+
+		for _, e := range entries {
+			if e.Type != "file" {
+				continue
+			}
+			data, err := im.fetchGitHubFileContent(ctx, ref, e.Path)
+			if err != nil {
+				continue
+			}
+			_ = store.SaveResource(ctx, skillName, filepath.Join(dir, e.Name), data)
+		}
+	}
+}
+
+// fetchGitHubFileContent fetches a single file's content from GitHub via the Contents API.
+func (im *Importer) fetchGitHubFileContent(ctx context.Context, ref *GitHubRef, filePath string) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
+		ref.Owner, ref.Repo, filePath, ref.Branch)
+
+	body, err := im.doGet(ctx, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var file gitHubFileResponse
+	if err := json.Unmarshal(body, &file); err != nil {
+		return nil, fmt.Errorf("parse file response: %w", err)
+	}
+
+	if file.Encoding != "base64" {
+		return nil, fmt.Errorf("unexpected encoding %q", file.Encoding)
+	}
+
+	return base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
+}
+
+// ImportFromRepo discovers and imports all skills from a GitHub repository.
+// Prefers git clone when available, falls back to GitHub HTTP API.
+func (im *Importer) ImportFromRepo(ctx context.Context, ref *GitHubRef, store SkillStore, cfg ImportConfig) (*ImportResult, error) {
+	if cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+	}
+
+	if hasGit() {
+		return im.importViaGit(ctx, ref, store, cfg)
+	}
+
+	return im.importViaHTTP(ctx, ref, store, cfg)
+}
+
+// ImportSingleWithResources imports a single skill from a GitHub repo, including resource files.
+func (im *Importer) ImportSingleWithResources(ctx context.Context, ref *GitHubRef, skillName string, store SkillStore) (*SkillEntry, error) {
+	if hasGit() {
+		return im.importSingleViaGit(ctx, ref, skillName, store)
+	}
+	return im.importSingleViaHTTP(ctx, ref, skillName, store)
+}
+
+func (im *Importer) importSingleViaGit(ctx context.Context, ref *GitHubRef, skillName string, store SkillStore) (*SkillEntry, error) {
+	cloneDir, err := im.cloneRepo(ctx, ref)
+	if err != nil {
+		im.logger.Warnw("git clone failed, falling back to HTTP", "error", err)
+		return im.importSingleViaHTTP(ctx, ref, skillName, store)
+	}
+	defer os.RemoveAll(cloneDir)
+
+	skillDir := filepath.Join(cloneDir, skillName)
+	if ref.Path != "" {
+		skillDir = filepath.Join(cloneDir, ref.Path, skillName)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
+	if err != nil {
+		return nil, fmt.Errorf("read SKILL.md: %w", err)
+	}
+
+	sourceURL := fmt.Sprintf("https://github.com/%s/%s", ref.Owner, ref.Repo)
+	entry, err := ParseSkillMD(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse SKILL.md: %w", err)
+	}
+	entry.Source = sourceURL
+
+	if err := store.Save(ctx, *entry); err != nil {
+		return nil, fmt.Errorf("save skill %q: %w", entry.Name, err)
+	}
+
+	copyResourceDirs(ctx, skillDir, entry.Name, store)
+	return entry, nil
+}
+
+func (im *Importer) importSingleViaHTTP(ctx context.Context, ref *GitHubRef, skillName string, store SkillStore) (*SkillEntry, error) {
+	raw, err := im.FetchSkillMD(ctx, ref, skillName)
+	if err != nil {
+		return nil, fmt.Errorf("fetch SKILL.md for %q: %w", skillName, err)
+	}
+
+	sourceURL := fmt.Sprintf("https://github.com/%s/%s", ref.Owner, ref.Repo)
+	entry, err := ParseSkillMD(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse SKILL.md: %w", err)
+	}
+	entry.Source = sourceURL
+
+	if err := store.Save(ctx, *entry); err != nil {
+		return nil, fmt.Errorf("save skill %q: %w", entry.Name, err)
+	}
+
+	im.fetchAndSaveResources(ctx, ref, skillName, entry.Name, store)
+	return entry, nil
 }
 
 // ImportSingle imports a single skill from raw SKILL.md content.

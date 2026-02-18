@@ -15,6 +15,10 @@ The system SHALL store skills as `<dir>/<name>/SKILL.md` files with YAML frontma
 - **WHEN** `FileSkillStore.Delete()` is called with a skill name
 - **THEN** the entire `<skillsDir>/<name>/` directory SHALL be removed
 
+#### Scenario: SaveResource writes file to correct path
+- **WHEN** `SaveResource` is called with skillName="my-skill" and relPath="scripts/run.sh"
+- **THEN** the file SHALL be written to `<store-dir>/my-skill/scripts/run.sh`
+
 ### Requirement: SKILL.md Parsing
 The system SHALL parse SKILL.md files with YAML frontmatter delimited by `---` lines, extracting metadata and body content.
 
@@ -168,7 +172,7 @@ The system SHALL initialize the executor without filesystem side-effects.
 - **AND** SHALL NOT create any directories or perform filesystem operations
 
 ### Requirement: Skill entry structure
-`SkillEntry` SHALL include a `Source` string field to track the import origin URL. The field SHALL be empty for locally created skills.
+`SkillEntry` SHALL include a `Source` string field to track the import origin URL and an `AllowedTools []string` field for pre-approved tool lists. The `Source` field SHALL be empty for locally created skills.
 
 #### Scenario: Imported skill
 - **WHEN** a skill is imported from an external URL
@@ -177,6 +181,10 @@ The system SHALL initialize the executor without filesystem side-effects.
 #### Scenario: Local skill
 - **WHEN** a skill is created locally
 - **THEN** its `Source` field SHALL be empty
+
+#### Scenario: SkillEntry with AllowedTools
+- **WHEN** a `SkillEntry` is created with `AllowedTools: ["exec", "fs_read"]`
+- **THEN** the field SHALL be persisted through Save and restored through Get
 
 ### Requirement: Instruction skill type
 The system SHALL support an `instruction` skill type for agent reference documents. Instruction skills store their entire markdown body as `definition["content"]`.

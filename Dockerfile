@@ -22,6 +22,8 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         chromium \
+        git \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r lango && useradd -r -g lango -m -d /home/lango lango \

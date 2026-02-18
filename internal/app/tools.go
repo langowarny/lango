@@ -92,6 +92,21 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		}
 	}
 
+	// Redirect skill-related git clone to import_skill tool.
+	if strings.HasPrefix(lower, "git clone") && strings.Contains(lower, "skill") {
+		return "Use the built-in import_skill tool instead of manual git clone — " +
+			"it automatically uses git clone internally when available and stores skills in the correct location (~/.lango/skills/). " +
+			"Example: import_skill(url: \"<github-repo-url>\")"
+	}
+
+	// Redirect skill-related curl/wget to import_skill tool.
+	if (strings.HasPrefix(lower, "curl ") || strings.HasPrefix(lower, "wget ")) &&
+		strings.Contains(lower, "skill") {
+		return "Use the built-in import_skill tool instead of manual curl/wget — " +
+			"it handles downloads internally and stores skills correctly. " +
+			"Example: import_skill(url: \"<url>\")"
+	}
+
 	return ""
 }
 
@@ -798,14 +813,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					}
 
 					if skillName != "" {
-						// Single skill import from GitHub.
-						raw, err := importer.FetchSkillMD(ctx, ref, skillName)
+						// Single skill import from GitHub (with resource files).
+						entry, err := importer.ImportSingleWithResources(ctx, ref, skillName, registry.Store())
 						if err != nil {
-							return nil, fmt.Errorf("fetch skill %q: %w", skillName, err)
-						}
-						entry, err := importer.ImportSingle(ctx, raw, url, registry.Store())
-						if err != nil {
-							return nil, fmt.Errorf("import skill: %w", err)
+							return nil, fmt.Errorf("import skill %q: %w", skillName, err)
 						}
 						if err := registry.LoadSkills(ctx); err != nil {
 							return nil, fmt.Errorf("reload skills: %w", err)
