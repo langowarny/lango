@@ -195,6 +195,12 @@ type ObservationalMemoryConfig struct {
 
 	// Max token budget for recent messages in context (default: 8000)
 	MaxMessageTokenBudget int `mapstructure:"maxMessageTokenBudget" json:"maxMessageTokenBudget"`
+
+	// MaxReflectionsInContext limits reflections injected into LLM context (default: 5, 0 = unlimited).
+	MaxReflectionsInContext int `mapstructure:"maxReflectionsInContext" json:"maxReflectionsInContext"`
+
+	// MaxObservationsInContext limits observations injected into LLM context (default: 20, 0 = unlimited).
+	MaxObservationsInContext int `mapstructure:"maxObservationsInContext" json:"maxObservationsInContext"`
 }
 
 // EmbeddingConfig defines embedding and RAG settings.

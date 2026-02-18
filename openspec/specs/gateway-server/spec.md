@@ -102,6 +102,14 @@ The `handlers.go` file SHALL contain all RPC handler method implementations. All
 - **WHEN** agent is nil
 - **THEN** it SHALL return "agent not configured" error
 
+#### Scenario: Streaming chat response
+- **WHEN** a chat.message RPC is received
+- **THEN** the gateway SHALL call RunStreaming with a chunk callback that broadcasts `agent.chunk` events
+
+#### Scenario: Full response in RPC result
+- **WHEN** streaming completes successfully
+- **THEN** the RPC response SHALL contain `{"response": "<full text>"}` for backward compatibility
+
 #### Scenario: Session key available in agent context
 - **WHEN** a `chat.message` RPC request is processed with session key "default"
 - **THEN** `session.WithSessionKey(ctx, "default")` SHALL be called before `agent.RunAndCollect`

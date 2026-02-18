@@ -174,7 +174,12 @@ func (s *Server) handleChatMessage(client *Client, params json.RawMessage) (inte
 	})
 
 	ctx := session.WithSessionKey(context.Background(), sessionKey)
-	response, err := s.agent.RunAndCollect(ctx, sessionKey, req.Message)
+	response, err := s.agent.RunStreaming(ctx, sessionKey, req.Message, func(chunk string) {
+		s.BroadcastToSession(sessionKey, "agent.chunk", map[string]string{
+			"sessionKey": sessionKey,
+			"chunk":      chunk,
+		})
+	})
 
 	// Fire turn-complete callbacks (buffer triggers, etc.) regardless of error.
 	for _, cb := range s.turnCallbacks {

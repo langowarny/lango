@@ -671,6 +671,17 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		// Wire in observational memory if available
 		if mc != nil {
 			ctxAdapter.WithMemory(mc.store, "")
+
+			// Apply memory context limits from config.
+			maxRef := cfg.ObservationalMemory.MaxReflectionsInContext
+			maxObs := cfg.ObservationalMemory.MaxObservationsInContext
+			if maxRef <= 0 {
+				maxRef = 5
+			}
+			if maxObs <= 0 {
+				maxObs = 20
+			}
+			ctxAdapter.WithMemoryLimits(maxRef, maxObs)
 		}
 
 		// Wire in RAG if available and enabled
@@ -696,6 +707,17 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store, "")
+
+		// Apply memory context limits from config.
+		maxRef := cfg.ObservationalMemory.MaxReflectionsInContext
+		maxObs := cfg.ObservationalMemory.MaxObservationsInContext
+		if maxRef <= 0 {
+			maxRef = 5
+		}
+		if maxObs <= 0 {
+			maxObs = 20
+		}
+		ctxAdapter.WithMemoryLimits(maxRef, maxObs)
 
 		// Wire in RAG if available and enabled
 		if ec != nil && cfg.Embedding.RAG.Enabled {

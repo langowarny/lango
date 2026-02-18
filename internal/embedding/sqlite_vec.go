@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 )
@@ -16,13 +17,17 @@ func init() {
 
 // SQLiteVecStore implements VectorStore using sqlite-vec.
 type SQLiteVecStore struct {
+	mu         sync.Mutex
 	db         *sql.DB
 	dimensions int
 }
 
 // NewSQLiteVecStore creates a new sqlite-vec backed vector store.
 // The db connection should be the same SQLite database used by ent.
+// MaxOpenConns is set to 1 to ensure concurrent queries share the same
+// connection (required for in-memory SQLite databases).
 func NewSQLiteVecStore(db *sql.DB, dimensions int) (*SQLiteVecStore, error) {
+	db.SetMaxOpenConns(1)
 	s := &SQLiteVecStore{
 		db:         db,
 		dimensions: dimensions,
@@ -53,6 +58,9 @@ func (s *SQLiteVecStore) Upsert(ctx context.Context, records []VectorRecord) err
 	if len(records) == 0 {
 		return nil
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -101,6 +109,9 @@ func (s *SQLiteVecStore) Upsert(ctx context.Context, records []VectorRecord) err
 // Search finds the most similar vectors in a collection.
 // When opts is non-nil and MetadataFilter is set, over-fetches by 3x and post-filters.
 func (s *SQLiteVecStore) Search(ctx context.Context, collection string, query []float32, limit int, opts *SearchOptions) ([]SearchResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if limit <= 0 {
 		limit = 5
 	}
@@ -187,6 +198,9 @@ func (s *SQLiteVecStore) Delete(ctx context.Context, collection string, ids []st
 	if len(ids) == 0 {
 		return nil
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	placeholders := make([]string, len(ids))
 	args := make([]interface{}, 0, len(ids)+1)

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 
@@ -21,22 +22,26 @@ import (
 type MemoryProvider interface {
 	ListObservations(ctx context.Context, sessionKey string) ([]memory.Observation, error)
 	ListReflections(ctx context.Context, sessionKey string) ([]memory.Reflection, error)
+	ListRecentReflections(ctx context.Context, sessionKey string, limit int) ([]memory.Reflection, error)
+	ListRecentObservations(ctx context.Context, sessionKey string, limit int) ([]memory.Observation, error)
 }
 
 // ContextAwareModelAdapter wraps a ModelAdapter with context retrieval.
 // Before each LLM call, it retrieves relevant knowledge and injects it
 // into the system instruction.
 type ContextAwareModelAdapter struct {
-	inner          *ModelAdapter
-	retriever      *knowledge.ContextRetriever
-	memoryProvider MemoryProvider
-	ragService     *embedding.RAGService
-	ragOpts        embedding.RetrieveOptions
-	graphRAG       *graph.GraphRAGService
-	runtimeAdapter *RuntimeContextAdapter
-	sessionKey     string
-	basePrompt     string
-	logger         *zap.SugaredLogger
+	inner           *ModelAdapter
+	retriever       *knowledge.ContextRetriever
+	memoryProvider  MemoryProvider
+	ragService      *embedding.RAGService
+	ragOpts         embedding.RetrieveOptions
+	graphRAG        *graph.GraphRAGService
+	runtimeAdapter  *RuntimeContextAdapter
+	sessionKey      string
+	basePrompt      string
+	maxReflections  int
+	maxObservations int
+	logger          *zap.SugaredLogger
 }
 
 // NewContextAwareModelAdapter creates a context-aware model adapter.
@@ -83,6 +88,14 @@ func (m *ContextAwareModelAdapter) WithGraphRAG(svc *graph.GraphRAGService) *Con
 	return m
 }
 
+// WithMemoryLimits sets the maximum number of reflections and observations
+// to include in the LLM context. Zero means unlimited (existing behavior).
+func (m *ContextAwareModelAdapter) WithMemoryLimits(maxReflections, maxObservations int) *ContextAwareModelAdapter {
+	m.maxReflections = maxReflections
+	m.maxObservations = maxObservations
+	return m
+}
+
 // Name delegates to the inner adapter.
 func (m *ContextAwareModelAdapter) Name() string {
 	return m.inner.Name()
@@ -97,47 +110,70 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 		m.runtimeAdapter.SetSession(m.sessionKey)
 	}
 
-	// Retrieve knowledge context
 	userQuery := extractLastUserMessage(req.Contents)
+
+	var knowledgeSection, ragSection, memorySection string
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	// Knowledge retrieval
 	if userQuery != "" && m.retriever != nil {
-		layers := []knowledge.ContextLayer{
-			knowledge.LayerRuntimeContext,
-			knowledge.LayerToolRegistry,
-			knowledge.LayerUserKnowledge,
-			knowledge.LayerSkillPatterns,
-			knowledge.LayerExternalKnowledge,
-			knowledge.LayerAgentLearnings,
-		}
-		retrieved, err := m.retriever.Retrieve(ctx, knowledge.RetrievalRequest{
-			Query:  userQuery,
-			Layers: layers,
+		g.Go(func() error {
+			layers := []knowledge.ContextLayer{
+				knowledge.LayerRuntimeContext,
+				knowledge.LayerToolRegistry,
+				knowledge.LayerUserKnowledge,
+				knowledge.LayerSkillPatterns,
+				knowledge.LayerExternalKnowledge,
+				knowledge.LayerAgentLearnings,
+			}
+			retrieved, err := m.retriever.Retrieve(gCtx, knowledge.RetrievalRequest{
+				Query:  userQuery,
+				Layers: layers,
+			})
+			if err != nil {
+				m.logger.Warnw("context retrieval error", "error", err)
+			} else if retrieved != nil && retrieved.TotalItems > 0 {
+				knowledgeSection = m.retriever.AssemblePrompt("", retrieved)
+			}
+			return nil
 		})
-		if err != nil {
-			m.logger.Warnw("context retrieval error", "error", err)
-		} else if retrieved != nil && retrieved.TotalItems > 0 {
-			prompt = m.retriever.AssemblePrompt(prompt, retrieved)
+	}
+
+	// RAG/GraphRAG retrieval
+	if userQuery != "" {
+		if m.graphRAG != nil {
+			g.Go(func() error {
+				ragSection = m.assembleGraphRAGSection(gCtx, userQuery)
+				return nil
+			})
+		} else if m.ragService != nil {
+			g.Go(func() error {
+				ragSection = m.assembleRAGSection(gCtx, userQuery)
+				return nil
+			})
 		}
 	}
 
-	// Retrieve RAG context — prefer graph-enhanced RAG if available.
-	if m.graphRAG != nil && userQuery != "" {
-		graphRAGSection := m.assembleGraphRAGSection(ctx, userQuery)
-		if graphRAGSection != "" {
-			prompt = fmt.Sprintf("%s\n\n%s", prompt, graphRAGSection)
-		}
-	} else if m.ragService != nil && userQuery != "" {
-		ragSection := m.assembleRAGSection(ctx, userQuery)
-		if ragSection != "" {
-			prompt = fmt.Sprintf("%s\n\n%s", prompt, ragSection)
-		}
-	}
-
-	// Retrieve observational memory
+	// Memory retrieval
 	if m.memoryProvider != nil && m.sessionKey != "" {
-		memorySection := m.assembleMemorySection(ctx)
-		if memorySection != "" {
-			prompt = fmt.Sprintf("%s\n\n%s", prompt, memorySection)
-		}
+		g.Go(func() error {
+			memorySection = m.assembleMemorySection(gCtx)
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+
+	// Combine sections
+	if knowledgeSection != "" {
+		prompt = fmt.Sprintf("%s\n\n%s", prompt, knowledgeSection)
+	}
+	if ragSection != "" {
+		prompt = fmt.Sprintf("%s\n\n%s", prompt, ragSection)
+	}
+	if memorySection != "" {
+		prompt = fmt.Sprintf("%s\n\n%s", prompt, memorySection)
 	}
 
 	// Set the augmented system instruction
@@ -155,12 +191,24 @@ func (m *ContextAwareModelAdapter) GenerateContent(ctx context.Context, req *mod
 
 // assembleMemorySection builds the "Conversation Memory" section from observations and reflections.
 func (m *ContextAwareModelAdapter) assembleMemorySection(ctx context.Context) string {
-	reflections, err := m.memoryProvider.ListReflections(ctx, m.sessionKey)
+	var reflections []memory.Reflection
+	var observations []memory.Observation
+	var err error
+
+	if m.maxReflections > 0 {
+		reflections, err = m.memoryProvider.ListRecentReflections(ctx, m.sessionKey, m.maxReflections)
+	} else {
+		reflections, err = m.memoryProvider.ListReflections(ctx, m.sessionKey)
+	}
 	if err != nil {
 		m.logger.Warnw("memory reflection retrieval error", "error", err)
 	}
 
-	observations, err := m.memoryProvider.ListObservations(ctx, m.sessionKey)
+	if m.maxObservations > 0 {
+		observations, err = m.memoryProvider.ListRecentObservations(ctx, m.sessionKey, m.maxObservations)
+	} else {
+		observations, err = m.memoryProvider.ListObservations(ctx, m.sessionKey)
+	}
 	if err != nil {
 		m.logger.Warnw("memory observation retrieval error", "error", err)
 	}

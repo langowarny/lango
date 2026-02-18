@@ -41,9 +41,23 @@ Knowledge, Memory (Observation/Reflection), and Learning stores SHALL emit embed
 ### REQ-EMB-006: RAG Service
 The system SHALL provide a RAGService that:
 1. Embeds a query string
-2. Searches across configurable collections
+2. Searches across configurable collections in parallel using errgroup
 3. Resolves original content from source stores
-4. Returns results sorted by distance
+4. Returns results merged, sorted by distance, and limited after all collections complete
+
+Individual collection search errors SHALL be logged and treated as non-fatal.
+
+#### Scenario: Parallel collection search
+- **WHEN** a query is submitted against multiple collections
+- **THEN** all collections SHALL be searched concurrently and results merged after all complete
+
+#### Scenario: Single collection failure
+- **WHEN** one collection search fails during parallel execution
+- **THEN** the error SHALL be logged as a warning and results from other collections SHALL still be returned
+
+#### Scenario: Results sorted and limited
+- **WHEN** parallel searches complete
+- **THEN** results SHALL be sorted by ascending distance and limited to the configured maximum
 
 ### REQ-EMB-007: Agent Context Injection
 When RAG is enabled, the ContextAwareModelAdapter SHALL inject a "Semantic Context (RAG)" section into the system prompt before each LLM call.

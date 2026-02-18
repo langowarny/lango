@@ -3,7 +3,9 @@ package embedding
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"golang.org/x/sync/errgroup"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +39,7 @@ type RAGService struct {
 	provider EmbeddingProvider
 	store    VectorStore
 	resolver ContentResolver
+	cache    *embeddingCache
 	logger   *zap.SugaredLogger
 }
 
@@ -51,6 +54,7 @@ func NewRAGService(
 		provider: provider,
 		store:    store,
 		resolver: resolver,
+		cache:    newEmbeddingCache(5*time.Minute, 100),
 		logger:   logger,
 	}
 }
@@ -68,23 +72,27 @@ func (r *RAGService) Retrieve(ctx context.Context, query string, opts RetrieveOp
 		opts.Limit = 5
 	}
 
-	// Embed the query text.
-	embeddings, err := r.provider.Embed(ctx, []string{query})
-	if err != nil {
-		return nil, fmt.Errorf("embed query: %w", err)
+	// Embed the query text (with cache).
+	var queryVec []float32
+	if vec, ok := r.cache.get(query); ok {
+		queryVec = vec
+	} else {
+		embeddings, err := r.provider.Embed(ctx, []string{query})
+		if err != nil {
+			return nil, fmt.Errorf("embed query: %w", err)
+		}
+		if len(embeddings) == 0 {
+			return nil, nil
+		}
+		queryVec = embeddings[0]
+		r.cache.set(query, queryVec)
 	}
-	if len(embeddings) == 0 {
-		return nil, nil
-	}
-	queryVec := embeddings[0]
 
 	collections := opts.Collections
 	if len(collections) == 0 {
 		collections = allCollections
 	}
 
-	// Search each collection and merge results.
-	var results []RAGResult
 	perCollectionLimit := opts.Limit
 	if len(collections) > 1 {
 		// Fetch more per collection to allow cross-collection ranking.
@@ -99,31 +107,48 @@ func (r *RAGService) Retrieve(ctx context.Context, query string, opts RetrieveOp
 		}
 	}
 
-	for _, col := range collections {
-		hits, err := r.store.Search(ctx, col, queryVec, perCollectionLimit, searchOpts)
-		if err != nil {
-			r.logger.Warnw("rag search error", "collection", col, "error", err)
-			continue
-		}
+	// Search collections in parallel.
+	perColResults := make([][]RAGResult, len(collections))
 
-		for _, hit := range hits {
-			content := ""
-			if r.resolver != nil {
-				resolved, err := r.resolver.ResolveContent(ctx, col, hit.ID)
-				if err != nil {
-					r.logger.Debugw("content resolve failed", "collection", col, "id", hit.ID, "error", err)
-					continue
-				}
-				content = resolved
+	g, gCtx := errgroup.WithContext(ctx)
+	for i, col := range collections {
+		g.Go(func() error {
+			hits, err := r.store.Search(gCtx, col, queryVec, perCollectionLimit, searchOpts)
+			if err != nil {
+				r.logger.Warnw("rag search error", "collection", col, "error", err)
+				return nil // non-fatal
 			}
 
-			results = append(results, RAGResult{
-				Collection: col,
-				SourceID:   hit.ID,
-				Content:    content,
-				Distance:   hit.Distance,
-			})
-		}
+			var colResults []RAGResult
+			for _, hit := range hits {
+				content := ""
+				if r.resolver != nil {
+					resolved, err := r.resolver.ResolveContent(gCtx, col, hit.ID)
+					if err != nil {
+						r.logger.Debugw("content resolve failed", "collection", col, "id", hit.ID, "error", err)
+						continue
+					}
+					content = resolved
+				}
+
+				colResults = append(colResults, RAGResult{
+					Collection: col,
+					SourceID:   hit.ID,
+					Content:    content,
+					Distance:   hit.Distance,
+				})
+			}
+			perColResults[i] = colResults
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+
+	// Merge all collection results.
+	var results []RAGResult
+	for _, cr := range perColResults {
+		results = append(results, cr...)
 	}
 
 	// Sort by distance and limit.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
@@ -272,6 +273,61 @@ func (s *Store) ListReflections(ctx context.Context, sessionKey string) ([]Refle
 			Generation: e.Generation,
 			CreatedAt:  e.CreatedAt,
 		})
+	}
+	return result, nil
+}
+
+// ListRecentReflections returns the N most recent reflections for a session.
+// Results are ordered by created_at ascending (oldest first) for chronological display.
+func (s *Store) ListRecentReflections(ctx context.Context, sessionKey string, limit int) ([]Reflection, error) {
+	entries, err := s.client.Reflection.Query().
+		Where(reflection.SessionKey(sessionKey)).
+		Order(reflection.ByCreatedAt(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list recent reflections: %w", err)
+	}
+
+	// Reverse to ascending order for chronological display.
+	result := make([]Reflection, len(entries))
+	for i, e := range entries {
+		result[len(entries)-1-i] = Reflection{
+			ID:         e.ID,
+			SessionKey: e.SessionKey,
+			Content:    e.Content,
+			TokenCount: e.TokenCount,
+			Generation: e.Generation,
+			CreatedAt:  e.CreatedAt,
+		}
+	}
+	return result, nil
+}
+
+// ListRecentObservations returns the N most recent observations for a session.
+// Results are ordered by created_at ascending (oldest first) for chronological display.
+func (s *Store) ListRecentObservations(ctx context.Context, sessionKey string, limit int) ([]Observation, error) {
+	entries, err := s.client.Observation.Query().
+		Where(observation.SessionKey(sessionKey)).
+		Order(observation.ByCreatedAt(sql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list recent observations: %w", err)
+	}
+
+	// Reverse to ascending order for chronological display.
+	result := make([]Observation, len(entries))
+	for i, e := range entries {
+		result[len(entries)-1-i] = Observation{
+			ID:               e.ID,
+			SessionKey:       e.SessionKey,
+			Content:          e.Content,
+			TokenCount:       e.TokenCount,
+			SourceStartIndex: e.SourceStartIndex,
+			SourceEndIndex:   e.SourceEndIndex,
+			CreatedAt:        e.CreatedAt,
+		}
 	}
 	return result, nil
 }

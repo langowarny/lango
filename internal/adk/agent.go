@@ -211,6 +211,47 @@ func subAgentNames(a adk_agent.Agent) []string {
 	return names
 }
 
+// ChunkCallback is called for each streaming text chunk during agent execution.
+type ChunkCallback func(chunk string)
+
+// RunStreaming executes the agent and streams partial text chunks via the callback.
+// It returns the full accumulated response text for backward compatibility.
+func (a *Agent) RunStreaming(ctx context.Context, sessionID, input string, onChunk ChunkCallback) (string, error) {
+	var b strings.Builder
+	var sawPartial bool
+
+	for event, err := range a.Run(ctx, sessionID, input) {
+		if err != nil {
+			return "", fmt.Errorf("agent error: %w", err)
+		}
+
+		if event.Content == nil {
+			continue
+		}
+
+		if event.Partial {
+			sawPartial = true
+			for _, part := range event.Content.Parts {
+				if part.Text != "" {
+					b.WriteString(part.Text)
+					if onChunk != nil {
+						onChunk(part.Text)
+					}
+				}
+			}
+		} else if !sawPartial {
+			// Non-streaming mode: collect from final response.
+			for _, part := range event.Content.Parts {
+				if part.Text != "" {
+					b.WriteString(part.Text)
+				}
+			}
+		}
+	}
+
+	return b.String(), nil
+}
+
 // hasText reports whether the event contains any non-empty text part.
 func hasText(e *session.Event) bool {
 	if e.Content == nil {
