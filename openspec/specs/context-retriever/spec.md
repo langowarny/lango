@@ -40,7 +40,7 @@ The system SHALL search requested context layers and return relevant items.
 - **THEN** the system SHALL log a warning and continue with remaining layers
 
 ### Requirement: Keyword Extraction
-The system SHALL extract meaningful keywords from user queries for search.
+The system SHALL extract meaningful keywords from user queries for search. The `extractKeywords` function SHALL extract at most 5 keywords from a query string. Each keyword SHALL be at most 50 characters long. Keywords SHALL contain only alphanumeric characters, hyphens, and underscores after sanitization. Keywords shorter than 2 characters after sanitization SHALL be excluded.
 
 #### Scenario: Stop word filtering
 - **WHEN** extracting keywords from a query
@@ -54,6 +54,22 @@ The system SHALL extract meaningful keywords from user queries for search.
 #### Scenario: Punctuation removal
 - **WHEN** extracting keywords
 - **THEN** the system SHALL strip punctuation from word boundaries
+
+#### Scenario: Keyword count limit
+- **WHEN** a query "how to handle errors in Go deployment configuration" is processed
+- **THEN** at most 5 non-stop-word keywords are returned, each sanitized to alphanumeric/hyphen/underscore characters
+
+#### Scenario: Query with only stop words
+- **WHEN** a query "the a is are was" is processed
+- **THEN** nil is returned (no keywords extracted)
+
+#### Scenario: Special character sanitization
+- **WHEN** a query contains characters like `@`, `#`, `$`, `(`, `)`, etc.
+- **THEN** those characters are stripped from keywords during sanitization
+
+#### Scenario: Long keyword truncation
+- **WHEN** a single word exceeds 50 characters
+- **THEN** it is truncated to 50 characters
 
 ### Requirement: Prompt Assembly
 The system SHALL assemble an augmented system prompt from base prompt, retrieved context, and observational memory.

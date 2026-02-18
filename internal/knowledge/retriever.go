@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"go.uber.org/zap"
@@ -356,7 +357,17 @@ var _stopWords = map[string]bool{
 	"i": true, "me": true, "we": true, "you": true, "he": true, "she": true, "they": true,
 }
 
+const (
+	_maxSearchKeywords = 5
+	_maxKeywordLength  = 50
+)
+
+// _reNonAlphaNum matches characters that are not alphanumeric, hyphens, or underscores.
+var _reNonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9\-_]`)
+
 // extractKeywords extracts meaningful keywords from a query string.
+// Results are limited to _maxSearchKeywords items, each at most _maxKeywordLength chars,
+// to prevent SQLite LIKE pattern complexity issues.
 func extractKeywords(query string) []string {
 	words := strings.Fields(strings.ToLower(query))
 	var keywords []string
@@ -369,7 +380,23 @@ func extractKeywords(query string) []string {
 		if _stopWords[w] {
 			continue
 		}
+		w = sanitizeKeyword(w)
+		if len(w) < 2 {
+			continue
+		}
 		keywords = append(keywords, w)
+		if len(keywords) >= _maxSearchKeywords {
+			break
+		}
 	}
 	return keywords
+}
+
+// sanitizeKeyword strips non-alphanumeric characters and truncates to _maxKeywordLength.
+func sanitizeKeyword(w string) string {
+	w = _reNonAlphaNum.ReplaceAllString(w, "")
+	if len(w) > _maxKeywordLength {
+		w = w[:_maxKeywordLength]
+	}
+	return w
 }

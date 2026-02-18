@@ -25,13 +25,21 @@ The system SHALL provide persistent CRUD operations for knowledge entries identi
 - **THEN** the system SHALL increment the use count by 1
 
 ### Requirement: Knowledge Search
-The system SHALL support keyword-based search across knowledge entries.
+The system SHALL support keyword-based search across knowledge entries. `SearchKnowledge` SHALL split the query into individual keywords and create separate `ContentContains`/`KeyContains` LIKE predicates for each keyword, combined with OR logic. The system SHALL NOT use a single concatenated query string as a LIKE pattern.
 
 #### Scenario: Search by query
 - **WHEN** `SearchKnowledge` is called with a query string
-- **THEN** the system SHALL return entries where the content or key contains the query
+- **THEN** the system SHALL return entries where the content or key contains any of the individual keywords
 - **AND** results SHALL be ordered by relevance score descending
 - **AND** results SHALL be limited to the specified limit (default 10)
+
+#### Scenario: Multi-keyword search
+- **WHEN** `SearchKnowledge` is called with query "deploy server config"
+- **THEN** the SQL query uses per-keyword LIKE predicates: `(content LIKE '%deploy%' OR key LIKE '%deploy%') OR (content LIKE '%server%' OR key LIKE '%server%') OR (content LIKE '%config%' OR key LIKE '%config%')`
+
+#### Scenario: Single keyword search
+- **WHEN** `SearchKnowledge` is called with query "deploy"
+- **THEN** the SQL query uses `content LIKE '%deploy%' OR key LIKE '%deploy%'`
 
 #### Scenario: Search with category filter
 - **WHEN** `SearchKnowledge` is called with a query and a category
@@ -46,7 +54,7 @@ The system SHALL provide persistent CRUD operations for learning entries.
 
 #### Scenario: Search learnings
 - **WHEN** `SearchLearnings` is called with an error pattern query
-- **THEN** the system SHALL return learnings where the error pattern or trigger contains the query
+- **THEN** the system SHALL split the query into individual keywords and create separate `ErrorPatternContains`/`TriggerContains` LIKE predicates for each keyword, combined with OR logic
 - **AND** results SHALL be ordered by confidence descending
 
 #### Scenario: Boost learning confidence
@@ -91,7 +99,7 @@ The system SHALL support CRUD operations for external references (docs, APIs, wi
 
 #### Scenario: Search external references
 - **WHEN** `SearchExternalRefs` is called with a query
-- **THEN** the system SHALL return references where name or summary contains the query
+- **THEN** the system SHALL split the query into individual keywords and create separate `NameContains`/`SummaryContains` LIKE predicates for each keyword, combined with OR logic
 
 ### Requirement: Per-Session Rate Limiting
 The system SHALL enforce per-session rate limits for knowledge and learning saves to prevent runaway accumulation.

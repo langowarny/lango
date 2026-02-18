@@ -133,18 +133,21 @@ func (p *ApprovalProvider) HandleCallback(query *tgbotapi.CallbackQuery) {
 		}
 	}
 
+	// Unblock the waiting agent immediately before editing the message.
+	// This prevents Telegram API latency from delaying the agent's next action
+	// and avoids message ordering issues where the final response arrives before
+	// the approval status edit.
+	select {
+	case pending.ch <- approved:
+	default:
+	}
+
 	// Edit original message to remove the keyboard
 	status := "❌ Denied"
 	if approved {
 		status = "✅ Approved"
 	}
 	p.editApprovalMessage(pending.chatID, pending.messageID, fmt.Sprintf("🔐 Tool approval — %s", status))
-
-	// Send result to waiting goroutine
-	select {
-	case pending.ch <- approved:
-	default:
-	}
 }
 
 // CanHandle returns true for session keys starting with "telegram:".

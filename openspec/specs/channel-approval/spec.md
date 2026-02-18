@@ -160,6 +160,21 @@ All channel approval providers (Discord, Telegram, Slack) SHALL use comma-ok pat
 - **WHEN** `HandleInteractive` loads a value from `pending` sync.Map and the type assertion to `*approvalPending` fails
 - **THEN** it SHALL log a warning with the request ID and return without sending to the channel
 
+### Requirement: Approval callback unblocks agent before UI update
+`HandleCallback` SHALL send the approval result to the waiting agent's channel BEFORE calling `editApprovalMessage` to update the Telegram message. This ensures the agent pipeline is not blocked by Telegram API latency.
+
+#### Scenario: Approval granted
+- **WHEN** a user clicks "Approve" on an inline keyboard
+- **THEN** the approval result (true) is sent to the agent's channel immediately, and THEN the Telegram message is edited to show "Approved" status
+
+#### Scenario: Approval denied
+- **WHEN** a user clicks "Deny" on an inline keyboard
+- **THEN** the denial result (false) is sent to the agent's channel immediately, and THEN the Telegram message is edited to show "Denied" status
+
+#### Scenario: Multiple consecutive approvals
+- **WHEN** 4 tools require consecutive approval and all are approved
+- **THEN** the agent processes each approval without cumulative Telegram API latency between them
+
 ### Requirement: Audit log error logging
 Tool handlers that call `store.SaveAuditLog` SHALL log a warning via `logger().Warnw` if the audit log write fails, rather than discarding the error with `_ =`. The tool handler SHALL NOT return this error to the caller (log and degrade gracefully).
 

@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"entgo.io/ent/dialect/sql"
@@ -159,6 +160,8 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 }
 
 // SearchKnowledge searches knowledge entries by content/key keyword matching.
+// The query is split into individual keywords and matched with per-keyword OR
+// predicates to avoid SQLite LIKE pattern complexity limits.
 func (s *Store) SearchKnowledge(ctx context.Context, query string, category string, limit int) ([]KnowledgeEntry, error) {
 	if limit <= 0 {
 		limit = 10
@@ -166,10 +169,9 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 
 	var predicates []predicate.Knowledge
 	if query != "" {
-		predicates = append(predicates, entknowledge.Or(
-			entknowledge.ContentContains(query),
-			entknowledge.KeyContains(query),
-		))
+		if kwPreds := knowledgeKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, entknowledge.Or(kwPreds...))
+		}
 	}
 	if category != "" {
 		predicates = append(predicates, entknowledge.CategoryEQ(entknowledge.Category(category)))
@@ -196,6 +198,24 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 		})
 	}
 	return result, nil
+}
+
+// knowledgeKeywordPredicates splits a query into keywords and creates
+// individual ContentContains/KeyContains predicates for each.
+func knowledgeKeywordPredicates(query string) []predicate.Knowledge {
+	keywords := strings.Fields(query)
+	preds := make([]predicate.Knowledge, 0, len(keywords)*2)
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		preds = append(preds,
+			entknowledge.ContentContains(kw),
+			entknowledge.KeyContains(kw),
+		)
+	}
+	return preds
 }
 
 // IncrementKnowledgeUseCount increments the use count for a knowledge entry.
@@ -287,6 +307,8 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.
+// The query is split into individual keywords and matched with per-keyword OR
+// predicates to avoid SQLite LIKE pattern complexity limits.
 func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, category string, limit int) ([]LearningEntry, error) {
 	if limit <= 0 {
 		limit = 10
@@ -294,10 +316,9 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 
 	var predicates []predicate.Learning
 	if errorPattern != "" {
-		predicates = append(predicates, entlearning.Or(
-			entlearning.ErrorPatternContains(errorPattern),
-			entlearning.TriggerContains(errorPattern),
-		))
+		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
+			predicates = append(predicates, entlearning.Or(kwPreds...))
+		}
 	}
 	if category != "" {
 		predicates = append(predicates, entlearning.CategoryEQ(entlearning.Category(category)))
@@ -327,7 +348,26 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 	return result, nil
 }
 
+// learningKeywordPredicates splits a query into keywords and creates
+// individual ErrorPatternContains/TriggerContains predicates for each.
+func learningKeywordPredicates(query string) []predicate.Learning {
+	keywords := strings.Fields(query)
+	preds := make([]predicate.Learning, 0, len(keywords)*2)
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		preds = append(preds,
+			entlearning.ErrorPatternContains(kw),
+			entlearning.TriggerContains(kw),
+		)
+	}
+	return preds
+}
+
 // SearchLearningEntities searches learnings and returns raw Ent entities for confidence boosting.
+// Uses per-keyword OR predicates to avoid SQLite LIKE pattern complexity limits.
 func (s *Store) SearchLearningEntities(ctx context.Context, errorPattern string, limit int) ([]*ent.Learning, error) {
 	if limit <= 0 {
 		limit = 5
@@ -335,10 +375,9 @@ func (s *Store) SearchLearningEntities(ctx context.Context, errorPattern string,
 
 	var predicates []predicate.Learning
 	if errorPattern != "" {
-		predicates = append(predicates, entlearning.Or(
-			entlearning.ErrorPatternContains(errorPattern),
-			entlearning.TriggerContains(errorPattern),
-		))
+		if kwPreds := learningKeywordPredicates(errorPattern); len(kwPreds) > 0 {
+			predicates = append(predicates, entlearning.Or(kwPreds...))
+		}
 	}
 
 	return s.client.Learning.Query().
@@ -452,13 +491,13 @@ func (s *Store) SaveExternalRef(ctx context.Context, name, refType, location, su
 }
 
 // SearchExternalRefs searches external references by name or summary.
+// Uses per-keyword OR predicates to avoid SQLite LIKE pattern complexity limits.
 func (s *Store) SearchExternalRefs(ctx context.Context, query string) ([]ExternalRefEntry, error) {
 	var predicates []predicate.ExternalRef
 	if query != "" {
-		predicates = append(predicates, externalref.Or(
-			externalref.NameContains(query),
-			externalref.SummaryContains(query),
-		))
+		if kwPreds := externalRefKeywordPredicates(query); len(kwPreds) > 0 {
+			predicates = append(predicates, externalref.Or(kwPreds...))
+		}
 	}
 
 	refs, err := s.client.ExternalRef.Query().
@@ -481,6 +520,24 @@ func (s *Store) SearchExternalRefs(ctx context.Context, query string) ([]Externa
 		})
 	}
 	return result, nil
+}
+
+// externalRefKeywordPredicates splits a query into keywords and creates
+// individual NameContains/SummaryContains predicates for each.
+func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
+	keywords := strings.Fields(query)
+	preds := make([]predicate.ExternalRef, 0, len(keywords)*2)
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		preds = append(preds,
+			externalref.NameContains(kw),
+			externalref.SummaryContains(kw),
+		)
+	}
+	return preds
 }
 
 // Rate limiting helpers
