@@ -58,7 +58,14 @@ func (e *Executor) Execute(ctx context.Context, job Job) *JobResult {
 		e.delivery.DeliverStart(ctx, job.Name, job.DeliverTo)
 	}
 
+	// Show typing indicator while agent is processing.
+	stopTyping := func() {}
+	if len(job.DeliverTo) > 0 && e.delivery != nil {
+		stopTyping = e.delivery.StartTyping(ctx, job.DeliverTo)
+	}
+
 	response, err := e.runner.Run(ctx, sessionKey, job.Prompt)
+	stopTyping()
 	duration := time.Since(startedAt)
 
 	result := &JobResult{

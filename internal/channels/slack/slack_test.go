@@ -26,6 +26,10 @@ type MockClient struct {
 	}
 }
 
+func (m *MockClient) DeleteMessage(channelID, messageTimestamp string) (string, string, error) {
+	return channelID, messageTimestamp, nil
+}
+
 func (m *MockClient) AuthTest() (*slack.AuthTestResponse, error) {
 	if m.AuthTestFunc != nil {
 		return m.AuthTestFunc()

@@ -159,6 +159,12 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 		}
 	}
 
+	// Show typing indicator while agent is processing.
+	stopTyping := func() {}
+	if m.notify != nil {
+		stopTyping = m.notify.StartTyping(ctx, task.OriginChannel)
+	}
+
 	// Route tool approval requests to the originating channel.
 	if task.OriginSession != "" {
 		ctx = approval.WithApprovalTarget(ctx, task.OriginSession)
@@ -168,6 +174,7 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 
 	sessionKey := "bg:" + task.ID
 	result, err := m.runner.Run(ctx, sessionKey, task.Prompt)
+	stopTyping()
 
 	if err != nil {
 		task.Fail(err.Error())

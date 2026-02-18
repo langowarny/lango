@@ -1,9 +1,7 @@
 ## Purpose
 
 Slack channel adapter for the Lango agent. Connects to Slack via Socket Mode, handles Events API events (mentions and DMs), Block Kit formatting, approval workflows, and thinking placeholder messages.
-
 ## Requirements
-
 ### Requirement: Slack app connection
 The system SHALL connect to Slack using Socket Mode with app and bot tokens.
 
@@ -134,6 +132,7 @@ The Slack Client interface SHALL include an `UpdateMessage` method for editing a
 #### Scenario: Update approval message
 - **WHEN** an approval response is received
 - **THEN** the system SHALL use `UpdateMessage` to edit the original message
+
 ### Requirement: Thinking placeholder during processing
 The Slack channel SHALL post a placeholder message ("Thinking...") when a user message is received, then replace it with the actual response when the handler completes.
 
@@ -153,4 +152,26 @@ The Slack channel SHALL post a placeholder message ("Thinking...") when a user m
 #### Scenario: Handler error with placeholder
 - **WHEN** the message handler returns an error after a placeholder was posted
 - **THEN** the bot SHALL update the placeholder with the error message
+
+### Requirement: Public StartTyping with placeholder pattern
+The Slack channel SHALL expose a public `StartTyping(channelID string) func()` method that posts a `_Processing..._` placeholder message. The returned stop function SHALL delete the placeholder message.
+
+#### Scenario: Successful placeholder lifecycle
+- **WHEN** `StartTyping` is called and the stop function is subsequently called
+- **THEN** the placeholder message SHALL be posted on start and deleted on stop
+
+#### Scenario: Post failure returns no-op
+- **WHEN** posting the placeholder message fails
+- **THEN** the error SHALL be logged at Warn level and a no-op stop function SHALL be returned
+
+#### Scenario: Stop function is idempotent
+- **WHEN** the returned stop function is called multiple times
+- **THEN** no panic SHALL occur (protected by `sync.Once`)
+
+### Requirement: Slack Client interface includes DeleteMessage
+The Slack `Client` interface SHALL include a `DeleteMessage(channelID, messageTimestamp string) (string, string, error)` method for placeholder cleanup.
+
+#### Scenario: Mock clients implement DeleteMessage
+- **WHEN** test mock clients implement the `Client` interface
+- **THEN** they SHALL include a `DeleteMessage` method
 

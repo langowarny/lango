@@ -1,9 +1,7 @@
 ## Purpose
 
 Telegram channel adapter for the Lango agent. Connects to Telegram via Bot API, handles message reception (DMs and groups), media attachments, allowlist filtering, approval workflows, Markdown formatting, and typing indicators.
-
 ## Requirements
-
 ### Requirement: Telegram bot connection
 The system SHALL connect to Telegram using the Bot API with a provided bot token.
 
@@ -177,6 +175,7 @@ The system SHALL include Markdown formatting conventions in the agent's conversa
 #### Scenario: Fenced code blocks are closed
 - **WHEN** the agent opens a fenced code block with ` ``` `
 - **THEN** the agent SHALL always include a closing ` ``` ` marker
+
 ### Requirement: Typing indicator during processing
 The Telegram channel SHALL show a typing action indicator while the message handler processes a user message. The typing action SHALL be sent via `Request(ChatActionConfig)` immediately and refreshed every 4 seconds until the handler returns.
 
@@ -189,4 +188,19 @@ The Telegram channel SHALL show a typing action indicator while the message hand
 #### Scenario: Typing indicator API failure
 - **WHEN** the `Request` call for typing action fails
 - **THEN** the bot SHALL log a warning and continue processing normally
+
+### Requirement: Public StartTyping with context support
+The Telegram channel SHALL expose a public `StartTyping(ctx context.Context, chatID int64) func()` method that sends `ChatTyping` actions and refreshes every 4 seconds until the stop function is called or the context is cancelled.
+
+#### Scenario: Context cancellation stops typing
+- **WHEN** `StartTyping` is called and the context is subsequently cancelled
+- **THEN** the typing indicator goroutine SHALL exit without requiring the stop function to be called
+
+#### Scenario: Stop function is idempotent
+- **WHEN** the returned stop function is called multiple times
+- **THEN** no panic SHALL occur (protected by `sync.Once`)
+
+#### Scenario: Initial typing failure is non-blocking
+- **WHEN** the initial `ChatTyping` request fails
+- **THEN** the error SHALL be logged at Warn level and a valid stop function SHALL still be returned
 

@@ -12,16 +12,23 @@ type ChannelNotifier interface {
 	SendMessage(ctx context.Context, channel string, message string) error
 }
 
+// TypingIndicator starts a typing indicator on a channel.
+type TypingIndicator interface {
+	StartTyping(ctx context.Context, channel string) (stop func(), err error)
+}
+
 // Notification handles sending completion or failure notifications for background tasks.
 type Notification struct {
 	notifier ChannelNotifier
+	typing   TypingIndicator
 	logger   *zap.SugaredLogger
 }
 
 // NewNotification creates a new Notification with the given notifier and logger.
-func NewNotification(notifier ChannelNotifier, logger *zap.SugaredLogger) *Notification {
+func NewNotification(notifier ChannelNotifier, typing TypingIndicator, logger *zap.SugaredLogger) *Notification {
 	return &Notification{
 		notifier: notifier,
+		typing:   typing,
 		logger:   logger,
 	}
 }
@@ -65,6 +72,21 @@ func (n *Notification) NotifyStart(ctx context.Context, task *Task) error {
 
 	n.logger.Infow("start notification sent", "taskID", snap.ID, "channel", snap.OriginChannel)
 	return nil
+}
+
+// StartTyping starts a typing indicator on the given channel.
+// The returned stop function ends the typing indicator. It is always non-nil.
+func (n *Notification) StartTyping(ctx context.Context, channel string) func() {
+	if n.typing == nil || channel == "" {
+		return func() {}
+	}
+
+	stop, err := n.typing.StartTyping(ctx, channel)
+	if err != nil {
+		n.logger.Warnw("start typing indicator", "channel", channel, "error", err)
+		return func() {}
+	}
+	return stop
 }
 
 func formatNotification(snap TaskSnapshot) string {

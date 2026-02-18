@@ -217,6 +217,37 @@ func (c *Channel) handleUpdate(ctx context.Context, update tgbotapi.Update) {
 	}
 }
 
+// StartTyping sends a typing indicator to the chat and refreshes it
+// periodically until the returned stop function is called or ctx is cancelled.
+// The returned stop function is safe to call multiple times.
+func (c *Channel) StartTyping(ctx context.Context, chatID int64) func() {
+	action := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := c.bot.Request(action); err != nil {
+		logger().Warnw("typing indicator error", "error", err)
+	}
+
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := c.bot.Request(action); err != nil {
+					logger().Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
+}
+
 // startTyping sends a typing action to the chat and refreshes it
 // periodically until the returned stop function is called.
 func (c *Channel) startTyping(chatID int64) func() {

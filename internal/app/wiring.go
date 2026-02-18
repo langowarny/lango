@@ -1022,7 +1022,7 @@ func initCron(cfg *config.Config, store session.Store, app *App) *cronpkg.Schedu
 	client := entStore.Client()
 	cronStore := cronpkg.NewEntStore(client)
 	sender := newChannelSender(app)
-	delivery := cronpkg.NewDelivery(sender, logger())
+	delivery := cronpkg.NewDelivery(sender, sender, logger())
 	runner := &agentRunnerAdapter{app: app}
 	executor := cronpkg.NewExecutor(runner, delivery, cronStore, logger())
 
@@ -1055,7 +1055,7 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 
 	runner := &agentRunnerAdapter{app: app}
 	sender := newChannelSender(app)
-	notify := background.NewNotification(sender, logger())
+	notify := background.NewNotification(sender, sender, logger())
 
 	maxTasks := cfg.Background.MaxConcurrentTasks
 	if maxTasks <= 0 {

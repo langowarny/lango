@@ -76,6 +76,52 @@ func (s *channelSender) SendMessage(_ context.Context, channel, message string) 
 	return fmt.Errorf("channel %q not available", channel)
 }
 
+// StartTyping starts a typing indicator on the specified delivery target.
+// The returned stop function ends the typing indicator. It is always non-nil.
+// Typing failures are logged but never block execution.
+func (s *channelSender) StartTyping(ctx context.Context, channel string) (func(), error) {
+	chName, targetID := parseDeliveryTarget(channel)
+	noop := func() {}
+
+	for _, c := range s.app.Channels {
+		switch chName {
+		case "telegram":
+			if tg, ok := c.(*telegram.Channel); ok {
+				var chatID int64
+				if targetID != "" {
+					parsed, err := strconv.ParseInt(targetID, 10, 64)
+					if err != nil {
+						return noop, fmt.Errorf("parse telegram chat ID %q: %w", targetID, err)
+					}
+					chatID = parsed
+				} else {
+					chatID = s.firstTelegramChatID()
+					if chatID == 0 {
+						return noop, nil
+					}
+				}
+				return tg.StartTyping(ctx, chatID), nil
+			}
+		case "discord":
+			if dc, ok := c.(*discord.Channel); ok {
+				if targetID == "" {
+					return noop, nil
+				}
+				return dc.StartTyping(ctx, targetID), nil
+			}
+		case "slack":
+			if sl, ok := c.(*slack.Channel); ok {
+				if targetID == "" {
+					return noop, nil
+				}
+				return sl.StartTyping(targetID), nil
+			}
+		}
+	}
+
+	return noop, nil
+}
+
 func (s *channelSender) firstTelegramChatID() int64 {
 	if len(s.app.Config.Channels.Telegram.Allowlist) > 0 {
 		return s.app.Config.Channels.Telegram.Allowlist[0]

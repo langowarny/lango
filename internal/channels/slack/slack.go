@@ -302,6 +302,30 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 	}()
 }
 
+// StartTyping posts a "_Processing..._ " placeholder message.
+// The returned stop function deletes the placeholder on call.
+// If posting fails, a no-op stop function is returned.
+func (c *Channel) StartTyping(channelID string) func() {
+	options := []slack.MsgOption{
+		slack.MsgOptionText("_Processing..._", false),
+	}
+
+	_, ts, err := c.api.PostMessage(channelID, options...)
+	if err != nil {
+		logger.Warnw("start typing placeholder error", "error", err)
+		return func() {}
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if _, _, err := c.api.DeleteMessage(channelID, ts); err != nil {
+				logger.Warnw("delete typing placeholder error", "error", err)
+			}
+		})
+	}
+}
+
 // postThinking posts a placeholder "Thinking..." message and returns its timestamp.
 func (c *Channel) postThinking(channelID, threadTS string) (string, error) {
 	options := []slack.MsgOption{

@@ -10,6 +10,7 @@ type Client interface {
 	AuthTest() (*slack.AuthTestResponse, error)
 	PostMessage(channelID string, options ...slack.MsgOption) (string, string, error)
 	UpdateMessage(channelID, timestamp string, options ...slack.MsgOption) (string, string, string, error)
+	DeleteMessage(channelID, messageTimestamp string) (string, string, error)
 }
 
 // Socket defines the interface for Slack Socket Mode operations.

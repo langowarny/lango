@@ -202,6 +202,36 @@ func (c *Channel) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCrea
 	}
 }
 
+// StartTyping sends a typing indicator to the channel and refreshes it
+// periodically until the returned stop function is called or ctx is cancelled.
+// The returned stop function is safe to call multiple times.
+func (c *Channel) StartTyping(ctx context.Context, channelID string) func() {
+	if err := c.session.ChannelTyping(channelID); err != nil {
+		logger.Warnw("typing indicator error", "error", err)
+	}
+
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(8 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := c.session.ChannelTyping(channelID); err != nil {
+					logger.Warnw("typing indicator refresh error", "error", err)
+				}
+			}
+		}
+	}()
+
+	return func() { once.Do(func() { close(done) }) }
+}
+
 // startTyping sends a typing indicator to the channel and refreshes it
 // periodically until the returned stop function is called.
 func (c *Channel) startTyping(channelID string) func() {

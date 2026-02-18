@@ -14,17 +14,24 @@ type ChannelSender interface {
 	SendMessage(ctx context.Context, channel string, message string) error
 }
 
+// TypingIndicator starts a typing indicator on a channel.
+type TypingIndicator interface {
+	StartTyping(ctx context.Context, channel string) (stop func(), err error)
+}
+
 // Delivery handles dispatching job results to configured channels.
 type Delivery struct {
 	sender ChannelSender
+	typing TypingIndicator
 	logger *zap.SugaredLogger
 }
 
 // NewDelivery creates a new Delivery instance.
 // If sender is nil, delivery will be a no-op (results are only stored in history).
-func NewDelivery(sender ChannelSender, logger *zap.SugaredLogger) *Delivery {
+func NewDelivery(sender ChannelSender, typing TypingIndicator, logger *zap.SugaredLogger) *Delivery {
 	return &Delivery{
 		sender: sender,
+		typing: typing,
 		logger: logger,
 	}
 }
@@ -80,6 +87,33 @@ func (d *Delivery) DeliverStart(ctx context.Context, jobName string, targets []s
 				"target", target,
 				"error", err,
 			)
+		}
+	}
+}
+
+// StartTyping starts a typing indicator on all target channels.
+// The returned stop function ends all typing indicators. It is always non-nil.
+func (d *Delivery) StartTyping(ctx context.Context, targets []string) func() {
+	if d.typing == nil || len(targets) == 0 {
+		return func() {}
+	}
+
+	var stops []func()
+	for _, target := range targets {
+		stop, err := d.typing.StartTyping(ctx, target)
+		if err != nil {
+			d.logger.Warnw("start typing indicator",
+				"target", target,
+				"error", err,
+			)
+			continue
+		}
+		stops = append(stops, stop)
+	}
+
+	return func() {
+		for _, stop := range stops {
+			stop()
 		}
 	}
 }
