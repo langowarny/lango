@@ -741,9 +741,15 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	// If PII redaction is enabled, wrap with PII-redacting adapter
 	if cfg.Security.Interceptor.Enabled && cfg.Security.Interceptor.RedactPII {
 		redactor := agent.NewPIIRedactor(agent.PIIConfig{
-			RedactEmail: true,
-			RedactPhone: true,
-			CustomRegex: cfg.Security.Interceptor.PIIRegexPatterns,
+			RedactEmail:       true,
+			RedactPhone:       true,
+			CustomRegex:       cfg.Security.Interceptor.PIIRegexPatterns,
+			DisabledBuiltins:  cfg.Security.Interceptor.PIIDisabledPatterns,
+			CustomPatterns:    cfg.Security.Interceptor.PIICustomPatterns,
+			PresidioEnabled:   cfg.Security.Interceptor.Presidio.Enabled,
+			PresidioURL:       cfg.Security.Interceptor.Presidio.URL,
+			PresidioThreshold: cfg.Security.Interceptor.Presidio.ScoreThreshold,
+			PresidioLanguage:  cfg.Security.Interceptor.Presidio.Language,
 		})
 		llm = adk.NewPIIRedactingModelAdapter(llm, redactor, scanner)
 		logger().Info("PII redaction interceptor enabled")

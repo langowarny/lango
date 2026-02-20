@@ -128,6 +128,16 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Security.Interceptor.NotifyChannel = val
 		case "interceptor_sensitive_tools":
 			s.Current.Security.Interceptor.SensitiveTools = splitCSV(val)
+		case "interceptor_pii_disabled":
+			s.Current.Security.Interceptor.PIIDisabledPatterns = splitCSV(val)
+		case "interceptor_pii_custom":
+			s.Current.Security.Interceptor.PIICustomPatterns = parseCustomPatterns(val)
+		case "presidio_enabled":
+			s.Current.Security.Interceptor.Presidio.Enabled = f.Checked
+		case "presidio_url":
+			s.Current.Security.Interceptor.Presidio.URL = val
+		case "presidio_language":
+			s.Current.Security.Interceptor.Presidio.Language = val
 
 		// Security - Signer
 		case "signer_provider":
@@ -434,6 +444,34 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 
 	s.Current.Providers[id] = p
 	s.MarkDirty("providers")
+}
+
+// parseCustomPatterns parses a comma-separated "name:regex" string into a map.
+func parseCustomPatterns(val string) map[string]string {
+	if val == "" {
+		return nil
+	}
+	result := make(map[string]string)
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		idx := strings.Index(p, ":")
+		if idx <= 0 || idx >= len(p)-1 {
+			continue
+		}
+		name := strings.TrimSpace(p[:idx])
+		regex := strings.TrimSpace(p[idx+1:])
+		if name != "" && regex != "" {
+			result[name] = regex
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // splitCSV splits a comma-separated string, trims whitespace, and drops empty parts.

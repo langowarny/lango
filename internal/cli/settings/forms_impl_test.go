@@ -109,6 +109,8 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 		"interceptor_enabled", "interceptor_pii", "interceptor_policy",
 		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
 		"interceptor_exempt_tools",
+		"interceptor_pii_disabled", "interceptor_pii_custom",
+		"presidio_enabled", "presidio_url", "presidio_language",
 		"signer_provider", "signer_rpc", "signer_keyid",
 	}
 
@@ -119,6 +121,55 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 	for _, key := range wantKeys {
 		if f := fieldByKey(form, key); f == nil {
 			t.Errorf("missing field %q", key)
+		}
+	}
+}
+
+func TestParseCustomPatterns(t *testing.T) {
+	tests := []struct {
+		give     string
+		wantLen  int
+		wantKey  string
+		wantVal  string
+	}{
+		{give: "", wantLen: 0},
+		{give: "my_id:\\bID-\\d{6}\\b", wantLen: 1, wantKey: "my_id", wantVal: "\\bID-\\d{6}\\b"},
+		{give: "a:\\d+,b:\\w+", wantLen: 2},
+		{give: "invalid", wantLen: 0},        // no colon
+		{give: ":noname", wantLen: 0},         // empty name
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			result := ParseCustomPatterns(tt.give)
+			if len(result) != tt.wantLen {
+				t.Fatalf("want len %d, got %d: %v", tt.wantLen, len(result), result)
+			}
+			if tt.wantKey != "" {
+				if val, ok := result[tt.wantKey]; !ok || val != tt.wantVal {
+					t.Errorf("want %q=%q, got %q", tt.wantKey, tt.wantVal, val)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatCustomPatterns(t *testing.T) {
+	tests := []struct {
+		give    map[string]string
+		wantLen int // just check non-empty
+	}{
+		{give: nil, wantLen: 0},
+		{give: map[string]string{"a": "\\d+"}, wantLen: 1},
+	}
+
+	for _, tt := range tests {
+		result := formatCustomPatterns(tt.give)
+		if tt.wantLen == 0 && result != "" {
+			t.Errorf("want empty, got %q", result)
+		}
+		if tt.wantLen > 0 && result == "" {
+			t.Error("want non-empty, got empty")
 		}
 	}
 }
