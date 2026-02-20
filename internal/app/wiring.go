@@ -1130,7 +1130,12 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 		maxTasks = 3
 	}
 
-	mgr := background.NewManager(runner, notify, maxTasks, logger())
+	taskTimeout := cfg.Background.TaskTimeout
+	if taskTimeout <= 0 {
+		taskTimeout = 30 * time.Minute
+	}
+
+	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
 
 	logger().Infow("background task manager initialized",
 		"maxConcurrentTasks", maxTasks,

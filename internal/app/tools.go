@@ -1484,17 +1484,15 @@ func buildWorkflowTools(engine *workflow.Engine, stateDir string, defaultDeliver
 					copy(w.DeliverTo, defaultDeliverTo)
 				}
 
-				result, err := engine.Run(ctx, w)
+				runID, err := engine.RunAsync(ctx, w)
 				if err != nil {
 					return nil, fmt.Errorf("run workflow: %w", err)
 				}
 
 				return map[string]interface{}{
-					"run_id":   result.RunID,
-					"workflow": result.WorkflowName,
-					"status":   result.Status,
-					"steps":    result.StepResults,
-					"error":    result.Error,
+					"run_id":  runID,
+					"status":  "running",
+					"message": fmt.Sprintf("Workflow '%s' started. Use workflow_status to check progress.", w.Name),
 				}, nil
 			},
 		},

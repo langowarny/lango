@@ -97,6 +97,9 @@ type BackgroundConfig struct {
 	// Maximum number of concurrently running background tasks.
 	MaxConcurrentTasks int `mapstructure:"maxConcurrentTasks" json:"maxConcurrentTasks"`
 
+	// TaskTimeout is the maximum duration for a single background task (default: 30m).
+	TaskTimeout time.Duration `mapstructure:"taskTimeout" json:"taskTimeout"`
+
 	// Default delivery channels when channel is not specified (e.g. ["telegram"]).
 	DefaultDeliverTo []string `mapstructure:"defaultDeliverTo" json:"defaultDeliverTo"`
 }
