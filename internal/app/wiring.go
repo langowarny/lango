@@ -203,11 +203,7 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents)
 	client := entStore.Client()
 	kLogger := logger()
 
-	kStore := knowledge.NewStore(
-		client, kLogger,
-		cfg.Knowledge.MaxKnowledge,
-		cfg.Knowledge.MaxLearnings,
-	)
+	kStore := knowledge.NewStore(client, kLogger)
 
 	engine := learning.NewEngine(kStore, kLogger)
 
@@ -745,9 +741,15 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 	// If PII redaction is enabled, wrap with PII-redacting adapter
 	if cfg.Security.Interceptor.Enabled && cfg.Security.Interceptor.RedactPII {
 		redactor := agent.NewPIIRedactor(agent.PIIConfig{
-			RedactEmail: true,
-			RedactPhone: true,
-			CustomRegex: cfg.Security.Interceptor.PIIRegexPatterns,
+			RedactEmail:       true,
+			RedactPhone:       true,
+			CustomRegex:       cfg.Security.Interceptor.PIIRegexPatterns,
+			DisabledBuiltins:  cfg.Security.Interceptor.PIIDisabledPatterns,
+			CustomPatterns:    cfg.Security.Interceptor.PIICustomPatterns,
+			PresidioEnabled:   cfg.Security.Interceptor.Presidio.Enabled,
+			PresidioURL:       cfg.Security.Interceptor.Presidio.URL,
+			PresidioThreshold: cfg.Security.Interceptor.Presidio.ScoreThreshold,
+			PresidioLanguage:  cfg.Security.Interceptor.Presidio.Language,
 		})
 		llm = adk.NewPIIRedactingModelAdapter(llm, redactor, scanner)
 		logger().Info("PII redaction interceptor enabled")
@@ -1130,7 +1132,12 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 		maxTasks = 3
 	}
 
-	mgr := background.NewManager(runner, notify, maxTasks, logger())
+	taskTimeout := cfg.Background.TaskTimeout
+	if taskTimeout <= 0 {
+		taskTimeout = 30 * time.Minute
+	}
+
+	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
 
 	logger().Infow("background task manager initialized",
 		"maxConcurrentTasks", maxTasks,

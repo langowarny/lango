@@ -2,7 +2,9 @@ package checks
 
 import (
 	"context"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/langowarny/lango/internal/config"
 	"github.com/langowarny/lango/internal/session"
@@ -67,6 +69,35 @@ func (c *OutputScanningCheck) Run(ctx context.Context, cfg *config.Config) Resul
 			Status:  StatusWarn,
 			Message: "Output interceptor enabled but PII redaction is disabled",
 			Details: "Enable security.interceptor.redactPii for comprehensive output scanning.",
+		}
+	}
+
+	// Check Presidio connectivity if enabled.
+	if cfg.Security.Interceptor.Presidio.Enabled {
+		url := cfg.Security.Interceptor.Presidio.URL
+		if url == "" {
+			url = "http://localhost:5002"
+		}
+		client := http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Get(url + "/health")
+		if err != nil {
+			return Result{
+				Name:    c.Name(),
+				Status:  StatusWarn,
+				Message: "Presidio enabled but not reachable",
+				Details: "Presidio analyzer at " + url + " is not responding. " +
+					"Regex-based PII detection will still work. " +
+					"Start Presidio with: docker compose --profile presidio up -d",
+			}
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return Result{
+				Name:    c.Name(),
+				Status:  StatusWarn,
+				Message: "Presidio health check returned non-OK status",
+				Details: "Presidio at " + url + " returned status " + resp.Status,
+			}
 		}
 	}
 

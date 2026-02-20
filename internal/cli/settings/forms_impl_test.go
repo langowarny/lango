@@ -109,6 +109,8 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 		"interceptor_enabled", "interceptor_pii", "interceptor_policy",
 		"interceptor_timeout", "interceptor_notify", "interceptor_sensitive_tools",
 		"interceptor_exempt_tools",
+		"interceptor_pii_disabled", "interceptor_pii_custom",
+		"presidio_enabled", "presidio_url", "presidio_language",
 		"signer_provider", "signer_rpc", "signer_keyid",
 	}
 
@@ -123,13 +125,61 @@ func TestNewSecurityForm_AllFields(t *testing.T) {
 	}
 }
 
+func TestParseCustomPatterns(t *testing.T) {
+	tests := []struct {
+		give     string
+		wantLen  int
+		wantKey  string
+		wantVal  string
+	}{
+		{give: "", wantLen: 0},
+		{give: "my_id:\\bID-\\d{6}\\b", wantLen: 1, wantKey: "my_id", wantVal: "\\bID-\\d{6}\\b"},
+		{give: "a:\\d+,b:\\w+", wantLen: 2},
+		{give: "invalid", wantLen: 0},        // no colon
+		{give: ":noname", wantLen: 0},         // empty name
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			result := ParseCustomPatterns(tt.give)
+			if len(result) != tt.wantLen {
+				t.Fatalf("want len %d, got %d: %v", tt.wantLen, len(result), result)
+			}
+			if tt.wantKey != "" {
+				if val, ok := result[tt.wantKey]; !ok || val != tt.wantVal {
+					t.Errorf("want %q=%q, got %q", tt.wantKey, tt.wantVal, val)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatCustomPatterns(t *testing.T) {
+	tests := []struct {
+		give    map[string]string
+		wantLen int // just check non-empty
+	}{
+		{give: nil, wantLen: 0},
+		{give: map[string]string{"a": "\\d+"}, wantLen: 1},
+	}
+
+	for _, tt := range tests {
+		result := formatCustomPatterns(tt.give)
+		if tt.wantLen == 0 && result != "" {
+			t.Errorf("want empty, got %q", result)
+		}
+		if tt.wantLen > 0 && result == "" {
+			t.Error("want non-empty, got empty")
+		}
+	}
+}
+
 func TestNewKnowledgeForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewKnowledgeForm(cfg)
 
 	wantKeys := []string{
-		"knowledge_enabled", "knowledge_max_learnings",
-		"knowledge_max_knowledge", "knowledge_max_context",
+		"knowledge_enabled", "knowledge_max_context",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -144,9 +194,6 @@ func TestNewKnowledgeForm_AllFields(t *testing.T) {
 
 	if f := fieldByKey(form, "knowledge_enabled"); f.Checked != false {
 		t.Error("knowledge_enabled: want false by default")
-	}
-	if f := fieldByKey(form, "knowledge_max_learnings"); f.Value != "10" {
-		t.Errorf("knowledge_max_learnings: want %q, got %q", "10", f.Value)
 	}
 	if f := fieldByKey(form, "knowledge_max_context"); f.Value != "5" {
 		t.Errorf("knowledge_max_context: want %q, got %q", "5", f.Value)
@@ -205,20 +252,12 @@ func TestUpdateConfigFromForm_KnowledgeFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
 	form.AddField(&tuicore.Field{Key: "knowledge_enabled", Type: tuicore.InputBool, Checked: true})
-	form.AddField(&tuicore.Field{Key: "knowledge_max_learnings", Type: tuicore.InputInt, Value: "25"})
-	form.AddField(&tuicore.Field{Key: "knowledge_max_knowledge", Type: tuicore.InputInt, Value: "50"})
 	form.AddField(&tuicore.Field{Key: "knowledge_max_context", Type: tuicore.InputInt, Value: "8"})
 	state.UpdateConfigFromForm(&form)
 
 	k := state.Current.Knowledge
 	if !k.Enabled {
 		t.Error("Knowledge.Enabled: want true")
-	}
-	if k.MaxLearnings != 25 {
-		t.Errorf("MaxLearnings: want 25, got %d", k.MaxLearnings)
-	}
-	if k.MaxKnowledge != 50 {
-		t.Errorf("MaxKnowledge: want 50, got %d", k.MaxKnowledge)
 	}
 	if k.MaxContextPerLayer != 8 {
 		t.Errorf("MaxContextPerLayer: want 8, got %d", k.MaxContextPerLayer)

@@ -60,8 +60,6 @@ func DefaultConfig() *Config {
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
-			MaxLearnings:       10,
-			MaxKnowledge:       20,
 			MaxContextPerLayer: 5,
 		},
 		Skill: SkillConfig{
@@ -189,6 +187,9 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
 	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
 	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
+	v.SetDefault("security.interceptor.presidio.url", "http://localhost:5002")
+	v.SetDefault("security.interceptor.presidio.scoreThreshold", 0.7)
+	v.SetDefault("security.interceptor.presidio.language", "en")
 	v.SetDefault("skill.enabled", defaults.Skill.Enabled)
 	v.SetDefault("skill.skillsDir", defaults.Skill.SkillsDir)
 	v.SetDefault("skill.allowImport", defaults.Skill.AllowImport)

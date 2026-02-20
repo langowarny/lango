@@ -12,7 +12,7 @@ This project includes experimental AI Agent features and is currently in an unst
 
 ## Features
 
-- 🔥 **Fast** - Single binary, <100ms startup, <100MB memory
+- 🔥 **Fast** - Single binary, <100ms startup, <250MB memory
 - 🤖 **Multi-Provider AI** - OpenAI, Anthropic, Gemini, Ollama with unified interface
 - 🔌 **Multi-Channel** - Telegram, Discord, Slack support
 - 🛠️ **Rich Tools** - Shell execution, file system operations, browser automation, crypto & secrets tools
@@ -207,9 +207,12 @@ lango/
 Lango supports multiple AI providers with a unified interface. Provider aliases are resolved automatically (e.g., `gpt`/`chatgpt` -> `openai`, `claude` -> `anthropic`, `llama` -> `ollama`, `bard` -> `gemini`).
 
 ### Supported Providers
-- **OpenAI** (`openai`): GPT-4o, GPT-4, and OpenAI-compatible APIs
-- **Anthropic** (`anthropic`): Claude Sonnet 4, Claude 3.5, Claude 3
-- **Gemini** (`gemini`): Google Gemini models
+
+**Recommended**: You should select a reasoning model for smooth usage.
+
+- **OpenAI** (`openai`): Open-AI GPTs(GPT-5.2, GPT-5.3 Codex...), and OpenAI-Compatible APIs
+- **Anthropic** (`anthropic`): Claude Opus, Sonnet, Haiku
+- **Gemini** (`gemini`): Google Gemini Pro, Flash
 - **Ollama** (`ollama`): Local models via Ollama (default: `http://localhost:11434/v1`)
 
 ### Setup
@@ -261,6 +264,12 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `security.interceptor.sensitiveTools` | []string | - | Tool names that require approval (e.g. `["exec", "browser"]`) |
 | `security.interceptor.exemptTools` | []string | - | Tool names exempt from approval regardless of policy |
 | `security.interceptor.piiRegexPatterns` | []string | - | Custom regex patterns for PII detection |
+| `security.interceptor.piiDisabledPatterns` | []string | - | Builtin PII pattern names to disable (e.g. `["passport", "ipv4"]`) |
+| `security.interceptor.piiCustomPatterns` | map | - | Custom named PII patterns (`{"proj_id": "\\bPROJ-\\d{4}\\b"}`) |
+| `security.interceptor.presidio.enabled` | bool | `false` | Enable Microsoft Presidio NER-based detection |
+| `security.interceptor.presidio.url` | string | `http://localhost:5002` | Presidio analyzer service URL |
+| `security.interceptor.presidio.scoreThreshold` | float64 | `0.7` | Minimum confidence score for Presidio detections |
+| `security.interceptor.presidio.language` | string | `en` | Language for Presidio analysis |
 | **Auth** | | | |
 | `auth.providers.<id>.issuerUrl` | string | - | OIDC issuer URL |
 | `auth.providers.<id>.clientId` | string | - | OIDC client ID |
@@ -278,9 +287,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `tools.browser.sessionTimeout` | duration | `5m` | Browser session timeout |
 | **Knowledge** | | | |
 | `knowledge.enabled` | bool | `false` | Enable self-learning knowledge system |
-| `knowledge.maxLearnings` | int | - | Max learning entries per session |
-| `knowledge.maxKnowledge` | int | - | Max knowledge entries per session |
-| `knowledge.maxContextPerLayer` | int | - | Max context items per layer in retrieval |
+| `knowledge.maxContextPerLayer` | int | `5` | Max context items per layer in retrieval |
 | **Skill System** | | | |
 | `skill.enabled` | bool | `false` | Enable file-based skill system |
 | `skill.skillsDir` | string | `~/.lango/skills` | Directory containing skill files (`<name>/SKILL.md`) |
@@ -495,7 +502,7 @@ When `agent.multiAgent` is enabled, Lango builds a hierarchical agent tree with 
 | **operator** | System operations: shell commands, file I/O, skill execution | exec_*, fs_*, skill_* |
 | **navigator** | Web browsing: page navigation, interaction, screenshots | browser_* |
 | **vault** | Security: encryption, secret management, blockchain payments | crypto_*, secrets_*, payment_* |
-| **librarian** | Knowledge: search, RAG, graph traversal, skill management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
+| **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data management, proactive knowledge extraction | search_*, rag_*, graph_*, save_knowledge, save_learning, learning_*, create_skill, list_skills, librarian_pending_inquiries, librarian_dismiss_inquiry |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | cron_*, bg_*, workflow_* |
 | **planner** | Task decomposition and planning | (LLM reasoning only, no tools) |
 | **chronicler** | Conversational memory: observations, reflections, recall | memory_*, observe_*, reflect_* |
@@ -704,7 +711,7 @@ Steps specify which sub-agent to use: `operator`, `navigator`, `vault`, `librari
 Lango includes a self-learning knowledge system that improves agent performance over time.
 
 - **Knowledge Store** - Persistent storage for facts, patterns, and external references
-- **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies
+- **Learning Engine** - Observes tool execution results, extracts error patterns, boosts successful strategies. Agent tools (`learning_stats`, `learning_cleanup`) let the agent brief users on learning data and clean up entries by age, confidence, or category
 - **Skill System** - File-based skills stored as `~/.lango/skills/<name>/SKILL.md` with YAML frontmatter. Supports four skill types: script (shell), template (Go template), composite (multi-step), and instruction (reference documents). Ships with 30 embedded default skills deployed on first run. Import skills from GitHub repos or any URL via the `import_skill` tool — automatically uses `git clone` when available (fetches full directory with resource files) and falls back to the GitHub HTTP API when git is not installed. Each skill directory can include resource subdirectories (`scripts/`, `references/`, `assets/`). YAML frontmatter supports `allowed-tools` for pre-approved tool lists. Dangerous script patterns (fork bombs, `rm -rf /`, `curl|sh`) are blocked at creation and execution time.
 - **Context Retriever** - 8-layer context architecture that assembles relevant knowledge into prompts:
   1. Tool Registry — available tools and capabilities
@@ -756,9 +763,14 @@ Configure security mode via `lango onboard` > Security menu, or use `lango confi
 
 Lango includes a privacy interceptor that sits between the agent and AI providers:
 
-- **PII Redaction** — automatically detects and redacts personally identifiable information before sending to AI providers
+- **PII Redaction** — automatically detects and redacts personally identifiable information before sending to AI providers, with 13 builtin patterns:
+  - **Contact**: email, US phone, Korean mobile/landline, international phone
+  - **Identity**: Korean RRN (주민등록번호), US SSN, driver's license, passport
+  - **Financial**: credit card (Luhn-validated), Korean bank account, IBAN
+  - **Network**: IPv4 addresses
+- **Pattern Customization** — disable builtin patterns via `piiDisabledPatterns` or add custom regex via `piiCustomPatterns`
+- **Presidio Integration** — optionally enable Microsoft Presidio for NER-based detection alongside regex (`docker compose --profile presidio up`)
 - **Approval Workflows** — optionally require human approval before executing sensitive tools
-- **Custom PII Patterns** — extend detection with custom regex patterns via `security.interceptor.piiRegexPatterns`
 
 ### Secret Management
 

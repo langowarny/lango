@@ -69,8 +69,34 @@ Workflow runs and step runs SHALL be persisted in Ent ORM (WorkflowRun, Workflow
 - **WHEN** Resume() is called with a run ID of a partially completed workflow
 - **THEN** the engine SHALL load the saved state, skip completed steps, and continue from the last incomplete step
 
+### Requirement: Workflow context isolation
+The workflow engine SHALL detach the execution context from the originating request context before running DAG steps. The detached context SHALL preserve context values but SHALL NOT be cancelled when the parent request completes.
+
+#### Scenario: Parent request completes without cancelling workflow
+- **WHEN** a workflow is started via `workflow_run` and the originating agent request completes
+- **THEN** the workflow SHALL continue executing all DAG steps without `context canceled` errors
+
+#### Scenario: Workflow cancellation via workflow_cancel still works
+- **WHEN** a user calls `workflow_cancel` on a running workflow
+- **THEN** the workflow SHALL be cancelled immediately via the stored cancel function
+
+### Requirement: Async workflow execution
+The workflow engine SHALL provide a `RunAsync()` method that validates the workflow, creates run and step records, then executes the DAG in a background goroutine. The method SHALL return the run ID immediately.
+
+#### Scenario: RunAsync returns immediately with run ID
+- **WHEN** `RunAsync()` is called with a valid workflow
+- **THEN** the method SHALL return a run ID and `nil` error before DAG execution begins
+
+#### Scenario: RunAsync workflow progress is queryable
+- **WHEN** a workflow is started via `RunAsync()` and the run ID is used with `Status()`
+- **THEN** the status SHALL reflect the current execution state (running, completed, or failed)
+
+#### Scenario: workflow_run tool uses RunAsync
+- **WHEN** the `workflow_run` tool handler is invoked
+- **THEN** it SHALL call `RunAsync()` and return the run ID immediately with status "running"
+
 ### Requirement: Workflow lifecycle operations
-The system SHALL support Run, Resume, Cancel, Status, and ListRuns operations.
+The system SHALL support Run, RunAsync, Resume, Cancel, Status, and ListRuns operations.
 
 #### Scenario: Run a workflow
 - **WHEN** Run() is called with a valid workflow
