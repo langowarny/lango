@@ -279,7 +279,77 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "filesystem (comma-separated)",
 	})
 
+	// PII Pattern Management
+	form.AddField(&tuicore.Field{
+		Key: "interceptor_pii_disabled", Label: "  Disabled PII Patterns", Type: tuicore.InputText,
+		Value:       strings.Join(cfg.Security.Interceptor.PIIDisabledPatterns, ","),
+		Placeholder: "kr_bank_account,passport,ipv4 (comma-separated)",
+	})
+	form.AddField(&tuicore.Field{
+		Key: "interceptor_pii_custom", Label: "  Custom PII Patterns", Type: tuicore.InputText,
+		Value:       formatCustomPatterns(cfg.Security.Interceptor.PIICustomPatterns),
+		Placeholder: `my_id:\bID-\d{6}\b (name:regex, comma-sep)`,
+	})
+
+	// Presidio Integration
+	form.AddField(&tuicore.Field{
+		Key: "presidio_enabled", Label: "  Presidio (Docker)", Type: tuicore.InputBool,
+		Checked: cfg.Security.Interceptor.Presidio.Enabled,
+	})
+	form.AddField(&tuicore.Field{
+		Key: "presidio_url", Label: "  Presidio URL", Type: tuicore.InputText,
+		Value:       cfg.Security.Interceptor.Presidio.URL,
+		Placeholder: "http://localhost:5002",
+	})
+	form.AddField(&tuicore.Field{
+		Key: "presidio_language", Label: "  Presidio Language", Type: tuicore.InputText,
+		Value:       cfg.Security.Interceptor.Presidio.Language,
+		Placeholder: "en",
+	})
+
 	return &form
+}
+
+// formatCustomPatterns formats a map of custom patterns into a comma-separated
+// "name:regex" string for display in the TUI.
+func formatCustomPatterns(patterns map[string]string) string {
+	if len(patterns) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(patterns))
+	for name, regex := range patterns {
+		parts = append(parts, name+":"+regex)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
+}
+
+// ParseCustomPatterns parses a comma-separated "name:regex" string into a map.
+func ParseCustomPatterns(val string) map[string]string {
+	if val == "" {
+		return nil
+	}
+	result := make(map[string]string)
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		idx := strings.Index(p, ":")
+		if idx <= 0 || idx >= len(p)-1 {
+			continue
+		}
+		name := strings.TrimSpace(p[:idx])
+		regex := strings.TrimSpace(p[idx+1:])
+		if name != "" && regex != "" {
+			result[name] = regex
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func validatePort(s string) error {

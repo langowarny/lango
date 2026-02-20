@@ -301,6 +301,17 @@ type InterceptorConfig struct {
 	ExemptTools         []string       `mapstructure:"exemptTools" json:"exemptTools"`                   // Tools exempt from approval regardless of policy
 	PIIRegexPatterns    []string       `mapstructure:"piiRegexPatterns" json:"piiRegexPatterns"`
 	ApprovalTimeoutSec  int            `mapstructure:"approvalTimeoutSec" json:"approvalTimeoutSec"`     // default 30
+	PIIDisabledPatterns []string          `mapstructure:"piiDisabledPatterns" json:"piiDisabledPatterns"`
+	PIICustomPatterns   map[string]string `mapstructure:"piiCustomPatterns" json:"piiCustomPatterns"`
+	Presidio            PresidioConfig    `mapstructure:"presidio" json:"presidio"`
+}
+
+// PresidioConfig defines Microsoft Presidio integration settings.
+type PresidioConfig struct {
+	Enabled        bool    `mapstructure:"enabled" json:"enabled"`
+	URL            string  `mapstructure:"url" json:"url"`                       // default: http://localhost:5002
+	ScoreThreshold float64 `mapstructure:"scoreThreshold" json:"scoreThreshold"` // default: 0.7
+	Language       string  `mapstructure:"language" json:"language"`             // default: "en"
 }
 
 // SignerConfig defines Secure Signer settings

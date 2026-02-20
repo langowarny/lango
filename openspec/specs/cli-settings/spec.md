@@ -1,12 +1,11 @@
-# CLI Settings Spec
+## Purpose
 
-## Goal
-The `lango settings` command provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
+Define the `lango settings` command that provides a comprehensive, interactive menu-based configuration editor for all aspects of the encrypted configuration profile.
 
 ## Requirements
 
-### Configuration Coverage
-The settings editor SHALL support editing all configuration sections previously handled by `lango onboard`:
+### Requirement: Configuration Coverage
+The settings editor SHALL support editing all configuration sections:
 1. **Providers** — Add, edit, delete multi-provider configurations
 2. **Agent** — Provider, Model, MaxTokens, Temperature, PromptsDir, Fallback
 3. **Server** — Host, Port, HTTP/WebSocket toggles
@@ -28,17 +27,22 @@ The settings editor SHALL support editing all configuration sections previously 
 19. **Workflow Engine** — Enabled, max concurrent steps, default timeout, state directory
 20. **Librarian** — Enabled, observation threshold, inquiry cooldown, max inquiries, auto-save confidence, provider, model
 
-### User Interface
-- Menu-based navigation with 22 categories (20 sections + Save & Exit + Cancel)
-- Free navigation between categories
-- Uses shared `tuicore.FormModel` for all forms
-- Provider and OIDC provider list views for managing collections
-
 #### Scenario: Menu categories
 - **WHEN** user launches `lango settings`
 - **THEN** the menu SHALL display categories in order: Providers, Agent, Server, Channels, Tools, Session, Security, Auth, Knowledge, Skill, Observational Memory, Embedding & RAG, Graph Store, Multi-Agent, A2A Protocol, Payment, Cron Scheduler, Background Tasks, Workflow Engine, Librarian, Save & Exit, Cancel
 
-### Skill configuration form
+### Requirement: User Interface
+The settings editor SHALL provide menu-based navigation with categories, free navigation between categories, and shared `tuicore.FormModel` for all forms. Provider and OIDC provider list views SHALL support managing collections.
+
+#### Scenario: Launch settings
+- **WHEN** user runs `lango settings`
+- **THEN** the editor SHALL display a welcome screen followed by the configuration menu
+
+#### Scenario: Save from settings
+- **WHEN** user selects "Save & Exit" from the menu
+- **THEN** the configuration SHALL be saved as an encrypted profile
+
+### Requirement: Skill configuration form
 The settings editor SHALL provide a Skill configuration form with the following fields:
 - **Enabled** (`skill_enabled`) — Boolean toggle for enabling the file-based skill system
 - **Skills Directory** (`skill_dir`) — Text input for the directory path containing SKILL.md files
@@ -51,7 +55,7 @@ The settings editor SHALL provide a Skill configuration form with the following 
 - **WHEN** user edits skill fields and navigates back (Esc)
 - **THEN** the changes SHALL be applied to `config.Skill.Enabled` and `config.Skill.SkillsDir`
 
-### Cron Scheduler configuration form
+### Requirement: Cron Scheduler configuration form
 The settings editor SHALL provide a Cron Scheduler configuration form with the following fields:
 - **Enabled** (`cron_enabled`) — Boolean toggle
 - **Timezone** (`cron_timezone`) — Text input for timezone (e.g., "UTC", "Asia/Seoul")
@@ -64,7 +68,7 @@ The settings editor SHALL provide a Cron Scheduler configuration form with the f
 - **WHEN** user selects "Cron Scheduler" from the settings menu
 - **THEN** the editor SHALL display a form with all cron fields pre-populated from `config.Cron`
 
-### Background Tasks configuration form
+### Requirement: Background Tasks configuration form
 The settings editor SHALL provide a Background Tasks configuration form with the following fields:
 - **Enabled** (`bg_enabled`) — Boolean toggle
 - **Yield Time (ms)** (`bg_yield_ms`) — Integer input
@@ -75,7 +79,7 @@ The settings editor SHALL provide a Background Tasks configuration form with the
 - **WHEN** user selects "Background Tasks" from the settings menu
 - **THEN** the editor SHALL display a form with all background fields pre-populated from `config.Background`
 
-### Workflow Engine configuration form
+### Requirement: Workflow Engine configuration form
 The settings editor SHALL provide a Workflow Engine configuration form with the following fields:
 - **Enabled** (`wf_enabled`) — Boolean toggle
 - **Max Concurrent Steps** (`wf_max_steps`) — Integer input
@@ -124,22 +128,6 @@ The Cron, Background, and Workflow settings forms SHALL each include a "Default 
 - **WHEN** the user enters "telegram,discord" in the cron default deliver field
 - **THEN** the config state SHALL update Cron.DefaultDeliverTo to ["telegram", "discord"]
 
-### Command
-```
-lango settings [--profile <name>]
-```
-- Default profile: "default"
-- Loads existing profile or creates new with defaults
-- Saves via `configstore.Store.Save()` to encrypted profile
-
-#### Scenario: Launch settings
-- **WHEN** user runs `lango settings`
-- **THEN** the editor SHALL display a welcome screen followed by the configuration menu
-
-#### Scenario: Save from settings
-- **WHEN** user selects "Save & Exit" from the menu
-- **THEN** the configuration SHALL be saved as an encrypted profile
-
 ### Requirement: Observational Memory context limit fields in settings form
 The Observational Memory settings form SHALL include fields for configuring context limits:
 - **Max Reflections in Context** (`om_max_reflections`) — Integer input (non-negative, 0 = unlimited)
@@ -158,3 +146,33 @@ The state update handler SHALL map these fields to `ObservationalMemory.MaxRefle
 #### Scenario: Zero means unlimited
 - **WHEN** user sets Max Reflections in Context to 0
 - **THEN** the value SHALL be accepted (0 = unlimited) and stored as 0
+
+### Requirement: Security form PII pattern fields
+The Security configuration form SHALL include fields for managing PII patterns: disabled builtin patterns (comma-separated text), custom patterns (name:regex comma-separated text), Presidio enabled (bool), Presidio URL (text), and Presidio language (text).
+
+#### Scenario: Disabled patterns field
+- **WHEN** the Security form is created
+- **THEN** it SHALL contain field with key "interceptor_pii_disabled"
+
+#### Scenario: Custom patterns field
+- **WHEN** the Security form is created with custom patterns {"a": "\\d+"}
+- **THEN** it SHALL contain field with key "interceptor_pii_custom" showing "a:\\d+" format
+
+#### Scenario: Presidio fields
+- **WHEN** the Security form is created
+- **THEN** it SHALL contain fields "presidio_enabled", "presidio_url", "presidio_language"
+
+### Requirement: State update for PII fields
+The ConfigState.UpdateConfigFromForm SHALL map the new PII form keys to their corresponding config fields.
+
+#### Scenario: Update disabled patterns
+- **WHEN** form field "interceptor_pii_disabled" has value "passport,ipv4"
+- **THEN** config PIIDisabledPatterns SHALL be ["passport", "ipv4"]
+
+#### Scenario: Update custom patterns
+- **WHEN** form field "interceptor_pii_custom" has value "my_id:\\bID-\\d+\\b"
+- **THEN** config PIICustomPatterns SHALL contain {"my_id": "\\bID-\\d+\\b"}
+
+#### Scenario: Update Presidio enabled
+- **WHEN** form field "presidio_enabled" is checked
+- **THEN** config Presidio.Enabled SHALL be true

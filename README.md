@@ -264,6 +264,12 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `security.interceptor.sensitiveTools` | []string | - | Tool names that require approval (e.g. `["exec", "browser"]`) |
 | `security.interceptor.exemptTools` | []string | - | Tool names exempt from approval regardless of policy |
 | `security.interceptor.piiRegexPatterns` | []string | - | Custom regex patterns for PII detection |
+| `security.interceptor.piiDisabledPatterns` | []string | - | Builtin PII pattern names to disable (e.g. `["passport", "ipv4"]`) |
+| `security.interceptor.piiCustomPatterns` | map | - | Custom named PII patterns (`{"proj_id": "\\bPROJ-\\d{4}\\b"}`) |
+| `security.interceptor.presidio.enabled` | bool | `false` | Enable Microsoft Presidio NER-based detection |
+| `security.interceptor.presidio.url` | string | `http://localhost:5002` | Presidio analyzer service URL |
+| `security.interceptor.presidio.scoreThreshold` | float64 | `0.7` | Minimum confidence score for Presidio detections |
+| `security.interceptor.presidio.language` | string | `en` | Language for Presidio analysis |
 | **Auth** | | | |
 | `auth.providers.<id>.issuerUrl` | string | - | OIDC issuer URL |
 | `auth.providers.<id>.clientId` | string | - | OIDC client ID |
@@ -757,9 +763,14 @@ Configure security mode via `lango onboard` > Security menu, or use `lango confi
 
 Lango includes a privacy interceptor that sits between the agent and AI providers:
 
-- **PII Redaction** — automatically detects and redacts personally identifiable information before sending to AI providers
+- **PII Redaction** — automatically detects and redacts personally identifiable information before sending to AI providers, with 13 builtin patterns:
+  - **Contact**: email, US phone, Korean mobile/landline, international phone
+  - **Identity**: Korean RRN (주민등록번호), US SSN, driver's license, passport
+  - **Financial**: credit card (Luhn-validated), Korean bank account, IBAN
+  - **Network**: IPv4 addresses
+- **Pattern Customization** — disable builtin patterns via `piiDisabledPatterns` or add custom regex via `piiCustomPatterns`
+- **Presidio Integration** — optionally enable Microsoft Presidio for NER-based detection alongside regex (`docker compose --profile presidio up`)
 - **Approval Workflows** — optionally require human approval before executing sensitive tools
-- **Custom PII Patterns** — extend detection with custom regex patterns via `security.interceptor.piiRegexPatterns`
 
 ### Secret Management
 

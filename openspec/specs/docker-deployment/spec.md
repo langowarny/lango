@@ -142,3 +142,23 @@ The Makefile SHALL provide targets for building Docker images.
 - **THEN** the system SHALL tag and push both version and latest tags to the specified registry
 - **WHEN** running `make docker-push` without REGISTRY set
 - **THEN** the system SHALL fail with an error message
+
+### Requirement: Presidio analyzer Docker service
+The docker-compose.yml SHALL include a presidio-analyzer service using the mcr.microsoft.com/presidio-analyzer:latest image, exposed on port 5002, under the "presidio" profile.
+
+#### Scenario: Profile-based activation
+- **WHEN** user runs `docker compose --profile presidio up`
+- **THEN** the presidio-analyzer container SHALL start alongside the main lango service
+
+#### Scenario: Default compose up
+- **WHEN** user runs `docker compose up` without the presidio profile
+- **THEN** the presidio-analyzer container SHALL NOT start
+
+### Requirement: Docker config example includes Presidio service fields
+The Docker deployment example config.json SHALL include the `presidio` block within `security.interceptor` so users deploying with `--profile presidio` have the correct default configuration.
+
+#### Scenario: User deploys with Presidio profile
+- **WHEN** a user runs `docker compose --profile presidio up` with the example config
+- **THEN** the config.json already contains `presidio.enabled: false`, `presidio.url: "http://localhost:5002"`, `presidio.scoreThreshold: 0.7`, and `presidio.language: "en"`
+- **THEN** the user only needs to set `presidio.enabled: true` to activate Presidio detection
+
