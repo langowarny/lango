@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/langowarny/lango/internal/ctxutil"
 	"go.uber.org/zap"
 )
 
@@ -59,7 +60,9 @@ func NewEngine(
 	}
 }
 
-// Run executes a workflow from start to finish.
+// Run executes a workflow from start to finish synchronously.
+// The context is detached from the parent to prevent cancellation
+// when the originating request completes.
 func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 	if err := Validate(w); err != nil {
 		return nil, fmt.Errorf("validate workflow: %w", err)
@@ -70,11 +73,57 @@ func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 		return nil, fmt.Errorf("build DAG: %w", err)
 	}
 
-	runID, err := e.state.CreateRun(ctx, w)
+	// Detach from parent context to prevent cascading cancellation.
+	detached := ctxutil.Detach(ctx)
+
+	runID, err := e.state.CreateRun(detached, w)
 	if err != nil {
 		return nil, fmt.Errorf("create run: %w", err)
 	}
 
+	return e.runDAG(detached, runID, w, dag)
+}
+
+// RunAsync validates, creates the run record and step records, then
+// executes the DAG in a background goroutine. It returns the runID
+// immediately so the caller can poll via Status().
+func (e *Engine) RunAsync(ctx context.Context, w *Workflow) (string, error) {
+	if err := Validate(w); err != nil {
+		return "", fmt.Errorf("validate workflow: %w", err)
+	}
+
+	dag, err := NewDAG(w.Steps)
+	if err != nil {
+		return "", fmt.Errorf("build DAG: %w", err)
+	}
+
+	// Detach from parent context to prevent cascading cancellation.
+	detached := ctxutil.Detach(ctx)
+
+	runID, err := e.state.CreateRun(detached, w)
+	if err != nil {
+		return "", fmt.Errorf("create run: %w", err)
+	}
+
+	// Create step records before launching goroutine so the caller
+	// can immediately query step status.
+	for _, step := range w.Steps {
+		if createErr := e.state.CreateStepRun(detached, runID, step, step.Prompt); createErr != nil {
+			return "", fmt.Errorf("create step run %q: %w", step.ID, createErr)
+		}
+	}
+
+	go func() {
+		if _, runErr := e.runDAG(detached, runID, w, dag); runErr != nil {
+			e.logger.Warnw("async workflow failed", "runID", runID, "error", runErr)
+		}
+	}()
+
+	return runID, nil
+}
+
+// runDAG executes a workflow DAG to completion.
+func (e *Engine) runDAG(ctx context.Context, runID string, w *Workflow, dag *DAG) (*RunResult, error) {
 	// Register cancel function.
 	ctx, cancel := context.WithCancel(ctx)
 	e.mu.Lock()
@@ -88,10 +137,13 @@ func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 		e.mu.Unlock()
 	}()
 
-	// Create step records.
+	// Create step records (idempotent — RunAsync pre-creates them,
+	// Run calls runDAG directly so we create them here).
 	for _, step := range w.Steps {
+		// CreateStepRun is expected to be idempotent or tolerate duplicates.
 		if createErr := e.state.CreateStepRun(ctx, runID, step, step.Prompt); createErr != nil {
-			return nil, fmt.Errorf("create step run %q: %w", step.ID, createErr)
+			// Log but don't fail — RunAsync already created these.
+			e.logger.Debugw("create step run (may already exist)", "step", step.ID, "error", createErr)
 		}
 	}
 

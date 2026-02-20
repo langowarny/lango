@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/langowarny/lango/internal/approval"
+	"github.com/langowarny/lango/internal/ctxutil"
 	"go.uber.org/zap"
 )
 
@@ -24,29 +26,35 @@ type Origin struct {
 
 // Manager handles lifecycle management of background tasks.
 type Manager struct {
-	tasks    map[string]*Task
-	mu       sync.RWMutex
-	maxTasks int
-	runner   AgentRunner
-	notify   *Notification
-	sem      chan struct{} // concurrency limiter
-	logger   *zap.SugaredLogger
+	tasks       map[string]*Task
+	mu          sync.RWMutex
+	maxTasks    int
+	taskTimeout time.Duration
+	runner      AgentRunner
+	notify      *Notification
+	sem         chan struct{} // concurrency limiter
+	logger      *zap.SugaredLogger
 }
 
 // NewManager creates a new background task Manager.
 // maxTasks limits the total number of non-terminal tasks.
+// taskTimeout is the maximum duration for a single task (default: 30m).
 // The semaphore size controls how many tasks can run concurrently (defaults to maxTasks if <= 0).
-func NewManager(runner AgentRunner, notify *Notification, maxTasks int, logger *zap.SugaredLogger) *Manager {
+func NewManager(runner AgentRunner, notify *Notification, maxTasks int, taskTimeout time.Duration, logger *zap.SugaredLogger) *Manager {
 	if maxTasks <= 0 {
 		maxTasks = 10
 	}
+	if taskTimeout <= 0 {
+		taskTimeout = 30 * time.Minute
+	}
 	return &Manager{
-		tasks:    make(map[string]*Task, maxTasks),
-		maxTasks: maxTasks,
-		runner:   runner,
-		notify:   notify,
-		sem:      make(chan struct{}, maxTasks),
-		logger:   logger,
+		tasks:       make(map[string]*Task, maxTasks),
+		maxTasks:    maxTasks,
+		taskTimeout: taskTimeout,
+		runner:      runner,
+		notify:      notify,
+		sem:         make(chan struct{}, maxTasks),
+		logger:      logger,
 	}
 }
 
@@ -59,7 +67,8 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 		return "", fmt.Errorf("submit task: max concurrent tasks reached (%d)", m.maxTasks)
 	}
 
-	taskCtx, cancelFn := context.WithCancel(ctx)
+	detached := ctxutil.Detach(ctx)
+	taskCtx, cancelFn := context.WithTimeout(detached, m.taskTimeout)
 	id := uuid.New().String()
 
 	task := &Task{
