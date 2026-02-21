@@ -22,13 +22,13 @@ func newChannelSender(a *App) *channelSender {
 	return &channelSender{app: a}
 }
 
-// parseDeliveryTarget splits "channel:id" into channel name and optional target ID.
-func parseDeliveryTarget(target string) (channelName, targetID string) {
+// parseDeliveryTarget splits "channel:id" into channel type and optional target ID.
+func parseDeliveryTarget(target string) (types.ChannelType, string) {
 	target = strings.TrimSpace(target)
 	if idx := strings.IndexByte(target, ':'); idx >= 0 {
-		return strings.ToLower(target[:idx]), target[idx+1:]
+		return types.ChannelType(strings.ToLower(target[:idx])), target[idx+1:]
 	}
-	return strings.ToLower(target), ""
+	return types.ChannelType(strings.ToLower(target)), ""
 }
 
 // SendMessage sends a text message to the specified delivery target.
@@ -40,7 +40,7 @@ func (s *channelSender) SendMessage(_ context.Context, channel, message string) 
 
 	for _, c := range s.app.Channels {
 		switch chName {
-		case string(types.ChannelTelegram):
+		case types.ChannelTelegram:
 			if tg, ok := c.(*telegram.Channel); ok {
 				var chatID int64
 				if targetID != "" {
@@ -57,14 +57,14 @@ func (s *channelSender) SendMessage(_ context.Context, channel, message string) 
 				}
 				return tg.Send(chatID, &telegram.OutgoingMessage{Text: message})
 			}
-		case string(types.ChannelDiscord):
+		case types.ChannelDiscord:
 			if dc, ok := c.(*discord.Channel); ok {
 				if targetID == "" {
 					return fmt.Errorf("discord delivery requires a channel ID (use discord:CHANNEL_ID)")
 				}
 				return dc.Send(targetID, &discord.OutgoingMessage{Content: message})
 			}
-		case string(types.ChannelSlack):
+		case types.ChannelSlack:
 			if sl, ok := c.(*slack.Channel); ok {
 				if targetID == "" {
 					return fmt.Errorf("slack delivery requires a channel ID (use slack:CHANNEL_ID)")
@@ -86,7 +86,7 @@ func (s *channelSender) StartTyping(ctx context.Context, channel string) (func()
 
 	for _, c := range s.app.Channels {
 		switch chName {
-		case string(types.ChannelTelegram):
+		case types.ChannelTelegram:
 			if tg, ok := c.(*telegram.Channel); ok {
 				var chatID int64
 				if targetID != "" {
@@ -103,14 +103,14 @@ func (s *channelSender) StartTyping(ctx context.Context, channel string) (func()
 				}
 				return tg.StartTyping(ctx, chatID), nil
 			}
-		case string(types.ChannelDiscord):
+		case types.ChannelDiscord:
 			if dc, ok := c.(*discord.Channel); ok {
 				if targetID == "" {
 					return noop, nil
 				}
 				return dc.StartTyping(ctx, targetID), nil
 			}
-		case string(types.ChannelSlack):
+		case types.ChannelSlack:
 			if sl, ok := c.(*slack.Channel); ok {
 				if targetID == "" {
 					return noop, nil

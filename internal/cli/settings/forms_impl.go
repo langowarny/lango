@@ -934,7 +934,7 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 
 	form.AddField(&tuicore.Field{
 		Key: "lib_auto_save", Label: "Auto-Save Confidence", Type: tuicore.InputSelect,
-		Value:   cfg.Librarian.AutoSaveConfidence,
+		Value:   string(cfg.Librarian.AutoSaveConfidence),
 		Options: []string{"high", "medium", "low"},
 	})
 

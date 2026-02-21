@@ -346,7 +346,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Librarian.MaxPendingInquiries = i
 			}
 		case "lib_auto_save":
-			s.Current.Librarian.AutoSaveConfidence = val
+			s.Current.Librarian.AutoSaveConfidence = types.Confidence(val)
 		case "lib_provider":
 			s.Current.Librarian.Provider = val
 		case "lib_model":

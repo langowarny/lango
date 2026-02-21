@@ -1,32 +1,11 @@
 package knowledge
 
-import "context"
+import (
+	"context"
 
-// KnowledgeCategory represents a category for knowledge entries.
-type KnowledgeCategory string
-
-const (
-	CategoryFact       KnowledgeCategory = "fact"
-	CategoryPattern    KnowledgeCategory = "pattern"
-	CategoryCorrection KnowledgeCategory = "correction"
-	CategoryPreference KnowledgeCategory = "preference"
-	CategoryRule       KnowledgeCategory = "rule"
-	CategoryDefinition KnowledgeCategory = "definition"
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 )
-
-// Valid reports whether c is a known knowledge category.
-func (c KnowledgeCategory) Valid() bool {
-	switch c {
-	case CategoryFact, CategoryPattern, CategoryCorrection, CategoryPreference, CategoryRule, CategoryDefinition:
-		return true
-	}
-	return false
-}
-
-// Values returns all known knowledge categories.
-func (c KnowledgeCategory) Values() []KnowledgeCategory {
-	return []KnowledgeCategory{CategoryFact, CategoryPattern, CategoryCorrection, CategoryPreference, CategoryRule, CategoryDefinition}
-}
 
 // ContextLayer represents the 6 context layers in the self-learning architecture.
 type ContextLayer int
@@ -89,7 +68,7 @@ type RetrievalResult struct {
 // KnowledgeEntry is the domain type for knowledge CRUD operations.
 type KnowledgeEntry struct {
 	Key      string
-	Category string
+	Category entknowledge.Category
 	Content  string
 	Tags     []string
 	Source   string
@@ -101,7 +80,7 @@ type LearningEntry struct {
 	ErrorPattern string
 	Diagnosis    string
 	Fix          string
-	Category     string
+	Category     entlearning.Category
 	Tags         []string
 }
 

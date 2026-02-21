@@ -18,6 +18,8 @@ import (
 	"github.com/langowarny/lango/internal/config"
 	cronpkg "github.com/langowarny/lango/internal/cron"
 	"github.com/langowarny/lango/internal/embedding"
+	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
+	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/learning"
@@ -537,7 +539,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 
 				entry := knowledge.KnowledgeEntry{
 					Key:      key,
-					Category: category,
+					Category: entknowledge.Category(category),
 					Content:  content,
 					Tags:     tags,
 					Source:   source,
@@ -623,7 +625,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					ErrorPattern: errorPattern,
 					Diagnosis:    diagnosis,
 					Fix:          fix,
-					Category:     category,
+					Category:     entlearning.Category(category),
 				}
 
 				if err := store.SaveLearning(ctx, "", entry); err != nil {

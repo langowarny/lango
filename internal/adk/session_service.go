@@ -103,8 +103,7 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	if evt.LLMResponse.Content != nil {
-		role := string(types.MessageRole(evt.LLMResponse.Content.Role).Normalize())
-		msg.Role = role
+		msg.Role = types.MessageRole(evt.LLMResponse.Content.Role).Normalize()
 
 		for _, p := range evt.LLMResponse.Content.Parts {
 			if p.Text != "" {
@@ -152,9 +151,9 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 	}
 
 	if msg.Role == "" {
-		msg.Role = "assistant"
+		msg.Role = types.RoleAssistant
 		if evt.Author == "user" {
-			msg.Role = "user"
+			msg.Role = types.RoleUser
 		}
 	}
 

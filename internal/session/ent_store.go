@@ -21,6 +21,7 @@ import (
 	entschema "github.com/langowarny/lango/internal/ent/schema"
 	entsession "github.com/langowarny/lango/internal/ent/session"
 	"github.com/langowarny/lango/internal/logging"
+	"github.com/langowarny/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3" // Use cgo driver for SQLCipher support
 )
 
@@ -201,7 +202,7 @@ func (s *EntStore) Create(session *Session) error {
 
 		builder := s.client.Message.Create().
 			SetSession(created).
-			SetRole(msg.Role).
+			SetRole(string(msg.Role)).
 			SetContent(msg.Content).
 			SetTimestamp(msg.Timestamp).
 			SetToolCalls(toolCalls)
@@ -362,7 +363,7 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 
 	msgBuilder := s.client.Message.Create().
 		SetSession(entSession).
-		SetRole(msg.Role).
+		SetRole(string(msg.Role)).
 		SetContent(msg.Content).
 		SetTimestamp(timestamp).
 		SetToolCalls(toolCalls)
@@ -500,7 +501,7 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 		}
 
 		session.History = append(session.History, Message{
-			Role:      m.Role,
+			Role:      types.MessageRole(m.Role),
 			Content:   m.Content,
 			Timestamp: m.Timestamp,
 			ToolCalls: toolCalls,

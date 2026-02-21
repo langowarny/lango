@@ -141,7 +141,7 @@ type LibrarianConfig struct {
 	MaxPendingInquiries int `mapstructure:"maxPendingInquiries" json:"maxPendingInquiries"`
 
 	// Minimum confidence level for auto-save: "high", "medium", "low" (default: "high").
-	AutoSaveConfidence string `mapstructure:"autoSaveConfidence" json:"autoSaveConfidence"`
+	AutoSaveConfidence types.Confidence `mapstructure:"autoSaveConfidence" json:"autoSaveConfidence"`
 
 	// LLM provider for analysis (empty = use agent default).
 	Provider string `mapstructure:"provider" json:"provider"`

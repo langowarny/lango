@@ -57,7 +57,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	if ent.IsNotFound(err) {
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
-			SetCategory(entknowledge.Category(entry.Category)).
+			SetCategory(entry.Category).
 			SetContent(entry.Content)
 
 		if len(entry.Tags) > 0 {
@@ -72,7 +72,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 			return fmt.Errorf("create knowledge: %w", err)
 		}
 
-		meta := map[string]string{"category": entry.Category}
+		meta := map[string]string{"category": string(entry.Category)}
 		if s.onEmbed != nil {
 			s.onEmbed(entry.Key, "knowledge", entry.Content, meta)
 		}
@@ -86,7 +86,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	}
 
 	updater := existing.Update().
-		SetCategory(entknowledge.Category(entry.Category)).
+		SetCategory(entry.Category).
 		SetContent(entry.Content)
 
 	if len(entry.Tags) > 0 {
@@ -103,7 +103,7 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 
 	if s.onEmbed != nil {
 		s.onEmbed(entry.Key, "knowledge", entry.Content, map[string]string{
-			"category": entry.Category,
+			"category": string(entry.Category),
 		})
 	}
 	return nil
@@ -124,7 +124,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 
 	return &KnowledgeEntry{
 		Key:      k.Key,
-		Category: string(k.Category),
+		Category: k.Category,
 		Content:  k.Content,
 		Tags:     k.Tags,
 		Source:   k.Source,
@@ -163,7 +163,7 @@ func (s *Store) SearchKnowledge(ctx context.Context, query string, category stri
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
 			Key:      k.Key,
-			Category: string(k.Category),
+			Category: k.Category,
 			Content:  k.Content,
 			Tags:     k.Tags,
 			Source:   k.Source,
@@ -225,7 +225,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry LearningEntry) error {
 	builder := s.client.Learning.Create().
 		SetTrigger(entry.Trigger).
-		SetCategory(entlearning.Category(entry.Category))
+		SetCategory(entry.Category)
 
 	if entry.ErrorPattern != "" {
 		builder.SetErrorPattern(entry.ErrorPattern)
@@ -251,7 +251,7 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 			content += "\n" + entry.Fix
 		}
 		s.onEmbed(created.ID.String(), "learning", content, map[string]string{
-			"category": entry.Category,
+			"category": string(entry.Category),
 		})
 	}
 
@@ -272,7 +272,7 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 		ErrorPattern: l.ErrorPattern,
 		Diagnosis:    l.Diagnosis,
 		Fix:          l.Fix,
-		Category:     string(l.Category),
+		Category:     l.Category,
 		Tags:         l.Tags,
 	}, nil
 }
@@ -312,7 +312,7 @@ func (s *Store) SearchLearnings(ctx context.Context, errorPattern string, catego
 			ErrorPattern: l.ErrorPattern,
 			Diagnosis:    l.Diagnosis,
 			Fix:          l.Fix,
-			Category:     string(l.Category),
+			Category:     l.Category,
 			Tags:         l.Tags,
 		})
 	}

@@ -13,7 +13,7 @@ type ObservationKnowledge struct {
 	Type       string `json:"type"`       // preference, fact, rule, definition
 	Category   string `json:"category"`   // domain-specific category
 	Content    string `json:"content"`    // extracted knowledge content
-	Confidence string `json:"confidence"` // high, medium, low
+	Confidence types.Confidence `json:"confidence"` // high, medium, low
 	Key        string `json:"key"`        // unique identifier for storage
 
 	// Graph triple fields (optional).
