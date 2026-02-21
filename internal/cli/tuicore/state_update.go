@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/langowarny/lango/internal/config"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // UpdateConfigFromForm updates the config based on the form fields.
@@ -434,7 +435,7 @@ func (s *ConfigState) UpdateProviderFromForm(id string, form *FormModel) {
 		val := f.Value
 		switch f.Key {
 		case "type":
-			p.Type = val
+			p.Type = types.ProviderType(val)
 		case "apikey":
 			p.APIKey = val
 		case "baseurl":

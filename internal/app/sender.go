@@ -9,6 +9,7 @@ import (
 	"github.com/langowarny/lango/internal/channels/discord"
 	"github.com/langowarny/lango/internal/channels/slack"
 	"github.com/langowarny/lango/internal/channels/telegram"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // channelSender implements cron.ChannelSender, background.ChannelNotifier, and
@@ -39,7 +40,7 @@ func (s *channelSender) SendMessage(_ context.Context, channel, message string) 
 
 	for _, c := range s.app.Channels {
 		switch chName {
-		case "telegram":
+		case string(types.ChannelTelegram):
 			if tg, ok := c.(*telegram.Channel); ok {
 				var chatID int64
 				if targetID != "" {
@@ -56,14 +57,14 @@ func (s *channelSender) SendMessage(_ context.Context, channel, message string) 
 				}
 				return tg.Send(chatID, &telegram.OutgoingMessage{Text: message})
 			}
-		case "discord":
+		case string(types.ChannelDiscord):
 			if dc, ok := c.(*discord.Channel); ok {
 				if targetID == "" {
 					return fmt.Errorf("discord delivery requires a channel ID (use discord:CHANNEL_ID)")
 				}
 				return dc.Send(targetID, &discord.OutgoingMessage{Content: message})
 			}
-		case "slack":
+		case string(types.ChannelSlack):
 			if sl, ok := c.(*slack.Channel); ok {
 				if targetID == "" {
 					return fmt.Errorf("slack delivery requires a channel ID (use slack:CHANNEL_ID)")
@@ -85,7 +86,7 @@ func (s *channelSender) StartTyping(ctx context.Context, channel string) (func()
 
 	for _, c := range s.app.Channels {
 		switch chName {
-		case "telegram":
+		case string(types.ChannelTelegram):
 			if tg, ok := c.(*telegram.Channel); ok {
 				var chatID int64
 				if targetID != "" {
@@ -102,14 +103,14 @@ func (s *channelSender) StartTyping(ctx context.Context, channel string) (func()
 				}
 				return tg.StartTyping(ctx, chatID), nil
 			}
-		case "discord":
+		case string(types.ChannelDiscord):
 			if dc, ok := c.(*discord.Channel); ok {
 				if targetID == "" {
 					return noop, nil
 				}
 				return dc.StartTyping(ctx, targetID), nil
 			}
-		case "slack":
+		case string(types.ChannelSlack):
 			if sl, ok := c.(*slack.Channel); ok {
 				if targetID == "" {
 					return noop, nil

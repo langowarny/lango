@@ -9,6 +9,7 @@ import (
 	"github.com/langowarny/lango/internal/graph"
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 const sessionLearnerPrompt = `You are a session analysis assistant. Analyze this complete conversation session and extract high-confidence learnings.
@@ -79,7 +80,7 @@ func (l *SessionLearner) LearnFromSession(ctx context.Context, sessionKey string
 
 	stored := 0
 	for _, r := range results {
-		if r.Content == "" || r.Confidence != "high" {
+		if r.Content == "" || r.Confidence != string(types.ConfidenceHigh) {
 			continue
 		}
 		l.saveSessionResult(ctx, sessionKey, r)

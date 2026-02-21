@@ -16,15 +16,8 @@ import (
 	entknowledge "github.com/langowarny/lango/internal/ent/knowledge"
 	entlearning "github.com/langowarny/lango/internal/ent/learning"
 	"github.com/langowarny/lango/internal/ent/predicate"
+	"github.com/langowarny/lango/internal/types"
 )
-
-// EmbedCallback is an optional hook called when content is saved, enabling
-// asynchronous embedding without importing the embedding package.
-type EmbedCallback func(id, collection, content string, metadata map[string]string)
-
-// GraphCallback is an optional hook called when content is saved, enabling
-// asynchronous graph relationship updates without importing the graph package.
-type GraphCallback func(id, collection, content string, metadata map[string]string)
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
@@ -32,9 +25,9 @@ type Store struct {
 	logger *zap.SugaredLogger
 
 	// Optional embedding hook (nil = disabled).
-	onEmbed EmbedCallback
+	onEmbed types.EmbedCallback
 	// Optional graph relationship hook (nil = disabled).
-	onGraph GraphCallback
+	onGraph types.ContentCallback
 }
 
 // NewStore creates a new knowledge store.
@@ -46,12 +39,12 @@ func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
 }
 
 // SetEmbedCallback sets the optional embedding hook.
-func (s *Store) SetEmbedCallback(cb EmbedCallback) {
+func (s *Store) SetEmbedCallback(cb types.EmbedCallback) {
 	s.onEmbed = cb
 }
 
 // SetGraphCallback sets the optional graph relationship hook.
-func (s *Store) SetGraphCallback(cb GraphCallback) {
+func (s *Store) SetGraphCallback(cb types.ContentCallback) {
 	s.onGraph = cb
 }
 
@@ -123,7 +116,7 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
-		return nil, fmt.Errorf("knowledge not found: %s", key)
+		return nil, fmt.Errorf("get knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query knowledge: %w", err)
@@ -208,7 +201,7 @@ func (s *Store) IncrementKnowledgeUseCount(ctx context.Context, key string) erro
 		return fmt.Errorf("increment knowledge use count: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("knowledge not found: %s", key)
+		return fmt.Errorf("increment use count %q: %w", key, ErrKnowledgeNotFound)
 	}
 	return nil
 }
@@ -223,7 +216,7 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 		return fmt.Errorf("delete knowledge: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("knowledge not found: %s", key)
+		return fmt.Errorf("delete knowledge %q: %w", key, ErrKnowledgeNotFound)
 	}
 	return nil
 }
@@ -269,6 +262,9 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, error) {
 	l, err := s.client.Learning.Get(ctx, id)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("get learning %q: %w", id, ErrLearningNotFound)
+		}
 		return nil, fmt.Errorf("get learning: %w", err)
 	}
 	return &LearningEntry{
@@ -596,6 +592,9 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 	err := s.client.Learning.DeleteOneID(id).Exec(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("delete learning %q: %w", id, ErrLearningNotFound)
+		}
 		return fmt.Errorf("delete learning: %w", err)
 	}
 	return nil

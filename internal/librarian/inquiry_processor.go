@@ -10,6 +10,7 @@ import (
 
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 const answerDetectionPrompt = `You are a knowledge librarian. Analyze the recent conversation messages to detect if the user has answered any of the pending knowledge inquiries.
@@ -88,7 +89,7 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 	}
 
 	for _, match := range matches {
-		if match.Confidence == "low" {
+		if match.Confidence == string(types.ConfidenceLow) {
 			continue
 		}
 

@@ -2,6 +2,32 @@ package knowledge
 
 import "context"
 
+// KnowledgeCategory represents a category for knowledge entries.
+type KnowledgeCategory string
+
+const (
+	CategoryFact       KnowledgeCategory = "fact"
+	CategoryPattern    KnowledgeCategory = "pattern"
+	CategoryCorrection KnowledgeCategory = "correction"
+	CategoryPreference KnowledgeCategory = "preference"
+	CategoryRule       KnowledgeCategory = "rule"
+	CategoryDefinition KnowledgeCategory = "definition"
+)
+
+// Valid reports whether c is a known knowledge category.
+func (c KnowledgeCategory) Valid() bool {
+	switch c {
+	case CategoryFact, CategoryPattern, CategoryCorrection, CategoryPreference, CategoryRule, CategoryDefinition:
+		return true
+	}
+	return false
+}
+
+// Values returns all known knowledge categories.
+func (c KnowledgeCategory) Values() []KnowledgeCategory {
+	return []KnowledgeCategory{CategoryFact, CategoryPattern, CategoryCorrection, CategoryPreference, CategoryRule, CategoryDefinition}
+}
+
 // ContextLayer represents the 6 context layers in the self-learning architecture.
 type ContextLayer int
 
@@ -16,6 +42,24 @@ const (
 	LayerReflections                    // Condensed observation reflections
 	LayerPendingInquiries               // Proactive librarian pending questions
 )
+
+// Valid reports whether l is a known context layer.
+func (l ContextLayer) Valid() bool {
+	switch l {
+	case LayerToolRegistry, LayerUserKnowledge, LayerSkillPatterns, LayerExternalKnowledge,
+		LayerAgentLearnings, LayerRuntimeContext, LayerObservations, LayerReflections, LayerPendingInquiries:
+		return true
+	}
+	return false
+}
+
+// Values returns all known context layers.
+func (l ContextLayer) Values() []ContextLayer {
+	return []ContextLayer{
+		LayerToolRegistry, LayerUserKnowledge, LayerSkillPatterns, LayerExternalKnowledge,
+		LayerAgentLearnings, LayerRuntimeContext, LayerObservations, LayerReflections, LayerPendingInquiries,
+	}
+}
 
 // ContextItem represents a single item from any context layer.
 type ContextItem struct {

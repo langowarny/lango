@@ -10,6 +10,7 @@ import (
 	"github.com/langowarny/lango/internal/knowledge"
 	"github.com/langowarny/lango/internal/memory"
 	"github.com/langowarny/lango/internal/session"
+	"github.com/langowarny/lango/internal/types"
 )
 
 // MessageProvider retrieves messages for a session key.
@@ -248,12 +249,12 @@ func (b *ProactiveBuffer) process(sessionKey string) {
 // shouldAutoSave checks if the extraction confidence meets the auto-save threshold.
 func (b *ProactiveBuffer) shouldAutoSave(confidence string) bool {
 	switch b.autoSaveConfidence {
-	case "low":
+	case string(types.ConfidenceLow):
 		return true
-	case "medium":
-		return confidence == "medium" || confidence == "high"
+	case string(types.ConfidenceMedium):
+		return confidence == string(types.ConfidenceMedium) || confidence == string(types.ConfidenceHigh)
 	default: // "high"
-		return confidence == "high"
+		return confidence == string(types.ConfidenceHigh)
 	}
 }
 
