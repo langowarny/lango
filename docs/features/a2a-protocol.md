@@ -155,3 +155,21 @@ lango config import config.yaml
 !!! tip "Requires Multi-Agent Mode"
 
     A2A remote agents are only useful when `agent.multiAgent` is enabled, since they are integrated as sub-agents in the orchestrator tree. Without multi-agent mode, remote agents have no delegation target.
+
+## A2A-over-HTTP vs A2A-over-P2P
+
+Lango supports two modes of inter-agent communication:
+
+| Aspect | A2A-over-HTTP | A2A-over-P2P |
+|--------|---------------|--------------|
+| **Transport** | HTTP/HTTPS | libp2p (TCP/QUIC + Noise) |
+| **Discovery** | Agent Card at `/.well-known/agent.json` | GossipSub agent card propagation |
+| **Identity** | URL-based | DID-based (`did:lango:<pubkey>`) |
+| **Auth** | None (relies on network security) | ZK-enhanced handshake + session tokens |
+| **Firewall** | None | Knowledge firewall with ACL rules |
+| **Use case** | Cloud-hosted agents, public APIs | Sovereign agents, private networks |
+| **Config** | `a2a.enabled` | `p2p.enabled` |
+
+Both modes can be enabled simultaneously. A2A-over-HTTP is simpler to set up for public agents, while A2A-over-P2P provides stronger security guarantees and works without centralized infrastructure.
+
+See [P2P Network](p2p-network.md) for P2P-specific documentation.

@@ -82,3 +82,17 @@
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.
 - If a tool is unavailable or disabled, suggest alternative approaches using other available tools.
+
+### P2P Networking Tool
+- `p2p_status` shows the node's peer ID, listen addresses, connected peer count, and feature flags (mDNS, relay, ZK handshake). Use this to verify the node is running before other P2P operations.
+- `p2p_connect` initiates a handshake with a remote peer. Requires a full multiaddr (e.g. `/ip4/1.2.3.4/tcp/9000/p2p/QmPeerID`). The handshake includes DID-based identity verification.
+- `p2p_disconnect` closes the connection to a specific peer by peer ID.
+- `p2p_peers` lists all currently connected peers with their peer IDs and multiaddrs.
+- `p2p_query` sends an inference-only query to a remote agent. The query is subject to the remote peer's firewall rules — if denied, do not retry without rule changes.
+- `p2p_discover` searches for agents by capability tag via GossipSub. Results include agent name, DID, capabilities, and peer ID. Connect to bootstrap peers first if no agents appear.
+- `p2p_firewall_rules` lists current firewall ACL rules. Default policy is deny-all.
+- `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), `tools` (patterns), and optional `rate_limit`.
+- `p2p_firewall_remove` removes all rules matching a given peer DID.
+- `p2p_pay` sends a USDC payment to a connected peer by DID.
+- Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
+- If a firewall deny response is received, do not retry the same query without changing the firewall rules.

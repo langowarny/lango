@@ -20,6 +20,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
+- 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
@@ -125,6 +126,16 @@ lango workflow list              List workflow runs
 lango workflow status <run-id>   Show workflow run status with step details
 lango workflow cancel <run-id>   Cancel a running workflow
 lango workflow history           Show workflow execution history
+
+lango p2p status                 Show P2P node status
+lango p2p peers                  List connected peers
+lango p2p connect <multiaddr>    Connect to a peer by multiaddr
+lango p2p disconnect <peer-id>   Disconnect from a peer
+lango p2p firewall list          List firewall ACL rules
+lango p2p firewall add           Add a firewall ACL rule
+lango p2p firewall remove        Remove firewall rules for a peer
+lango p2p discover               Discover agents by capability
+lango p2p identity               Show local DID and peer identity
 ```
 
 ### Diagnostics
@@ -193,12 +204,13 @@ lango/
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
+│   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
 │   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
-├── skills/                 # 30 embedded default skills (go:embed SKILL.md files)
+├── skills/                 # 38 embedded default skills (go:embed SKILL.md files)
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -339,6 +351,16 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `payment.limits.autoApproveBelow` | string | - | Auto-approve amount threshold |
 | `payment.x402.autoIntercept` | bool | `false` | Auto-intercept HTTP 402 responses |
 | `payment.x402.maxAutoPayAmount` | string | - | Max amount for X402 auto-pay |
+| **P2P Network** (🧪 Experimental Features) | | | |
+| `p2p.enabled` | bool | `false` | Enable P2P networking |
+| `p2p.listenAddrs` | []string | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.bootstrapPeers` | []string | `[]` | Bootstrap peers for DHT |
+| `p2p.keyDir` | string | `~/.lango/p2p` | Node key directory |
+| `p2p.enableRelay` | bool | `false` | Enable relay for NAT traversal |
+| `p2p.enableMdns` | bool | `true` | Enable mDNS discovery |
+| `p2p.maxPeers` | int | `50` | Maximum connected peers |
+| `p2p.zkHandshake` | bool | `false` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | bool | `false` | Enable ZK response attestation |
 | **Cron Scheduling** | | | |
 | `cron.enabled` | bool | `false` | Enable cron job scheduling |
 | `cron.timezone` | string | `UTC` | Default timezone for cron expressions |
@@ -522,6 +544,44 @@ Lango supports the Agent-to-Agent (A2A) protocol for inter-agent communication:
 Configure via `lango onboard` > A2A Protocol menu. Remote agents (name + URL pairs) should be configured via `lango config export` → edit JSON → `lango config import`.
 
 > **Note:** All settings are stored in the encrypted profile database — no plaintext config files. Use `lango onboard` for interactive configuration or `lango config import/export` for programmatic configuration.
+
+## P2P Network (🧪 Experimental Features)
+
+Lango supports decentralized peer-to-peer agent connectivity via the Sovereign Agent Network (SAN):
+
+- **libp2p Transport** — TCP/QUIC with Noise encryption
+- **DID Identity** — `did:lango:<pubkey>` derived from wallet keys
+- **Knowledge Firewall** — Default deny-all ACL with per-peer, per-tool rules and rate limiting
+- **Agent Discovery** — GossipSub-based agent card propagation with capability search
+- **ZK Handshake** — Optional zero-knowledge proof verification during authentication
+- **ZK Attestation** — Prove response authenticity without revealing internal state
+
+### CLI Usage
+
+```bash
+# Check node status
+lango p2p status
+
+# List connected peers
+lango p2p peers
+
+# Connect to a peer
+lango p2p connect /ip4/1.2.3.4/tcp/9000/p2p/QmPeerId
+
+# Discover agents by capability
+lango p2p discover --tag research
+
+# Manage firewall rules
+lango p2p firewall list
+lango p2p firewall add --peer-did "did:lango:02abc..." --action allow --tools "search_*"
+
+# Show identity
+lango p2p identity
+```
+
+### Configuration
+
+Configure via `lango settings` → P2P Network, or import JSON with `lango config import`. Requires `security.signer` to be configured for wallet-based DID derivation.
 
 ## Blockchain Payments (🧪 Experimental Features)
 

@@ -111,6 +111,7 @@ nav:
     - Knowledge Graph: features/knowledge-graph.md
     - Multi-Agent Orchestration: features/multi-agent.md
     - A2A Protocol: features/a2a-protocol.md
+    - P2P Network: features/p2p-network.md
     - Skill System: features/skills.md
     - Proactive Librarian: features/librarian.md
     - System Prompts: features/system-prompts.md
@@ -136,6 +137,7 @@ nav:
     - Agent & Memory: cli/agent-memory.md
     - Security Commands: cli/security.md
     - Payment Commands: cli/payment.md
+    - P2P Commands: cli/p2p.md
     - Automation Commands: cli/automation.md
   - Gateway & API:
     - gateway/index.md

@@ -23,6 +23,7 @@ import (
 	climemory "github.com/langowarny/lango/internal/cli/memory"
 	"github.com/langowarny/lango/internal/cli/onboard"
 	"github.com/langowarny/lango/internal/cli/settings"
+	clip2p "github.com/langowarny/lango/internal/cli/p2p"
 	clipayment "github.com/langowarny/lango/internal/cli/payment"
 	clisecurity "github.com/langowarny/lango/internal/cli/security"
 	cliworkflow "github.com/langowarny/lango/internal/cli/workflow"
@@ -78,6 +79,9 @@ func main() {
 		return boot.Config, nil
 	}))
 	rootCmd.AddCommand(clipayment.NewPaymentCmd(func() (*bootstrap.Result, error) {
+		return bootstrap.Run(bootstrap.Options{})
+	}))
+	rootCmd.AddCommand(clip2p.NewP2PCmd(func() (*bootstrap.Result, error) {
 		return bootstrap.Run(bootstrap.Options{})
 	}))
 	rootCmd.AddCommand(clicron.NewCronCmd(func() (*bootstrap.Result, error) {
