@@ -169,7 +169,32 @@ Configure the proving scheme via `p2p.zkp.provingScheme` (`"plonk"` or `"groth16
 
 See the [Configuration Reference](../configuration.md#p2p-network) for all P2P settings.
 
+## REST API
+
+When the gateway is running (`lango serve`), read-only P2P endpoints are available for monitoring and external integrations:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/p2p/status` | Peer ID, listen addresses, connected peer count |
+| `GET /api/p2p/peers` | List of connected peers with multiaddresses |
+| `GET /api/p2p/identity` | Local DID (`did:lango:...`) and peer ID |
+
+```bash
+# Check node status
+curl http://localhost:18789/api/p2p/status
+
+# List connected peers
+curl http://localhost:18789/api/p2p/peers
+
+# Get DID identity
+curl http://localhost:18789/api/p2p/identity
+```
+
+These endpoints query the running server's persistent P2P node. They are public (no authentication) and expose only node metadata. See the [HTTP API Reference](../gateway/http-api.md#p2p-network) for response format details.
+
 ## CLI Commands
+
+The CLI commands create ephemeral P2P nodes for one-off operations, independent of the running server:
 
 ```bash
 lango p2p status               # Show node status

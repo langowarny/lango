@@ -56,6 +56,67 @@ Authentication endpoints are available when OIDC is configured. See [Authenticat
 
 The main chat endpoint accepts user messages and returns agent responses. When WebSocket is enabled, responses are streamed in real time via WebSocket events alongside the standard HTTP response.
 
+### P2P Network
+
+When P2P networking is enabled (`p2p.enabled: true`), the gateway exposes read-only endpoints for querying the running node's state. These endpoints are public (no authentication required) and return only node metadata.
+
+#### `GET /api/p2p/status`
+
+Returns the local node's peer ID, listen addresses, and connected peer count.
+
+```bash
+curl http://localhost:18789/api/p2p/status
+```
+
+```json
+{
+  "peerId": "12D3KooW...",
+  "listenAddrs": ["/ip4/0.0.0.0/tcp/9000"],
+  "connectedPeers": 2,
+  "mdnsEnabled": true
+}
+```
+
+#### `GET /api/p2p/peers`
+
+Returns the list of currently connected peers with their IDs and multiaddresses.
+
+```bash
+curl http://localhost:18789/api/p2p/peers
+```
+
+```json
+{
+  "peers": [
+    {
+      "peerId": "12D3KooW...",
+      "addrs": ["/ip4/172.20.0.3/tcp/9002"]
+    }
+  ],
+  "count": 1
+}
+```
+
+#### `GET /api/p2p/identity`
+
+Returns the local DID derived from the wallet and the libp2p peer ID.
+
+```bash
+curl http://localhost:18789/api/p2p/identity
+```
+
+```json
+{
+  "did": "did:lango:02abc...",
+  "peerId": "12D3KooW..."
+}
+```
+
+If no identity provider is configured, `did` is `null`.
+
+!!! note
+    These REST endpoints query the **running server's persistent P2P node**. The CLI commands (`lango p2p status`, etc.) create ephemeral nodes for one-off operations. For monitoring and automation, prefer the REST API.
+
 ## Related
 
 - [WebSocket](websocket.md) -- Real-time streaming events

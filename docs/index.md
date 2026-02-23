@@ -75,6 +75,12 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     Agent-to-Agent protocol for remote agent discovery and inter-agent communication.
 
+-   :globe_with_meridians: **P2P Network**
+
+    ---
+
+    Decentralized agent connectivity via libp2p with DID identity, knowledge firewall, mDNS discovery, and ZK-enhanced handshake.
+
 -   :coin: **Blockchain Payments**
 
     ---

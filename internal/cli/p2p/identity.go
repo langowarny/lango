@@ -16,6 +16,7 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "identity",
 		Short: "Show local DID and peer identity",
+		Long:  "Show local DID and peer identity (creates an ephemeral node). For the running server's identity, use GET /api/p2p/identity.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {

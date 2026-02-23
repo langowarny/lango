@@ -17,6 +17,7 @@ func newPeersCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "peers",
 		Short: "List connected peers",
+		Long:  "List connected peers (creates an ephemeral node). For the running server's peers, use GET /api/p2p/peers.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {

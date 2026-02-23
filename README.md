@@ -93,7 +93,7 @@ lango config validate            Validate the active profile
 lango security status [--json]   Show security configuration status
 lango security migrate-passphrase Rotate encryption passphrase
 lango security secrets list      List stored secrets (values hidden)
-lango security secrets set <n>   Store an encrypted secret
+lango security secrets set <n>   Store an encrypted secret (--value-hex for non-interactive)
 lango security secrets delete <n> Delete a stored secret (--force)
 
 lango memory list [--json]       List observational memory entries
@@ -556,6 +556,16 @@ Lango supports decentralized peer-to-peer agent connectivity via the Sovereign A
 - **ZK Handshake** — Optional zero-knowledge proof verification during authentication
 - **ZK Attestation** — Prove response authenticity without revealing internal state
 
+### REST API
+
+When the gateway is running, P2P status endpoints are available for monitoring and automation:
+
+```bash
+curl http://localhost:18789/api/p2p/status     # Peer ID, listen addrs, peer count
+curl http://localhost:18789/api/p2p/peers      # Connected peers with addrs
+curl http://localhost:18789/api/p2p/identity   # Local DID and peer ID
+```
+
 ### CLI Usage
 
 ```bash
@@ -938,6 +948,24 @@ Environment variables (optional):
 - `LANGO_PROFILE` — profile name to create (default: `default`)
 - `LANGO_CONFIG_FILE` — override config secret path (default: `/run/secrets/lango_config`)
 - `LANGO_PASSPHRASE_FILE` — override passphrase secret path (default: `/run/secrets/lango_passphrase`)
+
+## Examples
+
+### P2P Trading (Docker Compose)
+
+A complete multi-agent integration example with 3 Lango agents (Alice, Bob, Charlie) trading USDC on a local Ethereum chain:
+
+- **P2P Discovery** — agents discover each other via mDNS
+- **DID Identity** — `did:lango:` identifiers derived from wallet keys
+- **USDC Payments** — MockUSDC contract on Anvil (local EVM)
+- **E2E Tests** — automated health, discovery, balance, and transfer verification
+
+```bash
+cd examples/p2p-trading
+make all    # Build, start, wait for health, run tests, shut down
+```
+
+See [`examples/p2p-trading/README.md`](examples/p2p-trading/README.md) for architecture details and prerequisites.
 
 ## Development
 

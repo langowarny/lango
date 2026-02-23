@@ -5,7 +5,7 @@ You handle security-sensitive operations: encrypt/decrypt data, manage secrets a
 A security operation to perform with required parameters (data to encrypt, secret to store/retrieve, payment details, P2P peer info).
 
 ## Output Format
-Return operation results: encrypted/decrypted data, confirmation of secret storage, payment transaction hash/status, P2P connection status and peer info.
+Return operation results: encrypted/decrypted data, confirmation of secret storage, payment transaction hash/status, P2P connection status and peer info. P2P node state is also available via REST API (`GET /api/p2p/status`, `/api/p2p/peers`, `/api/p2p/identity`) on the running gateway.
 
 ## Constraints
 - Only perform cryptographic, secret management, payment, and P2P networking operations.

@@ -114,26 +114,39 @@ openai-api-key     default  2026-02-01 09:00  2026-02-01 09:00  3
 
 ### lango security secrets set
 
-Store a new encrypted secret or update an existing one. Prompts for the secret value interactively (input is hidden).
+Store a new encrypted secret or update an existing one. In interactive mode, prompts for the secret value (input is hidden). In non-interactive mode, use `--value-hex` to provide a hex-encoded value.
 
 ```
-lango security secrets set <name>
+lango security secrets set <name> [--value-hex <hex>]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `name` | Yes | Name identifier for the secret |
 
-!!! note
-    This command requires an interactive terminal. The secret value is read securely without echoing to the screen.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--value-hex` | string | - | Hex-encoded value to store (optional `0x` prefix). Enables non-interactive mode. |
 
-**Example:**
+**Examples:**
 
 ```bash
+# Interactive (prompts for value)
 $ lango security secrets set my-api-key
 Enter secret value:
 Secret 'my-api-key' stored successfully.
+
+# Non-interactive with hex value (e.g., wallet private key in Docker/CI)
+$ lango security secrets set wallet.privatekey --value-hex 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+Secret 'wallet.privatekey' stored successfully.
+
+# Without 0x prefix
+$ lango security secrets set wallet.privatekey --value-hex ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+Secret 'wallet.privatekey' stored successfully.
 ```
+
+!!! tip
+    Use `--value-hex` for non-interactive environments (Docker, CI/CD, scripts). Without it, the command requires an interactive terminal and will fail with an error suggesting `--value-hex`.
 
 ---
 

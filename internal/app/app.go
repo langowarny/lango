@@ -286,6 +286,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 		a2aServer.RegisterRoutes(app.Gateway.Router())
 	}
 
+	// 9c. P2P REST API routes (if P2P enabled)
+	if p2pc != nil {
+		registerP2PRoutes(app.Gateway.Router(), p2pc)
+		logger().Info("P2P REST API routes registered")
+	}
+
 	// 10. Channels
 	if err := app.initChannels(); err != nil {
 		logger().Errorw("initialize channels", "error", err)

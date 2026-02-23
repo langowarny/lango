@@ -16,6 +16,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show P2P node status",
+		Long:  "Show P2P node status (creates an ephemeral node). For the running server's node, use GET /api/p2p/status.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {

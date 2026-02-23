@@ -84,6 +84,7 @@
 - If a tool is unavailable or disabled, suggest alternative approaches using other available tools.
 
 ### P2P Networking Tool
+- The gateway also exposes read-only REST endpoints for P2P node state: `GET /api/p2p/status`, `GET /api/p2p/peers`, `GET /api/p2p/identity`. These query the running server's persistent node and are useful for monitoring, health checks, and external integrations. The agent tools below provide the same data plus write operations (connect, disconnect, firewall management).
 - `p2p_status` shows the node's peer ID, listen addresses, connected peer count, and feature flags (mDNS, relay, ZK handshake). Use this to verify the node is running before other P2P operations.
 - `p2p_connect` initiates a handshake with a remote peer. Requires a full multiaddr (e.g. `/ip4/1.2.3.4/tcp/9000/p2p/QmPeerID`). The handshake includes DID-based identity verification.
 - `p2p_disconnect` closes the connection to a specific peer by peer ID.
