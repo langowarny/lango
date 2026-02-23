@@ -19,6 +19,11 @@ import (
 // Uses the callback pattern to avoid import cycles with the agent package.
 type ToolExecutor func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error)
 
+// ToolApprovalFunc asks the local owner for approval before executing a remote
+// tool invocation. Returns true if approved, false if denied.
+// Uses the callback pattern to avoid import cycles with the approval package.
+type ToolApprovalFunc func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error)
+
 // CardProvider returns the local agent card as a map.
 type CardProvider func() map[string]interface{}
 
@@ -36,13 +41,14 @@ type PayGateResult struct {
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
-	sessions *handshake.SessionStore
-	firewall *firewall.Firewall
-	executor ToolExecutor
-	cardFn   CardProvider
-	payGate  PayGateChecker
-	localDID string
-	logger   *zap.SugaredLogger
+	sessions   *handshake.SessionStore
+	firewall   *firewall.Firewall
+	executor   ToolExecutor
+	cardFn     CardProvider
+	payGate    PayGateChecker
+	approvalFn ToolApprovalFunc
+	localDID   string
+	logger     *zap.SugaredLogger
 }
 
 // HandlerConfig configures the protocol handler.
@@ -75,6 +81,11 @@ func (h *Handler) SetExecutor(exec ToolExecutor) {
 // SetPayGate sets the payment gate checker for paid tool invocations.
 func (h *Handler) SetPayGate(gate PayGateChecker) {
 	h.payGate = gate
+}
+
+// SetApprovalFunc sets the owner approval callback for remote tool invocations.
+func (h *Handler) SetApprovalFunc(fn ToolApprovalFunc) {
+	h.approvalFn = fn
 }
 
 // StreamHandler returns a libp2p stream handler for incoming A2A messages.
@@ -195,12 +206,33 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 	}
 
-	// Execute tool.
+	// Owner approval check.
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}
 	}
 
+	if h.approvalFn != nil {
+		approved, err := h.approvalFn(ctx, peerDID, toolName, params)
+		if err != nil {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "error",
+				Error:     fmt.Sprintf("approval check: %v", err),
+				Timestamp: time.Now(),
+			}
+		}
+		if !approved {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "denied",
+				Error:     "tool invocation denied by owner",
+				Timestamp: time.Now(),
+			}
+		}
+	}
+
+	// Execute tool.
 	result, err := h.executor(ctx, toolName, params)
 	if err != nil {
 		return &Response{
@@ -345,12 +377,33 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 3. Execute tool.
+	// 3. Owner approval check.
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}
 	}
 
+	if h.approvalFn != nil {
+		approved, err := h.approvalFn(ctx, peerDID, toolName, params)
+		if err != nil {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "error",
+				Error:     fmt.Sprintf("approval check: %v", err),
+				Timestamp: time.Now(),
+			}
+		}
+		if !approved {
+			return &Response{
+				RequestID: req.RequestID,
+				Status:    "denied",
+				Error:     "tool invocation denied by owner",
+				Timestamp: time.Now(),
+			}
+		}
+	}
+
+	// 4. Execute tool.
 	if h.executor == nil {
 		return &Response{
 			RequestID: req.RequestID,
@@ -370,12 +423,12 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 4. Sanitize response through firewall.
+	// 5. Sanitize response through firewall.
 	if h.firewall != nil {
 		result = h.firewall.SanitizeResponse(result)
 	}
 
-	// 5. ZK attestation.
+	// 6. ZK attestation.
 	var attestation []byte
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)

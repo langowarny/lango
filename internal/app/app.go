@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -264,8 +266,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 		policy = config.ApprovalPolicyDangerous
 	}
 	if policy != config.ApprovalPolicyNone {
+		var limiter wallet.SpendingLimiter
+		if pc != nil {
+			limiter = pc.limiter
+		}
 		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore)
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore, limiter)
 		}
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
@@ -311,6 +317,37 @@ func New(boot *bootstrap.Result) (*App, error) {
 				default:
 					return map[string]interface{}{"result": v}, nil
 				}
+			})
+		}
+		// Wire owner approval callback for inbound remote tool invocations.
+		if pc != nil {
+			p2pc.handler.SetApprovalFunc(func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error) {
+				// For paid tools, check if the amount is auto-approvable.
+				if p2pc.pricingFn != nil {
+					if priceStr, isFree := p2pc.pricingFn(toolName); !isFree {
+						amt, err := wallet.ParseUSDC(priceStr)
+						if err == nil {
+							if autoOK, checkErr := pc.limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
+								return true, nil
+							}
+						}
+					}
+				}
+
+				// Fall back to composite approval provider.
+				req := approval.ApprovalRequest{
+					ID:         fmt.Sprintf("p2p-%d", time.Now().UnixNano()),
+					ToolName:   toolName,
+					SessionKey: "p2p:" + peerDID,
+					Params:     params,
+					Summary:    fmt.Sprintf("Remote peer %s wants to invoke tool '%s'", truncate(peerDID, 16), toolName),
+					CreatedAt:  time.Now(),
+				}
+				resp, err := composite.RequestApproval(ctx, req)
+				if err != nil {
+					return false, nil // fail-closed
+				}
+				return resp.Approved, nil
 			})
 		}
 		registerP2PRoutes(app.Gateway.Router(), p2pc)

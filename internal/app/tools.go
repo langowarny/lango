@@ -42,6 +42,7 @@ import (
 	toolpayment "github.com/langoai/lango/internal/tools/payment"
 	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/types"
+	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -1829,6 +1830,14 @@ func buildApprovalSummary(toolName string, params map[string]interface{}) string
 	case "workflow_cancel":
 		runID, _ := params["run_id"].(string)
 		return "Cancel workflow: " + runID
+	case "p2p_pay":
+		amount, _ := params["amount"].(string)
+		peerDID, _ := params["peer_did"].(string)
+		memo, _ := params["memo"].(string)
+		if memo == "" {
+			memo = "P2P payment"
+		}
+		return fmt.Sprintf("Pay %s USDC to peer %s (%s)", amount, truncate(peerDID, 16), truncate(memo, 50))
 	}
 	return "Tool: " + toolName
 }
@@ -1845,7 +1854,9 @@ func truncate(s string, maxLen int) string {
 // Uses fail-closed: denies execution unless explicitly approved.
 // The approval.Provider routes requests to the appropriate channel (Gateway, Telegram, Discord, Slack, TTY).
 // The GrantStore tracks "always allow" grants to auto-approve repeat invocations within a session.
-func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore) *agent.Tool {
+// When limiter is non-nil, payment tools with an amount below the auto-approve threshold
+// are executed without explicit user confirmation.
+func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter) *agent.Tool {
 	if !needsApproval(t, ic) {
 		return t
 	}
@@ -1865,6 +1876,18 @@ func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Pr
 			// Check persistent grant — auto-approve if previously "always allowed"
 			if gs != nil && gs.IsGranted(sessionKey, t.Name) {
 				return original(ctx, params)
+			}
+
+			// Auto-approve small payments via spending limiter threshold.
+			if limiter != nil && (t.Name == "p2p_pay" || t.Name == "payment_send") {
+				if amountStr, ok := params["amount"].(string); ok && amountStr != "" {
+					amt, err := wallet.ParseUSDC(amountStr)
+					if err == nil {
+						if autoOK, checkErr := limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
+							return original(ctx, params)
+						}
+					}
+				}
 			}
 
 			req := approval.ApprovalRequest{

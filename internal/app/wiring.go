@@ -1011,6 +1011,7 @@ func initPayment(cfg *config.Config, store session.Store, secrets *security.Secr
 	limiter, err := wallet.NewEntSpendingLimiter(client,
 		cfg.Payment.Limits.MaxPerTx,
 		cfg.Payment.Limits.MaxDaily,
+		cfg.Payment.Limits.AutoApproveBelow,
 	)
 	if err != nil {
 		logger().Warnw("spending limiter init failed, skipping", "error", err)
@@ -1094,6 +1095,7 @@ type p2pComponents struct {
 	payGate    *paygate.Gate
 	reputation *reputation.Store
 	pricingCfg config.P2PPricingConfig
+	pricingFn  func(toolName string) (string, bool)
 }
 
 // initP2P creates the P2P networking components if enabled.
@@ -1338,6 +1340,20 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		"firewallRules", len(aclRules),
 	)
 
+	// Build a pricing function for external use (e.g., approval wiring).
+	var extPricingFn func(string) (string, bool)
+	if cfg.P2P.Pricing.Enabled {
+		extPricingFn = func(toolName string) (string, bool) {
+			if price, ok := cfg.P2P.Pricing.ToolPrices[toolName]; ok {
+				return price, false
+			}
+			if cfg.P2P.Pricing.PerQuery != "" {
+				return cfg.P2P.Pricing.PerQuery, false
+			}
+			return "", true
+		}
+	}
+
 	return &p2pComponents{
 		node:       node,
 		sessions:   sessions,
@@ -1349,6 +1365,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		payGate:    pg,
 		reputation: repStore,
 		pricingCfg: cfg.P2P.Pricing,
+		pricingFn:  extPricingFn,
 	}
 }
 
