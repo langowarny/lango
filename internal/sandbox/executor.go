@@ -28,6 +28,8 @@ type Config struct {
 
 // ExecutionRequest is the JSON message sent to the sandbox worker via stdin.
 type ExecutionRequest struct {
+	// Version is the protocol version for backward compatibility (0 = original).
+	Version  int                    `json:"version,omitempty"`
 	ToolName string                 `json:"toolName"`
 	Params   map[string]interface{} `json:"params"`
 }

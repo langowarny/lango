@@ -322,15 +322,28 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 			// Wire sandbox executor for P2P tool isolation if enabled.
 			if cfg.P2P.ToolIsolation.Enabled {
-				sbxExec := sandbox.NewSubprocessExecutor(sandbox.Config{
+				sbxCfg := sandbox.Config{
 					Enabled:        true,
 					TimeoutPerTool: cfg.P2P.ToolIsolation.TimeoutPerTool,
 					MaxMemoryMB:    cfg.P2P.ToolIsolation.MaxMemoryMB,
-				})
+				}
+				var sbxExec sandbox.Executor
+				if cfg.P2P.ToolIsolation.Container.Enabled {
+					containerExec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
+					if err != nil {
+						logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
+						sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+					} else {
+						sbxExec = containerExec
+						logger().Infof("P2P tool isolation enabled (container mode: %s)", containerExec.RuntimeName())
+					}
+				} else {
+					sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+					logger().Info("P2P tool isolation enabled (subprocess mode)")
+				}
 				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
 					return sbxExec.Execute(ctx, toolName, params)
 				})
-				logger().Info("P2P tool isolation enabled (subprocess mode)")
 			}
 		}
 		// Wire owner approval callback for inbound remote tool invocations.

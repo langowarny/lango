@@ -3,7 +3,10 @@ FROM golang:1.25-bookworm AS builder
 WORKDIR /app
 
 # Install SQLite dev headers (required by sqlite-vec-go-bindings)
-RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev \
+# Install libsqlcipher-dev for SQLCipher transparent DB encryption support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libsqlite3-dev \
+        libsqlcipher-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy go mod files
@@ -13,7 +16,8 @@ RUN go mod download
 # Copy source
 COPY . .
 
-# Build with CGO enabled (required by mattn/go-sqlite3)
+# Build with CGO enabled (required by mattn/go-sqlite3 and sqlite-vec)
+# Link against libsqlcipher for transparent DB encryption support
 RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o lango ./cmd/lango
 
 # Runtime image

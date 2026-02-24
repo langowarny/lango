@@ -144,6 +144,36 @@ type ToolIsolationConfig struct {
 
 	// MaxMemoryMB is a soft memory limit per subprocess in megabytes (Phase 2).
 	MaxMemoryMB int `mapstructure:"maxMemoryMB" json:"maxMemoryMB"`
+
+	// Container configures container-based tool execution sandbox (Phase 2).
+	Container ContainerSandboxConfig `mapstructure:"container" json:"container"`
+}
+
+// ContainerSandboxConfig configures container-based tool execution isolation.
+type ContainerSandboxConfig struct {
+	// Enabled activates container-based sandbox instead of subprocess isolation.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Runtime selects the container runtime: "auto", "docker", "gvisor", or "native" (default: "auto").
+	Runtime string `mapstructure:"runtime" json:"runtime"`
+
+	// Image is the Docker image for the sandbox container (default: "lango-sandbox:latest").
+	Image string `mapstructure:"image" json:"image"`
+
+	// NetworkMode is the Docker network mode for sandbox containers (default: "none").
+	NetworkMode string `mapstructure:"networkMode" json:"networkMode"`
+
+	// ReadOnlyRootfs mounts the container root filesystem as read-only (default: true).
+	ReadOnlyRootfs *bool `mapstructure:"readOnlyRootfs" json:"readOnlyRootfs"`
+
+	// CPUQuotaUS is the Docker CPU quota in microseconds (0 = unlimited).
+	CPUQuotaUS int64 `mapstructure:"cpuQuotaUs" json:"cpuQuotaUs"`
+
+	// PoolSize is the number of pre-warmed containers in the pool (0 = disabled).
+	PoolSize int `mapstructure:"poolSize" json:"poolSize"`
+
+	// PoolIdleTimeout is the idle timeout before pool containers are recycled (default: 5m).
+	PoolIdleTimeout time.Duration `mapstructure:"poolIdleTimeout" json:"poolIdleTimeout"`
 }
 
 // P2PPricingConfig defines pricing for P2P tool invocations.
@@ -411,6 +441,16 @@ type SecurityConfig struct {
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
 	// Keyring configuration (OS keyring for passphrase storage)
 	Keyring KeyringConfig `mapstructure:"keyring" json:"keyring"`
+	// DBEncryption configuration (SQLCipher transparent encryption)
+	DBEncryption DBEncryptionConfig `mapstructure:"dbEncryption" json:"dbEncryption"`
+}
+
+// DBEncryptionConfig defines SQLCipher transparent database encryption settings.
+type DBEncryptionConfig struct {
+	// Enabled activates SQLCipher encryption for the application database.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	// CipherPageSize is the SQLCipher cipher_page_size PRAGMA (default: 4096).
+	CipherPageSize int `mapstructure:"cipherPageSize" json:"cipherPageSize"`
 }
 
 // KeyringConfig defines OS keyring integration settings.

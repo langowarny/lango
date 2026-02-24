@@ -106,6 +106,12 @@ deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
+# ─── Sandbox ──────────────────────────────────────────────────────────────────
+
+## sandbox-image: Build sandbox Docker image for P2P tool isolation
+sandbox-image:
+	docker build -t lango-sandbox:latest -f build/sandbox/Dockerfile bin/
+
 # ─── Docker Build ────────────────────────────────────────────────────────────
 
 ## docker-build: Build Docker image
@@ -154,6 +160,7 @@ help:
         test test-short test-p2p bench coverage \
         fmt fmt-check vet lint generate ci \
         deps \
+        sandbox-image \
         docker-build docker-push \
         docker-up docker-down docker-logs \
         health clean help

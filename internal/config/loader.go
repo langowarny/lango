@@ -61,6 +61,10 @@ func DefaultConfig() *Config {
 			Keyring: KeyringConfig{
 				Enabled: true,
 			},
+			DBEncryption: DBEncryptionConfig{
+				Enabled:        false,
+				CipherPageSize: 4096,
+			},
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
@@ -148,9 +152,23 @@ func DefaultConfig() *Config {
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,
+				Container: ContainerSandboxConfig{
+					Enabled:         false,
+					Runtime:         "auto",
+					Image:           "lango-sandbox:latest",
+					NetworkMode:     "none",
+					ReadOnlyRootfs:  boolPtr(true),
+					PoolSize:        0,
+					PoolIdleTimeout: 5 * time.Minute,
+				},
 			},
 		},
 	}
+}
+
+// boolPtr returns a pointer to a bool value.
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 // Load reads configuration from file and environment
@@ -183,6 +201,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
 	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
+	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
+	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
 	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
 	v.SetDefault("graph.backend", defaults.Graph.Backend)
 	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
@@ -240,6 +260,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("p2p.zkAttestation", defaults.P2P.ZKAttestation)
 	v.SetDefault("p2p.zkp.proofCacheDir", defaults.P2P.ZKP.ProofCacheDir)
 	v.SetDefault("p2p.zkp.provingScheme", defaults.P2P.ZKP.ProvingScheme)
+	v.SetDefault("p2p.toolIsolation.container.enabled", defaults.P2P.ToolIsolation.Container.Enabled)
+	v.SetDefault("p2p.toolIsolation.container.runtime", defaults.P2P.ToolIsolation.Container.Runtime)
+	v.SetDefault("p2p.toolIsolation.container.image", defaults.P2P.ToolIsolation.Container.Image)
+	v.SetDefault("p2p.toolIsolation.container.networkMode", defaults.P2P.ToolIsolation.Container.NetworkMode)
+	v.SetDefault("p2p.toolIsolation.container.poolSize", defaults.P2P.ToolIsolation.Container.PoolSize)
+	v.SetDefault("p2p.toolIsolation.container.poolIdleTimeout", defaults.P2P.ToolIsolation.Container.PoolIdleTimeout)
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -389,6 +415,14 @@ func Validate(cfg *Config) error {
 		validSchemes := map[string]bool{"plonk": true, "groth16": true}
 		if cfg.P2P.ZKP.ProvingScheme != "" && !validSchemes[cfg.P2P.ZKP.ProvingScheme] {
 			errs = append(errs, fmt.Sprintf("invalid p2p.zkp.provingScheme: %q (must be plonk or groth16)", cfg.P2P.ZKP.ProvingScheme))
+		}
+	}
+
+	// Validate container sandbox config
+	if cfg.P2P.ToolIsolation.Container.Enabled {
+		validRuntimes := map[string]bool{"auto": true, "docker": true, "gvisor": true, "native": true}
+		if !validRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
+			errs = append(errs, fmt.Sprintf("invalid p2p.toolIsolation.container.runtime: %q (must be auto, docker, gvisor, or native)", cfg.P2P.ToolIsolation.Container.Runtime))
 		}
 	}
 

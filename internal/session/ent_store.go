@@ -22,7 +22,7 @@ import (
 	entsession "github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/types"
-	_ "github.com/mattn/go-sqlite3" // Use cgo driver for SQLCipher support
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var logger = logging.SubsystemSugar("session")

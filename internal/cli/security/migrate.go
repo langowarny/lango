@@ -28,6 +28,8 @@ func NewSecurityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 	cmd.AddCommand(newSecretsCmd(bootLoader))
 	cmd.AddCommand(newStatusCmd(bootLoader))
 	cmd.AddCommand(newKeyringCmd(bootLoader))
+	cmd.AddCommand(newDBMigrateCmd(bootLoader))
+	cmd.AddCommand(newDBDecryptCmd(bootLoader))
 
 	return cmd
 }
