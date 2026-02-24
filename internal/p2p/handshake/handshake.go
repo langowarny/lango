@@ -1,12 +1,15 @@
 package handshake
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
@@ -268,14 +271,9 @@ func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Ses
 
 // verifyResponse checks the challenge response authenticity.
 func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse, nonce []byte) error {
-	// Verify nonce matches.
-	if len(resp.Nonce) != len(nonce) {
+	// Verify nonce matches using constant-time comparison to prevent timing attacks.
+	if !hmac.Equal(resp.Nonce, nonce) {
 		return fmt.Errorf("nonce mismatch")
-	}
-	for i := range nonce {
-		if resp.Nonce[i] != nonce[i] {
-			return fmt.Errorf("nonce mismatch")
-		}
 	}
 
 	// Verify ZK proof if provided.
@@ -290,12 +288,29 @@ func (h *Handshaker) verifyResponse(ctx context.Context, resp *ChallengeResponse
 		return nil
 	}
 
-	// Verify signature (fallback).
+	// Verify ECDSA signature by recovering the public key and comparing with the
+	// claimed key (secp256k1 recovery, matching wallet.SignMessage pattern).
 	if len(resp.Signature) > 0 {
-		// Signature verification is done by recovering the public key from the
-		// signature and comparing with the claimed public key.
-		// For now, we accept signatures as valid if they are non-empty.
-		// Full ECDSA recovery verification will be added in integration.
+		// Signature must be exactly 65 bytes: R(32) + S(32) + V(1).
+		if len(resp.Signature) != 65 {
+			return fmt.Errorf("invalid signature length: %d (expected 65)", len(resp.Signature))
+		}
+
+		// Hash the nonce using Keccak256 (consistent with wallet.SignMessage).
+		hash := ethcrypto.Keccak256(nonce)
+
+		// Recover the public key from the signature.
+		recoveredPub, err := ethcrypto.SigToPub(hash, resp.Signature)
+		if err != nil {
+			return fmt.Errorf("recover public key from signature: %w", err)
+		}
+
+		// Compare the recovered compressed public key with the claimed key.
+		recoveredCompressed := ethcrypto.CompressPubkey(recoveredPub)
+		if !bytes.Equal(recoveredCompressed, resp.PublicKey) {
+			return fmt.Errorf("signature public key mismatch")
+		}
+
 		return nil
 	}
 

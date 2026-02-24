@@ -1099,7 +1099,7 @@ type p2pComponents struct {
 }
 
 // initP2P creates the P2P networking components if enabled.
-func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client) *p2pComponents {
+func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents, dbClient *ent.Client, secrets *security.SecretsStore) *p2pComponents {
 	if !cfg.P2P.Enabled {
 		logger().Info("P2P networking disabled")
 		return nil
@@ -1112,8 +1112,8 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 
 	pLogger := logger()
 
-	// Create P2P node.
-	node, err := p2p.NewNode(cfg.P2P, pLogger)
+	// Create P2P node with SecretsStore for encrypted key storage.
+	node, err := p2p.NewNode(cfg.P2P, pLogger, secrets)
 	if err != nil {
 		pLogger.Warnw("P2P node creation failed, skipping", "error", err)
 		return nil

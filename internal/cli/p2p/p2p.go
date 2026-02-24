@@ -12,13 +12,15 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
 	p2pnet "github.com/langoai/lango/internal/p2p"
+	"github.com/langoai/lango/internal/security"
 )
 
 // p2pDeps holds lazily-initialized P2P dependencies.
 type p2pDeps struct {
-	config  *config.P2PConfig
-	node    *p2pnet.Node
-	cleanup func()
+	config     *config.P2PConfig
+	node       *p2pnet.Node
+	keyStorage string // "secrets-store" or "file"
+	cleanup    func()
 }
 
 // NewP2PCmd creates the p2p command with lazy bootstrap loading.
@@ -55,7 +57,16 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 		logger = l.Sugar()
 	}
 
-	node, err := p2pnet.NewNode(cfg.P2P, logger)
+	// Build SecretsStore from bootstrap result if crypto is available.
+	var secrets *security.SecretsStore
+	keyStorage := "file"
+	if boot.Crypto != nil && boot.DBClient != nil {
+		keys := security.NewKeyRegistry(boot.DBClient)
+		secrets = security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
+		keyStorage = "secrets-store"
+	}
+
+	node, err := p2pnet.NewNode(cfg.P2P, logger, secrets)
 	if err != nil {
 		return nil, fmt.Errorf("create P2P node: %w", err)
 	}
@@ -67,8 +78,9 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	}
 
 	return &p2pDeps{
-		config: &cfg.P2P,
-		node:   node,
+		config:     &cfg.P2P,
+		node:       node,
+		keyStorage: keyStorage,
 		cleanup: func() {
 			node.Stop()
 		},

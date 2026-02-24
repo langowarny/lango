@@ -21,9 +21,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/security"
 )
 
 const nodeKeyFile = "node.key"
+
+// nodeKeySecret is the SecretsStore key name for the encrypted P2P node key.
+const nodeKeySecret = "p2p.node.privatekey"
 
 // Node wraps a libp2p host with DHT-based peer discovery.
 type Node struct {
@@ -37,9 +41,10 @@ type Node struct {
 }
 
 // NewNode creates a libp2p node with Noise encryption and TCP/QUIC transports.
-// The node key is persisted in cfg.KeyDir so the peer identity survives restarts.
-func NewNode(cfg config.P2PConfig, logger *zap.SugaredLogger) (*Node, error) {
-	privKey, err := loadOrGenerateKey(cfg.KeyDir)
+// The node key is persisted in SecretsStore (encrypted) when available, falling
+// back to cfg.KeyDir for backward compatibility.
+func NewNode(cfg config.P2PConfig, logger *zap.SugaredLogger, secrets *security.SecretsStore) (*Node, error) {
+	privKey, err := loadOrGenerateKey(cfg.KeyDir, secrets, logger)
 	if err != nil {
 		return nil, fmt.Errorf("load node key: %w", err)
 	}
@@ -197,9 +202,13 @@ func (n *Node) SetStreamHandler(protocolID string, handler network.StreamHandler
 	n.host.SetStreamHandler(protocol.ID(protocolID), handler)
 }
 
-// loadOrGenerateKey loads an Ed25519 node key from keyDir/node.key,
-// generating a new one if it does not exist.
-func loadOrGenerateKey(keyDir string) (crypto.PrivKey, error) {
+// loadOrGenerateKey loads an Ed25519 node key with the following priority:
+//  1. SecretsStore (encrypted, preferred)
+//  2. Legacy plaintext file (keyDir/node.key) — auto-migrated to SecretsStore
+//  3. Generate new key
+//
+// When secrets is nil, falls back to file-based storage for backward compatibility.
+func loadOrGenerateKey(keyDir string, secrets *security.SecretsStore, log *zap.SugaredLogger) (crypto.PrivKey, error) {
 	keyDir = expandHome(keyDir)
 	if keyDir == "" {
 		home, err := os.UserHomeDir()
@@ -209,24 +218,45 @@ func loadOrGenerateKey(keyDir string) (crypto.PrivKey, error) {
 		keyDir = filepath.Join(home, ".lango", "p2p")
 	}
 
-	if err := os.MkdirAll(keyDir, 0o700); err != nil {
-		return nil, fmt.Errorf("create key dir %q: %w", keyDir, err)
+	// 1. Try SecretsStore first.
+	if secrets != nil {
+		ctx := context.Background()
+		data, err := secrets.Get(ctx, nodeKeySecret)
+		if err == nil {
+			defer zeroBytes(data)
+			key, parseErr := crypto.UnmarshalPrivateKey(data)
+			if parseErr != nil {
+				return nil, fmt.Errorf("unmarshal node key from secrets store: %w", parseErr)
+			}
+			return key, nil
+		}
+		// Not found in SecretsStore — fall through to legacy file or generation.
 	}
 
+	// 2. Try legacy plaintext file.
 	keyPath := filepath.Join(keyDir, nodeKeyFile)
 	data, err := os.ReadFile(keyPath)
 	if err == nil {
-		key, err := crypto.UnmarshalPrivateKey(data)
-		if err != nil {
-			return nil, fmt.Errorf("unmarshal node key: %w", err)
+		defer zeroBytes(data)
+		key, parseErr := crypto.UnmarshalPrivateKey(data)
+		if parseErr != nil {
+			return nil, fmt.Errorf("unmarshal node key: %w", parseErr)
 		}
+
+		// Auto-migrate to SecretsStore if available.
+		if secrets != nil {
+			if migErr := migrateKeyToSecrets(secrets, data, keyPath, log); migErr != nil {
+				log.Warnw("node key migration to secrets store failed (will retry on next restart)", "error", migErr)
+			}
+		}
+
 		return key, nil
 	}
 	if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read node key: %w", err)
 	}
 
-	// Generate new key.
+	// 3. Generate new key.
 	privKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate ed25519 key: %w", err)
@@ -236,12 +266,49 @@ func loadOrGenerateKey(keyDir string) (crypto.PrivKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal node key: %w", err)
 	}
+	defer zeroBytes(raw)
 
-	if err := os.WriteFile(keyPath, raw, 0o600); err != nil {
-		return nil, fmt.Errorf("write node key: %w", err)
+	// Store in SecretsStore if available, otherwise fall back to file.
+	if secrets != nil {
+		if storeErr := secrets.Store(context.Background(), nodeKeySecret, raw); storeErr != nil {
+			return nil, fmt.Errorf("store node key in secrets store: %w", storeErr)
+		}
+	} else {
+		if mkErr := os.MkdirAll(keyDir, 0o700); mkErr != nil {
+			return nil, fmt.Errorf("create key dir %q: %w", keyDir, mkErr)
+		}
+		if writeErr := os.WriteFile(keyPath, raw, 0o600); writeErr != nil {
+			return nil, fmt.Errorf("write node key: %w", writeErr)
+		}
 	}
 
 	return privKey, nil
+}
+
+// migrateKeyToSecrets stores a legacy plaintext key into SecretsStore and
+// removes the plaintext file. Migration failure is non-fatal (warn + retry
+// on next restart).
+func migrateKeyToSecrets(secrets *security.SecretsStore, keyData []byte, keyPath string, log *zap.SugaredLogger) error {
+	ctx := context.Background()
+
+	if err := secrets.Store(ctx, nodeKeySecret, keyData); err != nil {
+		return fmt.Errorf("store in secrets: %w", err)
+	}
+
+	if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+		log.Warnw("stored key in secrets store but could not remove legacy file", "path", keyPath, "error", err)
+	} else {
+		log.Infow("migrated P2P node key from plaintext file to encrypted secrets store", "legacyPath", keyPath)
+	}
+
+	return nil
+}
+
+// zeroBytes overwrites a byte slice with zeros for immediate memory cleanup.
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }
 
 // expandHome replaces a leading ~ with the user's home directory.

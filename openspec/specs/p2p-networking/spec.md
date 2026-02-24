@@ -2,19 +2,32 @@
 
 ### Requirement: libp2p Node Lifecycle
 
-The P2P `Node` SHALL encapsulate a libp2p host with an Ed25519 identity key persisted at `{keyDir}/node.key`. The node key SHALL be loaded from disk on startup and SHALL be generated and persisted automatically if the file does not exist, ensuring peer identity survives restarts. The node MUST use Noise protocol encryption on all connections.
+The P2P `Node` SHALL encapsulate a libp2p host with an Ed25519 identity key. When `*security.SecretsStore` is provided, the key SHALL be stored encrypted in SecretsStore under `p2p.node.privatekey`. When SecretsStore is nil, the key SHALL be persisted at `{keyDir}/node.key` for backward compatibility. The node key SHALL be loaded on startup (priority: SecretsStore → legacy file → generate new), ensuring peer identity survives restarts. The node MUST use Noise protocol encryption on all connections.
 
 #### Scenario: Node key persists across restarts
-- **WHEN** a `Node` is created with a `keyDir` that already contains `node.key`
+- **WHEN** a `Node` is created and a node key exists (in SecretsStore or as `node.key`)
 - **THEN** the node SHALL load the existing key and present the same peer ID as the previous instance
 
 #### Scenario: Node key generated on first start
-- **WHEN** a `Node` is created with a `keyDir` that does not contain `node.key`
-- **THEN** the node SHALL generate a new Ed25519 keypair, persist it to `node.key` with permissions `0600`, and use it as the peer identity
+- **WHEN** a `Node` is created and no node key exists
+- **THEN** the node SHALL generate a new Ed25519 keypair, persist it (to SecretsStore if available, else to `node.key` with `0600`), and use it as the peer identity
 
 #### Scenario: Node creation with invalid keyDir
-- **WHEN** `NewNode` is called with a `keyDir` path that cannot be created
+- **WHEN** `NewNode` is called with a `keyDir` path that cannot be created and SecretsStore is nil
 - **THEN** `NewNode` SHALL return an error and SHALL NOT start any host or network listener
+
+---
+
+### Requirement: Node constructor accepts SecretsStore
+`NewNode()` SHALL accept an optional `*security.SecretsStore` parameter for encrypted node key management. When nil, file-based storage is used.
+
+#### Scenario: Node created with SecretsStore
+- **WHEN** `NewNode(cfg, logger, secrets)` is called with a non-nil SecretsStore
+- **THEN** the node SHALL use SecretsStore for key storage
+
+#### Scenario: Node created without SecretsStore
+- **WHEN** `NewNode(cfg, logger, nil)` is called
+- **THEN** the node SHALL fall back to file-based key storage in `cfg.KeyDir`
 
 ---
 

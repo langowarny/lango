@@ -206,7 +206,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
 
 		// 5h''. P2P networking (optional, requires wallet)
-		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient)
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets)
 		if p2pc != nil {
 			app.P2PNode = p2pc.node
 			// Wire P2P payment tool.

@@ -220,6 +220,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
 	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
 	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
+	v.SetDefault("p2p.nodeKeyName", "p2p.node.privatekey")
 	v.SetDefault("p2p.enableRelay", defaults.P2P.EnableRelay)
 	v.SetDefault("p2p.enableMdns", defaults.P2P.EnableMDNS)
 	v.SetDefault("p2p.maxPeers", defaults.P2P.MaxPeers)

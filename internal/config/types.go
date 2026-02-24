@@ -83,8 +83,10 @@ type P2PConfig struct {
 	// BootstrapPeers are initial peers to connect to for DHT bootstrapping.
 	BootstrapPeers []string `mapstructure:"bootstrapPeers" json:"bootstrapPeers"`
 
-	// KeyDir is the directory for persisting node keys (default: ~/.lango/p2p).
-	KeyDir string `mapstructure:"keyDir" json:"keyDir"`
+	// Deprecated: KeyDir is the legacy directory for persisting node keys.
+	// Node keys are now stored in SecretsStore (encrypted) when available.
+	// This field is retained for backward compatibility and migration.
+	KeyDir string `mapstructure:"keyDir" json:"keyDir,omitempty"`
 
 	// EnableRelay allows this node to act as a relay for NAT traversal.
 	EnableRelay bool `mapstructure:"enableRelay" json:"enableRelay"`

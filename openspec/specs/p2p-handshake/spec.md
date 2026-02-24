@@ -18,7 +18,23 @@ The `Handshaker` SHALL implement a three-message challenge-response protocol ove
 
 #### Scenario: Nonce mismatch rejects response
 - **WHEN** the `ChallengeResponse` nonce differs from the nonce in the `Challenge`
-- **THEN** `verifyResponse` SHALL return an error containing "nonce mismatch"
+- **THEN** `verifyResponse` SHALL return an error containing "nonce mismatch" using constant-time comparison (`hmac.Equal`)
+
+#### Scenario: Valid ECDSA signature accepted
+- **WHEN** a challenge response contains a 65-byte ECDSA signature that recovers to a public key matching `resp.PublicKey`
+- **THEN** the verifier SHALL accept the response as authenticated
+
+#### Scenario: Invalid signature rejected (public key mismatch)
+- **WHEN** a challenge response contains a signature that recovers to a public key NOT matching `resp.PublicKey`
+- **THEN** the verifier SHALL reject the response with "signature public key mismatch" error
+
+#### Scenario: Wrong signature length rejected
+- **WHEN** a challenge response contains a signature that is not exactly 65 bytes
+- **THEN** the verifier SHALL reject the response with "invalid signature length" error
+
+#### Scenario: Corrupted signature rejected
+- **WHEN** a challenge response contains a 65-byte signature that cannot be recovered to a valid public key
+- **THEN** the verifier SHALL reject the response with an error
 
 #### Scenario: Response with neither proof nor signature rejected
 - **WHEN** the `ChallengeResponse` has empty `ZKProof` and empty `Signature`
@@ -63,6 +79,40 @@ When `ZKEnabled=true` but the `ZKProverFunc` returns an error, `HandleIncoming` 
 #### Scenario: Signature fallback failure rejects handshake
 - **WHEN** `ZKProverFunc` fails AND `wallet.SignMessage` also returns an error
 - **THEN** `HandleIncoming` SHALL return a wrapped error containing "sign challenge"
+
+---
+
+### Requirement: Constant-time nonce comparison
+The handshake verifier SHALL use `hmac.Equal()` for nonce comparison to prevent timing side-channel attacks.
+
+#### Scenario: Nonce mismatch detected securely
+- **WHEN** the response nonce does not match the challenge nonce
+- **THEN** the verifier SHALL reject the response with "nonce mismatch" error using constant-time comparison
+
+---
+
+### Requirement: Signature verification
+The handshake verifier SHALL perform full ECDSA secp256k1 signature verification by recovering the public key from the signature using `ethcrypto.SigToPub()` and comparing it with the claimed public key via `ethcrypto.CompressPubkey()`, instead of accepting any non-empty signature.
+
+#### Scenario: Valid signature accepted
+- **WHEN** a challenge response contains a 65-byte ECDSA signature that recovers to a public key matching `resp.PublicKey`
+- **THEN** the verifier SHALL accept the response as authenticated
+
+#### Scenario: Invalid signature rejected
+- **WHEN** a challenge response contains a signature that recovers to a public key NOT matching `resp.PublicKey`
+- **THEN** the verifier SHALL reject the response with "signature public key mismatch" error
+
+#### Scenario: Wrong signature length rejected
+- **WHEN** a challenge response contains a signature that is not exactly 65 bytes
+- **THEN** the verifier SHALL reject the response with "invalid signature length" error
+
+#### Scenario: Corrupted signature rejected
+- **WHEN** a challenge response contains a 65-byte signature that cannot be recovered to a valid public key
+- **THEN** the verifier SHALL reject the response with an error
+
+#### Scenario: No proof or signature rejected
+- **WHEN** a challenge response contains neither a ZK proof nor a signature
+- **THEN** the verifier SHALL reject the response with "no proof or signature in response" error
 
 ---
 

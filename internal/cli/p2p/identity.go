@@ -44,13 +44,13 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 				return enc.Encode(map[string]interface{}{
 					"peerId":      peerID,
 					"listenAddrs": listenAddrs,
-					"keyDir":      deps.config.KeyDir,
+					"keyStorage":  deps.keyStorage,
 				})
 			}
 
 			fmt.Println("P2P Identity")
 			fmt.Printf("  Peer ID:      %s\n", peerID)
-			fmt.Printf("  Key Dir:      %s\n", deps.config.KeyDir)
+			fmt.Printf("  Key Storage:  %s\n", deps.keyStorage)
 			fmt.Printf("  Listen Addrs:\n")
 			for _, a := range listenAddrs {
 				fmt.Printf("    %s\n", a)
