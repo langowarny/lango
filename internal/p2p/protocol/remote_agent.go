@@ -13,6 +13,8 @@ import (
 // ZKAttestVerifyFunc verifies a ZK attestation proof from a remote peer.
 type ZKAttestVerifyFunc func(ctx context.Context, attestation *AttestationData) (bool, error)
 
+const errMsgUnknown = "unknown error"
+
 // P2PRemoteAgent represents a remote agent accessible over P2P.
 // It can be used as a sub-agent in the orchestration framework.
 type P2PRemoteAgent struct {
@@ -87,10 +89,10 @@ func (a *P2PRemoteAgent) InvokeTool(ctx context.Context, toolName string, params
 		return nil, fmt.Errorf("tool invoke %s on %s: %w", toolName, a.name, err)
 	}
 
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		errMsg := resp.Error
 		if errMsg == "" {
-			errMsg = "unknown error"
+			errMsg = errMsgUnknown
 		}
 		return nil, fmt.Errorf("remote tool %s error: %s", toolName, errMsg)
 	}
@@ -125,7 +127,7 @@ func (a *P2PRemoteAgent) QueryCapabilities(ctx context.Context) (map[string]inte
 		return nil, fmt.Errorf("capability query %s: %w", a.name, err)
 	}
 
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		return nil, fmt.Errorf("capability query error: %s", resp.Error)
 	}
 
@@ -145,7 +147,7 @@ func (a *P2PRemoteAgent) FetchAgentCard(ctx context.Context) (map[string]interfa
 		return nil, fmt.Errorf("agent card fetch %s: %w", a.name, err)
 	}
 
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		return nil, fmt.Errorf("agent card fetch error: %s", resp.Error)
 	}
 
@@ -166,10 +168,10 @@ func (a *P2PRemoteAgent) QueryPrice(ctx context.Context, toolName string) (*Pric
 		return nil, fmt.Errorf("price query %s on %s: %w", toolName, a.name, err)
 	}
 
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		errMsg := resp.Error
 		if errMsg == "" {
-			errMsg = "unknown error"
+			errMsg = errMsgUnknown
 		}
 		return nil, fmt.Errorf("price query %s error: %s", toolName, errMsg)
 	}

@@ -51,7 +51,7 @@ func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				enc.SetIndent("", "  ")
 				return enc.Encode(map[string]interface{}{
 					"balance":  balance,
-					"currency": "USDC",
+					"currency": wallet.CurrencyUSDC,
 					"address":  addr,
 					"chainId":  chainID,
 					"network":  network,
@@ -59,7 +59,7 @@ func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 
 			fmt.Println("Wallet Balance")
-			fmt.Printf("  Balance:   %s USDC\n", balance)
+			fmt.Printf("  Balance:   %s %s\n", balance, wallet.CurrencyUSDC)
 			fmt.Printf("  Address:   %s\n", addr)
 			fmt.Printf("  Network:   %s (chain %d)\n", network, chainID)
 

@@ -24,13 +24,13 @@ func testHandler() (*Handler, *handshake.SessionStore) {
 	}
 
 	fw := firewall.New([]firewall.ACLRule{
-		{PeerDID: "did:key:peer-1", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-2", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-3", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-4", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-5", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-6", Action: "allow", Tools: []string{"*"}},
-		{PeerDID: "did:key:peer-json", Action: "allow", Tools: []string{"*"}},
+		{PeerDID: "did:key:peer-1", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-2", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-3", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-4", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-5", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-6", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
+		{PeerDID: "did:key:peer-json", Action: firewall.ACLActionAllow, Tools: []string{firewall.WildcardAll}},
 	}, sugar)
 
 	h := NewHandler(HandlerConfig{
@@ -70,10 +70,10 @@ func TestHandleToolInvoke_NilApprovalFn_DefaultDeny(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "denied" {
+	if resp.Status != ResponseStatusDenied {
 		t.Errorf("expected status 'denied', got %q", resp.Status)
 	}
-	if resp.Error != "no approval handler configured for remote tool invocation" {
+	if resp.Error != ErrNoApprovalHandler.Error() {
 		t.Errorf("unexpected error message: %s", resp.Error)
 	}
 }
@@ -93,10 +93,10 @@ func TestHandleToolInvokePaid_NilApprovalFn_DefaultDeny(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "denied" {
+	if resp.Status != ResponseStatusDenied {
 		t.Errorf("expected status 'denied', got %q", resp.Status)
 	}
-	if resp.Error != "no approval handler configured for remote tool invocation" {
+	if resp.Error != ErrNoApprovalHandler.Error() {
 		t.Errorf("unexpected error message: %s", resp.Error)
 	}
 }
@@ -118,7 +118,7 @@ func TestHandleToolInvoke_Approved(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		t.Errorf("expected status 'ok', got %q (error: %s)", resp.Status, resp.Error)
 	}
 }
@@ -140,10 +140,10 @@ func TestHandleToolInvoke_Denied(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "denied" {
+	if resp.Status != ResponseStatusDenied {
 		t.Errorf("expected status 'denied', got %q", resp.Status)
 	}
-	if resp.Error != "tool invocation denied by owner" {
+	if resp.Error != ErrDeniedByOwner.Error() {
 		t.Errorf("unexpected error: %s", resp.Error)
 	}
 }
@@ -165,7 +165,7 @@ func TestHandleToolInvoke_ApprovalError(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "error" {
+	if resp.Status != ResponseStatusError {
 		t.Errorf("expected status 'error', got %q", resp.Status)
 	}
 }
@@ -187,7 +187,7 @@ func TestHandleToolInvokePaid_Approved(t *testing.T) {
 	}
 
 	resp := h.handleRequest(context.Background(), nil, req)
-	if resp.Status != "ok" {
+	if resp.Status != ResponseStatusOK {
 		t.Errorf("expected status 'ok', got %q (error: %s)", resp.Status, resp.Error)
 	}
 }
@@ -215,7 +215,7 @@ func TestResponseJSON_DefaultDeny(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if decoded.Status != "denied" {
+	if decoded.Status != ResponseStatusDenied {
 		t.Errorf("expected denied in JSON, got %q", decoded.Status)
 	}
 }

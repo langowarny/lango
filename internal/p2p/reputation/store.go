@@ -177,9 +177,16 @@ func (s *Store) upsert(
 	return nil
 }
 
+// Scoring weight constants used by CalculateScore.
+const (
+	FailureWeight = 2.0
+	TimeoutWeight = 1.5
+	BasePenalty   = 1.0
+)
+
 // CalculateScore computes a trust score in the range [0, 1).
-// Formula: successes / (successes + failures*2 + timeouts*1.5 + 1.0)
+// Formula: successes / (successes + failures*FailureWeight + timeouts*TimeoutWeight + BasePenalty)
 func CalculateScore(successes, failures, timeouts int) float64 {
 	s := float64(successes)
-	return s / (s + float64(failures)*2 + float64(timeouts)*1.5 + 1.0)
+	return s / (s + float64(failures)*FailureWeight + float64(timeouts)*TimeoutWeight + BasePenalty)
 }

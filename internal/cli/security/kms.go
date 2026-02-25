@@ -62,7 +62,7 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 
 			if isKMS {
 				// Try to create the provider to check connectivity.
-				kmsProvider, provErr := sec.NewKMSProvider(provider, cfg.Security.KMS)
+				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
 				if provErr != nil {
 					s.Status = fmt.Sprintf("error: %v", provErr)
 				} else {
@@ -115,7 +115,7 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("current provider %q is not a KMS provider", provider)
 			}
 
-			kmsProvider, err := sec.NewKMSProvider(provider, cfg.Security.KMS)
+			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
 			if err != nil {
 				return fmt.Errorf("create KMS provider: %w", err)
 			}
@@ -207,9 +207,5 @@ func newKMSKeysCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 }
 
 func isKMSProvider(provider string) bool {
-	switch provider {
-	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
-		return true
-	}
-	return false
+	return sec.KMSProviderName(provider).Valid()
 }

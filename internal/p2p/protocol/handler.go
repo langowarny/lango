@@ -39,9 +39,17 @@ type PayGateChecker interface {
 	Check(peerDID, toolName string, payload map[string]interface{}) (PayGateResult, error)
 }
 
+// PayGate status values returned by PayGateChecker.Check.
+const (
+	payGateStatusFree            = "free"
+	payGateStatusVerified        = "verified"
+	payGateStatusPaymentRequired = "payment_required"
+	payGateStatusInvalid         = "invalid"
+)
+
 // PayGateResult represents the payment check outcome.
 type PayGateResult struct {
-	Status     string                 // "free", "verified", "payment_required", "invalid"
+	Status     string                 // payGateStatusFree, payGateStatusVerified, payGateStatusPaymentRequired, payGateStatusInvalid
 	Auth       interface{}            // the verified authorization (opaque to handler)
 	PriceQuote map[string]interface{} // price quote when payment required
 }
@@ -137,8 +145,8 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 	if peerDID == "" {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "denied",
-			Error:     "invalid or expired session token",
+			Status:    ResponseStatusDenied,
+			Error:     ErrInvalidSession.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -157,7 +165,7 @@ func (h *Handler) handleRequest(ctx context.Context, s network.Stream, req *Requ
 	default:
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     fmt.Sprintf("unknown request type: %s", req.Type),
 			Timestamp: time.Now(),
 		}
@@ -169,15 +177,15 @@ func (h *Handler) handleAgentCard(req *Request) *Response {
 	if h.cardFn == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
-			Error:     "agent card not available",
+			Status:    ResponseStatusError,
+			Error:     ErrAgentCardUnavailable.Error(),
 			Timestamp: time.Now(),
 		}
 	}
 
 	return &Response{
 		RequestID: req.RequestID,
-		Status:    "ok",
+		Status:    ResponseStatusOK,
 		Result:    h.cardFn(),
 		Timestamp: time.Now(),
 	}
@@ -190,7 +198,7 @@ func (h *Handler) handleCapabilityQuery(req *Request, peerDID string) *Response 
 		card := h.cardFn()
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "ok",
+			Status:    ResponseStatusOK,
 			Result:    card,
 			Timestamp: time.Now(),
 		}
@@ -198,7 +206,7 @@ func (h *Handler) handleCapabilityQuery(req *Request, peerDID string) *Response 
 
 	return &Response{
 		RequestID: req.RequestID,
-		Status:    "ok",
+		Status:    ResponseStatusOK,
 		Result:    map[string]interface{}{"capabilities": []string{}},
 		Timestamp: time.Now(),
 	}
@@ -210,8 +218,8 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	if toolName == "" {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
-			Error:     "missing toolName in payload",
+			Status:    ResponseStatusError,
+			Error:     ErrMissingToolName.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -221,7 +229,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		if err := h.firewall.FilterQuery(ctx, peerDID, toolName); err != nil {
 			return &Response{
 				RequestID: req.RequestID,
-				Status:    "denied",
+				Status:    ResponseStatusDenied,
 				Error:     err.Error(),
 				Timestamp: time.Now(),
 			}
@@ -237,8 +245,8 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	if h.approvalFn == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "denied",
-			Error:     "no approval handler configured for remote tool invocation",
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoApprovalHandler.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -246,7 +254,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	if err != nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     fmt.Sprintf("approval check: %v", err),
 			Timestamp: time.Now(),
 		}
@@ -254,8 +262,8 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	if !approved {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "denied",
-			Error:     "tool invocation denied by owner",
+			Status:    ResponseStatusDenied,
+			Error:     ErrDeniedByOwner.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -272,7 +280,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     err.Error(),
 			Timestamp: time.Now(),
 		}
@@ -290,7 +298,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	// Generate ZK attestation if available.
 	resp := &Response{
 		RequestID: req.RequestID,
-		Status:    "ok",
+		Status:    ResponseStatusOK,
 		Result:    result,
 		Timestamp: time.Now(),
 	}
@@ -319,8 +327,8 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 	if toolName == "" {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
-			Error:     "missing toolName in payload",
+			Status:    ResponseStatusError,
+			Error:     ErrMissingToolName.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -329,7 +337,7 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 		// No payment gate configured — everything is free.
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "ok",
+			Status:    ResponseStatusOK,
 			Result: map[string]interface{}{
 				"toolName": toolName,
 				"isFree":   true,
@@ -342,16 +350,16 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 	if err != nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     fmt.Sprintf("price query %s: %v", toolName, err),
 			Timestamp: time.Now(),
 		}
 	}
 
-	if result.Status == "free" {
+	if result.Status == payGateStatusFree {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "ok",
+			Status:    ResponseStatusOK,
 			Result: map[string]interface{}{
 				"toolName": toolName,
 				"isFree":   true,
@@ -362,7 +370,7 @@ func (h *Handler) handlePriceQuery(ctx context.Context, req *Request, peerDID st
 
 	return &Response{
 		RequestID: req.RequestID,
-		Status:    "ok",
+		Status:    ResponseStatusOK,
 		Result:    result.PriceQuote,
 		Timestamp: time.Now(),
 	}
@@ -374,8 +382,8 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	if toolName == "" {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
-			Error:     "missing toolName in payload",
+			Status:    ResponseStatusError,
+			Error:     ErrMissingToolName.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -385,7 +393,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		if err := h.firewall.FilterQuery(ctx, peerDID, toolName); err != nil {
 			return &Response{
 				RequestID: req.RequestID,
-				Status:    "denied",
+				Status:    ResponseStatusDenied,
 				Error:     err.Error(),
 				Timestamp: time.Now(),
 			}
@@ -398,28 +406,28 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		if err != nil {
 			return &Response{
 				RequestID: req.RequestID,
-				Status:    "error",
+				Status:    ResponseStatusError,
 				Error:     fmt.Sprintf("payment check %s: %v", toolName, err),
 				Timestamp: time.Now(),
 			}
 		}
 
 		switch result.Status {
-		case "payment_required":
+		case payGateStatusPaymentRequired:
 			return &Response{
 				RequestID: req.RequestID,
-				Status:    StatusPaymentRequired,
+				Status:    ResponseStatusPaymentRequired,
 				Result:    result.PriceQuote,
 				Timestamp: time.Now(),
 			}
-		case "invalid":
+		case payGateStatusInvalid:
 			return &Response{
 				RequestID: req.RequestID,
-				Status:    "error",
-				Error:     "invalid payment authorization",
+				Status:    ResponseStatusError,
+				Error:     ErrInvalidPaymentAuth.Error(),
 				Timestamp: time.Now(),
 			}
-		case "verified", "free":
+		case payGateStatusVerified, payGateStatusFree:
 			// Continue to execution.
 		}
 	}
@@ -433,8 +441,8 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	if h.approvalFn == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "denied",
-			Error:     "no approval handler configured for remote tool invocation",
+			Status:    ResponseStatusDenied,
+			Error:     ErrNoApprovalHandler.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -442,7 +450,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	if err != nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     fmt.Sprintf("approval check: %v", err),
 			Timestamp: time.Now(),
 		}
@@ -450,8 +458,8 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	if !approved {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "denied",
-			Error:     "tool invocation denied by owner",
+			Status:    ResponseStatusDenied,
+			Error:     ErrDeniedByOwner.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -464,8 +472,8 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	if paidExec == nil {
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
-			Error:     "tool executor not configured",
+			Status:    ResponseStatusError,
+			Error:     ErrExecutorNotConfigured.Error(),
 			Timestamp: time.Now(),
 		}
 	}
@@ -477,7 +485,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 		return &Response{
 			RequestID: req.RequestID,
-			Status:    "error",
+			Status:    ResponseStatusError,
 			Error:     err.Error(),
 			Timestamp: time.Now(),
 		}
@@ -495,7 +503,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	// 6. ZK attestation.
 	paidResp := &Response{
 		RequestID: req.RequestID,
-		Status:    "ok",
+		Status:    ResponseStatusOK,
 		Result:    result,
 		Timestamp: time.Now(),
 	}
@@ -538,7 +546,7 @@ func (h *Handler) resolvePeerDID(s network.Stream, token string) string {
 func (h *Handler) sendError(s network.Stream, reqID, msg string) {
 	resp := Response{
 		RequestID: reqID,
-		Status:    "error",
+		Status:    ResponseStatusError,
 		Error:     msg,
 		Timestamp: time.Now(),
 	}

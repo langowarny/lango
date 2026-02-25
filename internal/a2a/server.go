@@ -21,6 +21,20 @@ type Server struct {
 	logger   *zap.SugaredLogger
 }
 
+const (
+	// AgentCardRoute is the well-known HTTP path for the A2A Agent Card.
+	AgentCardRoute = "/.well-known/agent.json"
+
+	// ContentTypeJSON is the MIME type for JSON responses.
+	ContentTypeJSON = "application/json"
+
+	// SkillTagOrchestration tags the root agent skill.
+	SkillTagOrchestration = "orchestration"
+
+	// SkillTagSubAgentPrefix prefixes sub-agent skill tags.
+	SkillTagSubAgentPrefix = "sub_agent:"
+)
+
 // AgentCard is a simplified representation of the A2A Agent Card
 // served at /.well-known/agent.json.
 type AgentCard struct {
@@ -110,15 +124,15 @@ func (s *Server) SetPricing(pricing *PricingInfo) {
 func (s *Server) RegisterRoutes(mux interface {
 	Get(string, http.HandlerFunc)
 }) {
-	mux.Get("/.well-known/agent.json", s.handleAgentCard)
+	mux.Get(AgentCardRoute, s.handleAgentCard)
 	s.logger.Infow("a2a routes registered",
-		"agentCard", "/.well-known/agent.json",
+		"agentCard", AgentCardRoute,
 	)
 }
 
 // handleAgentCard serves the Agent Card JSON.
 func (s *Server) handleAgentCard(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(s.card); err != nil {
 		s.logger.Warnw("encode agent card: %w", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -134,7 +148,7 @@ func buildSkills(adkAgent agent.Agent) []AgentSkill {
 		ID:          adkAgent.Name(),
 		Name:        adkAgent.Name(),
 		Description: adkAgent.Description(),
-		Tags:        []string{"orchestration"},
+		Tags:        []string{SkillTagOrchestration},
 	})
 
 	// Sub-agent skills.
@@ -143,7 +157,7 @@ func buildSkills(adkAgent agent.Agent) []AgentSkill {
 			ID:          sub.Name(),
 			Name:        sub.Name(),
 			Description: sub.Description(),
-			Tags:        []string{"sub_agent:" + adkAgent.Name()},
+			Tags:        []string{SkillTagSubAgentPrefix + adkAgent.Name()},
 		})
 	}
 

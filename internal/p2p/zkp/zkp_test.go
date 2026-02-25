@@ -49,7 +49,7 @@ func validOwnershipAssignment() (*circuits.WalletOwnershipCircuit, *circuits.Wal
 func TestProverService_CompileAndProve_PlonK(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "plonk",
+		Scheme:   SchemePlonk,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)
@@ -64,7 +64,7 @@ func TestProverService_CompileAndProve_PlonK(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, proof)
 	assert.Equal(t, "wallet_ownership", proof.CircuitID)
-	assert.Equal(t, "plonk", proof.Scheme)
+	assert.Equal(t, SchemePlonk, proof.Scheme)
 	assert.NotEmpty(t, proof.Data)
 	assert.NotEmpty(t, proof.PublicInputs)
 }
@@ -72,7 +72,7 @@ func TestProverService_CompileAndProve_PlonK(t *testing.T) {
 func TestProverService_CompileAndProve_Groth16(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "groth16",
+		Scheme:   SchemeGroth16,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)
@@ -87,14 +87,14 @@ func TestProverService_CompileAndProve_Groth16(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, proof)
 	assert.Equal(t, "wallet_ownership", proof.CircuitID)
-	assert.Equal(t, "groth16", proof.Scheme)
+	assert.Equal(t, SchemeGroth16, proof.Scheme)
 	assert.NotEmpty(t, proof.Data)
 }
 
 func TestProverService_Verify_Valid(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "plonk",
+		Scheme:   SchemePlonk,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)
@@ -122,7 +122,7 @@ func TestProverService_Verify_Valid(t *testing.T) {
 func TestProverService_Verify_Invalid(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "plonk",
+		Scheme:   SchemePlonk,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)
@@ -164,7 +164,7 @@ func TestProverService_Verify_Invalid(t *testing.T) {
 func TestProverService_DoubleCompile_Idempotent(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "plonk",
+		Scheme:   SchemePlonk,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)
@@ -185,7 +185,7 @@ func TestProverService_DoubleCompile_Idempotent(t *testing.T) {
 func TestProverService_ProveUncompiled_Error(t *testing.T) {
 	cfg := Config{
 		CacheDir: t.TempDir(),
-		Scheme:   "plonk",
+		Scheme:   SchemePlonk,
 		Logger:   newTestLogger(),
 	}
 	ps, err := NewProverService(cfg)

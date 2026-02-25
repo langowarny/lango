@@ -50,7 +50,7 @@ func TestAgentCard(t *testing.T) {
 		router := chi.NewRouter()
 		s.RegisterRoutes(router)
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/agent.json", nil)
+		req := httptest.NewRequest(http.MethodGet, AgentCardRoute, nil)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -60,7 +60,7 @@ func TestAgentCard(t *testing.T) {
 		}
 
 		ct := rec.Header().Get("Content-Type")
-		if ct != "application/json" {
+		if ct != ContentTypeJSON {
 			t.Fatalf("want application/json, got %s", ct)
 		}
 
@@ -108,7 +108,7 @@ func TestAgentCardEmpty(t *testing.T) {
 	router := chi.NewRouter()
 	s.RegisterRoutes(router)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent.json", nil)
+	req := httptest.NewRequest(http.MethodGet, AgentCardRoute, nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

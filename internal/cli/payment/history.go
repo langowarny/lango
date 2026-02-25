@@ -10,6 +10,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/wallet"
+)
+
+// Display truncation constants for history table formatting.
+const (
+	maxHashDisplay    = 14
+	truncatedHashLen  = 10
+	maxPurposeDisplay = 24
+	truncatedPurpLen  = 21
 )
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -59,24 +68,25 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			fmt.Fprintln(w, "STATUS\tAMOUNT\tTO\tMETHOD\tPURPOSE\tTX HASH\tCREATED")
 			for _, tx := range txs {
 				hash := tx.TxHash
-				if len(hash) > 14 {
-					hash = hash[:10] + "..."
+				if len(hash) > maxHashDisplay {
+					hash = hash[:truncatedHashLen] + "..."
 				}
 				to := tx.To
-				if len(to) > 14 {
-					to = to[:10] + "..."
+				if len(to) > maxHashDisplay {
+					to = to[:truncatedHashLen] + "..."
 				}
 				purpose := tx.Purpose
-				if len(purpose) > 24 {
-					purpose = purpose[:21] + "..."
+				if len(purpose) > maxPurposeDisplay {
+					purpose = purpose[:truncatedPurpLen] + "..."
 				}
 				method := tx.PaymentMethod
 				if method == "" {
 					method = "direct"
 				}
-				fmt.Fprintf(w, "%s\t%s USDC\t%s\t%s\t%s\t%s\t%s\n",
+				fmt.Fprintf(w, "%s\t%s %s\t%s\t%s\t%s\t%s\t%s\n",
 					tx.Status,
 					tx.Amount,
+					wallet.CurrencyUSDC,
 					to,
 					method,
 					purpose,

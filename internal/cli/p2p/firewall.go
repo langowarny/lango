@@ -50,7 +50,7 @@ func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			for i, r := range cfg.P2P.FirewallRules {
 				rules[i] = firewall.ACLRule{
 					PeerDID:   r.PeerDID,
-					Action:    r.Action,
+					Action:    firewall.ACLAction(r.Action),
 					Tools:     r.Tools,
 					RateLimit: r.RateLimit,
 				}
@@ -109,7 +109,7 @@ func newFirewallAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 
 			rule := firewall.ACLRule{
 				PeerDID:   peerDID,
-				Action:    action,
+				Action:    firewall.ACLAction(action),
 				Tools:     tools,
 				RateLimit: rateLimit,
 			}

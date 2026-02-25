@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
@@ -130,7 +132,7 @@ func p2pPricingHandler(p2pc *p2pComponents) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"tool":     toolName,
 				"price":    price,
-				"currency": "USDC",
+				"currency": wallet.CurrencyUSDC,
 			})
 			return
 		}
@@ -139,7 +141,7 @@ func p2pPricingHandler(p2pc *p2pComponents) http.HandlerFunc {
 			"enabled":    pricing.Enabled,
 			"perQuery":   pricing.PerQuery,
 			"toolPrices": pricing.ToolPrices,
-			"currency":   "USDC",
+			"currency":   wallet.CurrencyUSDC,
 		})
 	}
 }

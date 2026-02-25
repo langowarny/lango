@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func newPricingCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -40,11 +41,11 @@ func newPricingCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 					return enc.Encode(map[string]interface{}{
 						"tool":     toolName,
 						"price":    price,
-						"currency": "USDC",
+						"currency": wallet.CurrencyUSDC,
 					})
 				}
 				fmt.Printf("Tool:     %s\n", toolName)
-				fmt.Printf("Price:    %s USDC\n", price)
+				fmt.Printf("Price:    %s %s\n", price, wallet.CurrencyUSDC)
 				return nil
 			}
 
@@ -55,17 +56,17 @@ func newPricingCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 					"enabled":    pricing.Enabled,
 					"perQuery":   pricing.PerQuery,
 					"toolPrices": pricing.ToolPrices,
-					"currency":   "USDC",
+					"currency":   wallet.CurrencyUSDC,
 				})
 			}
 
 			fmt.Println("P2P Pricing Configuration")
 			fmt.Printf("  Enabled:     %v\n", pricing.Enabled)
-			fmt.Printf("  Per Query:   %s USDC\n", pricing.PerQuery)
+			fmt.Printf("  Per Query:   %s %s\n", pricing.PerQuery, wallet.CurrencyUSDC)
 			if len(pricing.ToolPrices) > 0 {
 				fmt.Println("  Tool Prices:")
 				for tool, price := range pricing.ToolPrices {
-					fmt.Printf("    %-30s %s USDC\n", tool, price)
+					fmt.Printf("    %-30s %s %s\n", tool, price, wallet.CurrencyUSDC)
 				}
 			} else {
 				fmt.Println("  Tool Prices: (none)")

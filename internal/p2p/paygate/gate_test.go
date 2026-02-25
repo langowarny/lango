@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // testGate creates a Gate configured for Base Sepolia testnet.
@@ -65,7 +67,7 @@ func TestCheck_PaidNoAuth(t *testing.T) {
 	require.NotNil(t, result.PriceQuote)
 	assert.Equal(t, "paid-tool", result.PriceQuote.ToolName)
 	assert.Equal(t, "0.50", result.PriceQuote.Price)
-	assert.Equal(t, "USDC", result.PriceQuote.Currency)
+	assert.Equal(t, wallet.CurrencyUSDC, result.PriceQuote.Currency)
 	assert.Equal(t, "0x1234567890abcdef1234567890abcdef12345678", result.PriceQuote.SellerAddr)
 }
 
@@ -184,7 +186,7 @@ func TestBuildQuote(t *testing.T) {
 
 	assert.Equal(t, "my-tool", quote.ToolName)
 	assert.Equal(t, "2.50", quote.Price)
-	assert.Equal(t, "USDC", quote.Currency)
+	assert.Equal(t, wallet.CurrencyUSDC, quote.Currency)
 	assert.Equal(t, int64(84532), quote.ChainID)
 	assert.Equal(t, "0x1234567890abcdef1234567890abcdef12345678", quote.SellerAddr)
 	assert.Greater(t, quote.QuoteExpiry, time.Now().Unix())

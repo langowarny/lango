@@ -1,7 +1,10 @@
 // Package protocol implements the A2A-over-P2P message exchange protocol.
 package protocol
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ProtocolID is the libp2p protocol identifier for A2A messages.
 const ProtocolID = "/lango/a2a/1.0.0"
@@ -26,8 +29,42 @@ const (
 	RequestToolInvokePaid RequestType = "tool_invoke_paid"
 )
 
-// Status constants for payment-related responses.
-const StatusPaymentRequired = "payment_required"
+// ResponseStatus identifies the status of an A2A response.
+type ResponseStatus string
+
+const (
+	// ResponseStatusOK indicates a successful response.
+	ResponseStatusOK ResponseStatus = "ok"
+
+	// ResponseStatusError indicates an error response.
+	ResponseStatusError ResponseStatus = "error"
+
+	// ResponseStatusDenied indicates the request was denied.
+	ResponseStatusDenied ResponseStatus = "denied"
+
+	// ResponseStatusPaymentRequired indicates payment is needed.
+	ResponseStatusPaymentRequired ResponseStatus = "payment_required"
+)
+
+// Valid reports whether s is a known response status.
+func (s ResponseStatus) Valid() bool {
+	switch s {
+	case ResponseStatusOK, ResponseStatusError, ResponseStatusDenied, ResponseStatusPaymentRequired:
+		return true
+	}
+	return false
+}
+
+// Sentinel errors for protocol-level failures.
+var (
+	ErrMissingToolName       = errors.New("missing toolName in payload")
+	ErrAgentCardUnavailable  = errors.New("agent card not available")
+	ErrNoApprovalHandler     = errors.New("no approval handler configured for remote tool invocation")
+	ErrDeniedByOwner         = errors.New("tool invocation denied by owner")
+	ErrExecutorNotConfigured = errors.New("tool executor not configured")
+	ErrInvalidSession        = errors.New("invalid or expired session token")
+	ErrInvalidPaymentAuth    = errors.New("invalid payment authorization")
+)
 
 // Request is a P2P A2A request message.
 type Request struct {
@@ -48,7 +85,7 @@ type AttestationData struct {
 // Response is a P2P A2A response message.
 type Response struct {
 	RequestID        string                 `json:"requestId"`
-	Status           string                 `json:"status"` // "ok", "error", "denied"
+	Status           ResponseStatus         `json:"status"` // ResponseStatusOK, ResponseStatusError, ResponseStatusDenied
 	Result           map[string]interface{} `json:"result,omitempty"`
 	Error            string                 `json:"error,omitempty"`
 	AttestationProof []byte                 `json:"attestationProof,omitempty"` // Deprecated: use Attestation

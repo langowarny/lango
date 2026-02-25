@@ -2370,7 +2370,7 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 
 				rule := firewall.ACLRule{
 					PeerDID:   peerDID,
-					Action:    action,
+					Action:    firewall.ACLAction(action),
 					Tools:     tools,
 					RateLimit: rateLimit,
 				}
@@ -2617,7 +2617,7 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 					"to":        receipt.To,
 					"peerDID":   peerDID,
 					"amount":    receipt.Amount,
-					"currency":  "USDC",
+					"currency":  wallet.CurrencyUSDC,
 					"chainId":   receipt.ChainID,
 					"memo":      memo,
 					"timestamp": receipt.Timestamp.Format(time.RFC3339),

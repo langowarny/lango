@@ -15,6 +15,7 @@ import (
 
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // PricingFunc returns the price (decimal USDC string like "0.50") and whether
@@ -23,6 +24,9 @@ type PricingFunc func(toolName string) (price string, isFree bool)
 
 // ResultStatus describes the outcome of a payment gate check.
 type ResultStatus string
+
+// DefaultQuoteExpiry is the validity window for a price quote.
+const DefaultQuoteExpiry = 5 * time.Minute
 
 const (
 	// StatusFree means the tool is free; no payment required.
@@ -194,11 +198,11 @@ func (g *Gate) BuildQuote(toolName, price string) *PriceQuote {
 	return &PriceQuote{
 		ToolName:     toolName,
 		Price:        price,
-		Currency:     "USDC",
+		Currency:     wallet.CurrencyUSDC,
 		USDCContract: g.usdcAddr.Hex(),
 		ChainID:      g.chainID,
 		SellerAddr:   g.localAddr,
-		QuoteExpiry:  time.Now().Add(5 * time.Minute).Unix(),
+		QuoteExpiry:  time.Now().Add(DefaultQuoteExpiry).Unix(),
 	}
 }
 

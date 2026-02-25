@@ -9,6 +9,7 @@ import (
 	evmsigners "github.com/coinbase/x402/go/signers/evm"
 
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 // SignerProvider creates an EVM signer for X402 payments.
@@ -26,7 +27,7 @@ type LocalSignerProvider struct {
 func NewLocalSignerProvider(secrets *security.SecretsStore) *LocalSignerProvider {
 	return &LocalSignerProvider{
 		secrets: secrets,
-		keyName: "wallet.privatekey",
+		keyName: wallet.WalletKeyName,
 	}
 }
 

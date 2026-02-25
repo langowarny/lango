@@ -24,12 +24,49 @@ import (
 	"go.uber.org/zap"
 )
 
+// ProofScheme identifies the zero-knowledge proving scheme.
+type ProofScheme string
+
+const (
+	SchemePlonk  ProofScheme = "plonk"
+	SchemeGroth16 ProofScheme = "groth16"
+)
+
+// Valid reports whether s is a recognized proving scheme.
+func (s ProofScheme) Valid() bool {
+	switch s {
+	case SchemePlonk, SchemeGroth16:
+		return true
+	}
+	return false
+}
+
+// SRSMode identifies how the structured reference string is sourced.
+type SRSMode string
+
+const (
+	SRSModeUnsafe SRSMode = "unsafe"
+	SRSModeFile   SRSMode = "file"
+)
+
+// Valid reports whether m is a recognized SRS mode.
+func (m SRSMode) Valid() bool {
+	switch m {
+	case SRSModeUnsafe, SRSModeFile:
+		return true
+	}
+	return false
+}
+
+// ErrUnsupportedScheme is returned when an unrecognized proving scheme is used.
+var ErrUnsupportedScheme = errors.New("unsupported proving scheme")
+
 // Proof holds the serialized proof data and metadata.
 type Proof struct {
-	Data         []byte `json:"data"`
-	PublicInputs []byte `json:"publicInputs"`
-	CircuitID    string `json:"circuitId"`
-	Scheme       string `json:"scheme"`
+	Data         []byte      `json:"data"`
+	PublicInputs []byte      `json:"publicInputs"`
+	CircuitID    string      `json:"circuitId"`
+	Scheme       ProofScheme `json:"scheme"`
 }
 
 // CompiledCircuit stores a compiled constraint system with its proving and verifying keys.
@@ -42,17 +79,17 @@ type CompiledCircuit struct {
 // Config configures the ProverService.
 type Config struct {
 	CacheDir string
-	Scheme   string // "plonk" (default) or "groth16"
+	Scheme   ProofScheme // SchemePlonk (default) or SchemeGroth16
 	Logger   *zap.SugaredLogger
-	SRSMode  string // "unsafe" (default) or "file"
-	SRSPath  string // path to SRS file (used when SRSMode == "file")
+	SRSMode  SRSMode // SRSModeUnsafe (default) or SRSModeFile
+	SRSPath  string  // path to SRS file (used when SRSMode == SRSModeFile)
 }
 
 // ProverService manages circuit compilation, proof generation, and verification.
 type ProverService struct {
 	cacheDir string
-	scheme   string // "plonk" or "groth16"
-	srsMode  string // "unsafe" or "file"
+	scheme   ProofScheme
+	srsMode  SRSMode
 	srsPath  string
 	logger   *zap.SugaredLogger
 	mu       sync.RWMutex
@@ -63,7 +100,7 @@ type ProverService struct {
 func NewProverService(cfg Config) (*ProverService, error) {
 	scheme := cfg.Scheme
 	if scheme == "" {
-		scheme = "plonk"
+		scheme = SchemePlonk
 	}
 
 	cacheDir := cfg.CacheDir
@@ -81,7 +118,7 @@ func NewProverService(cfg Config) (*ProverService, error) {
 
 	srsMode := cfg.SRSMode
 	if srsMode == "" {
-		srsMode = "unsafe"
+		srsMode = SRSModeUnsafe
 	}
 
 	svc := &ProverService{
@@ -103,7 +140,7 @@ func NewProverService(cfg Config) (*ProverService, error) {
 }
 
 // Scheme returns the proving scheme.
-func (s *ProverService) Scheme() string { return s.scheme }
+func (s *ProverService) Scheme() ProofScheme { return s.scheme }
 
 // Compile compiles the given circuit and caches the result under circuitID.
 func (s *ProverService) Compile(circuitID string, circuit frontend.Circuit) error {
@@ -123,12 +160,12 @@ func (s *ProverService) Compile(circuitID string, circuit frontend.Circuit) erro
 	)
 
 	switch s.scheme {
-	case "plonk":
+	case SchemePlonk:
 		ccs, err = frontend.Compile(ecc.BN254.ScalarField(), scs.NewBuilder, circuit)
-	case "groth16":
+	case SchemeGroth16:
 		ccs, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)
 	default:
-		return fmt.Errorf("unsupported proving scheme: %s", s.scheme)
+		return fmt.Errorf("%w: %s", ErrUnsupportedScheme, s.scheme)
 	}
 	if err != nil {
 		return fmt.Errorf("compile circuit %q: %w", circuitID, err)
@@ -137,7 +174,7 @@ func (s *ProverService) Compile(circuitID string, circuit frontend.Circuit) erro
 	compiled := &CompiledCircuit{CCS: ccs}
 
 	switch s.scheme {
-	case "plonk":
+	case SchemePlonk:
 		canonical, lagrange, err := s.loadSRS(ccs, circuitID)
 		if err != nil {
 			return fmt.Errorf("load SRS for %q: %w", circuitID, err)
@@ -149,7 +186,7 @@ func (s *ProverService) Compile(circuitID string, circuit frontend.Circuit) erro
 		compiled.ProvingKey = pk
 		compiled.VerifyingKey = vk
 
-	case "groth16":
+	case SchemeGroth16:
 		pk, vk, err := groth16.Setup(ccs)
 		if err != nil {
 			return fmt.Errorf("groth16 setup for %q: %w", circuitID, err)
@@ -188,7 +225,7 @@ func (s *ProverService) Prove(ctx context.Context, circuitID string, assignment 
 	var proofBuf bytes.Buffer
 
 	switch s.scheme {
-	case "plonk":
+	case SchemePlonk:
 		pk, ok := compiled.ProvingKey.(plonk.ProvingKey)
 		if !ok {
 			return nil, fmt.Errorf("invalid plonk proving key for %q", circuitID)
@@ -201,7 +238,7 @@ func (s *ProverService) Prove(ctx context.Context, circuitID string, assignment 
 			return nil, fmt.Errorf("serialize plonk proof for %q: %w", circuitID, err)
 		}
 
-	case "groth16":
+	case SchemeGroth16:
 		pk, ok := compiled.ProvingKey.(groth16.ProvingKey)
 		if !ok {
 			return nil, fmt.Errorf("invalid groth16 proving key for %q", circuitID)
@@ -215,7 +252,7 @@ func (s *ProverService) Prove(ctx context.Context, circuitID string, assignment 
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported proving scheme: %s", s.scheme)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedScheme, s.scheme)
 	}
 
 	var publicBuf bytes.Buffer
@@ -255,7 +292,7 @@ func (s *ProverService) Verify(ctx context.Context, proof *Proof, circuit fronte
 	}
 
 	switch s.scheme {
-	case "plonk":
+	case SchemePlonk:
 		vk, ok := compiled.VerifyingKey.(plonk.VerifyingKey)
 		if !ok {
 			return false, fmt.Errorf("invalid plonk verifying key for %q", proof.CircuitID)
@@ -269,7 +306,7 @@ func (s *ProverService) Verify(ctx context.Context, proof *Proof, circuit fronte
 		}
 		return true, nil
 
-	case "groth16":
+	case SchemeGroth16:
 		vk, ok := compiled.VerifyingKey.(groth16.VerifyingKey)
 		if !ok {
 			return false, fmt.Errorf("invalid groth16 verifying key for %q", proof.CircuitID)
@@ -284,7 +321,7 @@ func (s *ProverService) Verify(ctx context.Context, proof *Proof, circuit fronte
 		return true, nil
 
 	default:
-		return false, fmt.Errorf("unsupported proving scheme: %s", s.scheme)
+		return false, fmt.Errorf("%w: %s", ErrUnsupportedScheme, s.scheme)
 	}
 }
 
@@ -302,7 +339,7 @@ func (s *ProverService) IsCompiled(circuitID string) bool {
 func (s *ProverService) loadSRS(
 	ccs constraint.ConstraintSystem, circuitID string,
 ) (kzg.SRS, kzg.SRS, error) {
-	if s.srsMode == "file" && s.srsPath != "" {
+	if s.srsMode == SRSModeFile && s.srsPath != "" {
 		canonical, lagrange, err := loadSRSFromFile(s.srsPath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {

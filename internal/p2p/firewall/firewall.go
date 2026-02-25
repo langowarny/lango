@@ -4,6 +4,7 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,13 +15,44 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// ACLAction identifies the action of an ACL rule.
+type ACLAction string
+
+const (
+	// ACLActionAllow permits matching queries.
+	ACLActionAllow ACLAction = "allow"
+
+	// ACLActionDeny blocks matching queries.
+	ACLActionDeny ACLAction = "deny"
+)
+
+// Valid reports whether a is a known ACL action.
+func (a ACLAction) Valid() bool {
+	switch a {
+	case ACLActionAllow, ACLActionDeny:
+		return true
+	}
+	return false
+}
+
+// WildcardAll matches all peers or all tools.
+const WildcardAll = "*"
+
+// Sentinel errors for firewall decisions.
+var (
+	ErrRateLimitExceeded       = errors.New("rate limit exceeded")
+	ErrGlobalRateLimitExceeded = errors.New("global rate limit exceeded")
+	ErrQueryDenied             = errors.New("query denied by firewall rule")
+	ErrNoMatchingAllowRule     = errors.New("query denied: no matching allow rule")
+)
+
 // ACLRule defines an access control rule.
 type ACLRule struct {
-	// PeerDID is the peer this rule applies to ("*" for all peers).
+	// PeerDID is the peer this rule applies to (WildcardAll for all peers).
 	PeerDID string `json:"peerDid"`
 
-	// Action is "allow" or "deny".
-	Action string `json:"action"`
+	// Action is ACLActionAllow or ACLActionDeny.
+	Action ACLAction `json:"action"`
 
 	// Tools lists tool name patterns (supports * wildcard).
 	Tools []string `json:"tools"`
@@ -113,13 +145,13 @@ func (f *Firewall) FilterQuery(ctx context.Context, peerDID, toolName string) er
 	// Check rate limit first.
 	if limiter, ok := f.limiters[peerDID]; ok {
 		if !limiter.Allow() {
-			return fmt.Errorf("rate limit exceeded for peer %s", peerDID)
+			return fmt.Errorf("%w for peer %s", ErrRateLimitExceeded, peerDID)
 		}
 	}
 	// Also check wildcard rate limiter.
-	if limiter, ok := f.limiters["*"]; ok {
+	if limiter, ok := f.limiters[WildcardAll]; ok {
 		if !limiter.Allow() {
-			return fmt.Errorf("global rate limit exceeded")
+			return ErrGlobalRateLimitExceeded
 		}
 	}
 
@@ -146,15 +178,15 @@ func (f *Firewall) FilterQuery(ctx context.Context, peerDID, toolName string) er
 		}
 
 		switch rule.Action {
-		case "allow":
+		case ACLActionAllow:
 			allowed = true
-		case "deny":
-			return fmt.Errorf("query denied by firewall rule for peer %s, tool %s", peerDID, toolName)
+		case ACLActionDeny:
+			return fmt.Errorf("%w for peer %s, tool %s", ErrQueryDenied, peerDID, toolName)
 		}
 	}
 
 	if !allowed {
-		return fmt.Errorf("query denied: no matching allow rule for peer %s, tool %s", peerDID, toolName)
+		return fmt.Errorf("%w for peer %s, tool %s", ErrNoMatchingAllowRule, peerDID, toolName)
 	}
 
 	return nil
@@ -208,14 +240,14 @@ func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*Attestati
 // ValidateRule checks whether an ACL rule is safe to add. It rejects
 // overly permissive allow rules (wildcard peer + wildcard tools).
 func ValidateRule(rule ACLRule) error {
-	if rule.Action != "allow" {
+	if rule.Action != ACLActionAllow {
 		return nil // deny rules are always safe
 	}
 
-	isWildcardPeer := rule.PeerDID == "*"
+	isWildcardPeer := rule.PeerDID == WildcardAll
 	isWildcardTools := len(rule.Tools) == 0
 	for _, t := range rule.Tools {
-		if t == "*" {
+		if t == WildcardAll {
 			isWildcardTools = true
 			break
 		}
@@ -285,7 +317,7 @@ func (f *Firewall) Rules() []ACLRule {
 
 // matchesPeer checks if a rule peer pattern matches the given peer DID.
 func matchesPeer(pattern, peerDID string) bool {
-	if pattern == "*" {
+	if pattern == WildcardAll {
 		return true
 	}
 	return pattern == peerDID
@@ -297,11 +329,11 @@ func matchesTool(patterns []string, toolName string) bool {
 		return true // No tool filter means all tools.
 	}
 	for _, p := range patterns {
-		if p == "*" {
+		if p == WildcardAll {
 			return true
 		}
-		if strings.HasSuffix(p, "*") {
-			if strings.HasPrefix(toolName, strings.TrimSuffix(p, "*")) {
+		if strings.HasSuffix(p, WildcardAll) {
+			if strings.HasPrefix(toolName, strings.TrimSuffix(p, WildcardAll)) {
 				return true
 			}
 		}

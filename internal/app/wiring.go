@@ -190,7 +190,7 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
-		kmsProvider, err := security.NewKMSProvider(cfg.Security.Signer.Provider, cfg.Security.KMS)
+		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
@@ -1225,7 +1225,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	for _, r := range cfg.P2P.FirewallRules {
 		aclRules = append(aclRules, firewall.ACLRule{
 			PeerDID:   r.PeerDID,
-			Action:    r.Action,
+			Action:    firewall.ACLAction(r.Action),
 			Tools:     r.Tools,
 			RateLimit: r.RateLimit,
 		})
@@ -1269,7 +1269,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 				Proof:        proof.Data,
 				PublicInputs: proof.PublicInputs,
 				CircuitID:    proof.CircuitID,
-				Scheme:       proof.Scheme,
+				Scheme:       string(proof.Scheme),
 			}, nil
 		})
 		pLogger.Info("ZK response attestation wired to firewall")
@@ -1382,7 +1382,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	// Set pricing info on gossip card if pricing is enabled.
 	if cfg.P2P.Pricing.Enabled {
 		localCard.Pricing = &discovery.PricingInfo{
-			Currency:   "USDC",
+			Currency:   wallet.CurrencyUSDC,
 			PerQuery:   cfg.P2P.Pricing.PerQuery,
 			ToolPrices: cfg.P2P.Pricing.ToolPrices,
 		}
@@ -1483,8 +1483,8 @@ func initZKP(cfg *config.Config) *zkp.ProverService {
 
 	prover, err := zkp.NewProverService(zkp.Config{
 		CacheDir: cfg.P2P.ZKP.ProofCacheDir,
-		Scheme:   cfg.P2P.ZKP.ProvingScheme,
-		SRSMode:  cfg.P2P.ZKP.SRSMode,
+		Scheme:   zkp.ProofScheme(cfg.P2P.ZKP.ProvingScheme),
+		SRSMode:  zkp.SRSMode(cfg.P2P.ZKP.SRSMode),
 		SRSPath:  cfg.P2P.ZKP.SRSPath,
 		Logger:   logger(),
 	})
