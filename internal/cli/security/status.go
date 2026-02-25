@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -34,6 +36,10 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				Interceptor    string `json:"interceptor"`
 				PIIRedaction   string `json:"pii_redaction"`
 				ApprovalPolicy string `json:"approval_policy"`
+				DBEncryption   string `json:"db_encryption"`
+				KMSProvider    string `json:"kms_provider,omitempty"`
+				KMSKeyID       string `json:"kms_key_id,omitempty"`
+				KMSFallback    string `json:"kms_fallback,omitempty"`
 			}
 
 			policy := string(cfg.Security.Interceptor.ApprovalPolicy)
@@ -41,11 +47,33 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				policy = "dangerous"
 			}
 
+			// Determine DB encryption status.
+			dbEncStatus := "disabled (plaintext)"
+			dbPath := cfg.Session.DatabasePath
+			if strings.HasPrefix(dbPath, "~/") {
+				if h, err := os.UserHomeDir(); err == nil {
+					dbPath = filepath.Join(h, dbPath[2:])
+				}
+			}
+			if bootstrap.IsDBEncrypted(dbPath) {
+				dbEncStatus = "encrypted (active)"
+			} else if cfg.Security.DBEncryption.Enabled {
+				dbEncStatus = "enabled (pending migration)"
+			}
+
 			s := statusOutput{
 				SignerProvider: cfg.Security.Signer.Provider,
 				Interceptor:    boolToStatus(cfg.Security.Interceptor.Enabled),
 				PIIRedaction:   boolToStatus(cfg.Security.Interceptor.RedactPII),
 				ApprovalPolicy: policy,
+				DBEncryption:   dbEncStatus,
+			}
+
+			// Populate KMS fields when a KMS provider is configured.
+			if isKMSProvider(cfg.Security.Signer.Provider) {
+				s.KMSProvider = cfg.Security.Signer.Provider
+				s.KMSKeyID = cfg.Security.KMS.KeyID
+				s.KMSFallback = boolToStatus(cfg.Security.KMS.FallbackToLocal)
 			}
 
 			ctx := context.Background()
@@ -73,6 +101,12 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
 			fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
 			fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
+			fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
+			if s.KMSProvider != "" {
+				fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
+				fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
+				fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
+			}
 
 			return nil
 		},

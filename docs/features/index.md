@@ -72,6 +72,14 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
     [:octicons-arrow-right-24: Learn more](a2a-protocol.md)
 
+-   :globe_with_meridians: **[P2P Network](p2p-network.md)** :material-flask-outline:{ title="Experimental" }
+
+    ---
+
+    Decentralized agent-to-agent connectivity via libp2p with DID identity, knowledge firewall, and ZK-enhanced handshake.
+
+    [:octicons-arrow-right-24: Learn more](p2p-network.md)
+
 -   :toolbox: **[Skill System](skills.md)**
 
     ---
@@ -110,6 +118,7 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 | Knowledge Graph | Experimental | `graph.enabled` |
 | Multi-Agent Orchestration | Experimental | `agent.multiAgent` |
 | A2A Protocol | Experimental | `a2a.enabled` |
+| P2P Network | Experimental | `p2p.enabled` |
 | Skill System | Stable | `skill.enabled` |
 | Proactive Librarian | Experimental | `librarian.enabled` |
 | System Prompts | Stable | `agent.promptsDir` |

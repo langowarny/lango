@@ -539,6 +539,92 @@ Each remote agent entry:
 
 ---
 
+## P2P Network
+
+!!! warning "Experimental"
+    The P2P networking system is experimental. See [P2P Network](features/p2p-network.md).
+
+> **Settings:** `lango settings` → P2P Network
+
+```json
+{
+  "p2p": {
+    "enabled": false,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9000"],
+    "bootstrapPeers": [],
+    "keyDir": "~/.lango/p2p",
+    "enableRelay": false,
+    "enableMdns": true,
+    "maxPeers": 50,
+    "handshakeTimeout": "30s",
+    "sessionTokenTtl": "1h",
+    "autoApproveKnownPeers": false,
+    "firewallRules": [],
+    "gossipInterval": "30s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "zkp": {
+      "proofCacheDir": "~/.lango/zkp",
+      "provingScheme": "plonk"
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.enabled` | `bool` | `false` | Enable P2P networking |
+| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.bootstrapPeers` | `[]string` | `[]` | Initial peers for DHT bootstrapping |
+| `p2p.keyDir` | `string` | `~/.lango/p2p` | Directory for node key persistence |
+| `p2p.enableRelay` | `bool` | `false` | Act as relay for NAT traversal |
+| `p2p.enableMdns` | `bool` | `true` | Enable mDNS for LAN discovery |
+| `p2p.maxPeers` | `int` | `50` | Maximum connected peers |
+| `p2p.handshakeTimeout` | `duration` | `30s` | Maximum handshake duration |
+| `p2p.sessionTokenTtl` | `duration` | `1h` | Session token lifetime |
+| `p2p.autoApproveKnownPeers` | `bool` | `false` | Skip approval for known peers |
+| `p2p.firewallRules` | `[]object` | `[]` | Static firewall ACL rules |
+| `p2p.gossipInterval` | `duration` | `30s` | Agent card gossip interval |
+| `p2p.zkHandshake` | `bool` | `false` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | `bool` | `false` | Enable ZK attestation on responses |
+| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/zkp` | ZKP circuit cache directory |
+| `p2p.zkp.provingScheme` | `string` | `plonk` | ZKP proving scheme: `plonk` or `groth16` |
+
+Each firewall rule entry:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `firewallRules[].peerDid` | `string` | Peer DID (`"*"` for all peers) |
+| `firewallRules[].action` | `string` | `"allow"` or `"deny"` |
+| `firewallRules[].tools` | `[]string` | Tool name patterns (empty = all) |
+| `firewallRules[].rateLimit` | `int` | Max requests/min (0 = unlimited) |
+
+### P2P Pricing
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.pricing.enabled` | `bool` | `false` | Enable paid P2P tool invocations |
+| `p2p.pricing.perQuery` | `string` | | Default price per query in USDC (e.g., `"0.10"`) |
+| `p2p.pricing.toolPrices` | `map[string]string` | | Map of tool names to specific prices in USDC |
+
+### P2P Owner Protection
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.ownerProtection.ownerName` | `string` | | Owner name to block from P2P responses |
+| `p2p.ownerProtection.ownerEmail` | `string` | | Owner email to block from P2P responses |
+| `p2p.ownerProtection.ownerPhone` | `string` | | Owner phone to block from P2P responses |
+| `p2p.ownerProtection.extraTerms` | `[]string` | | Additional terms to block from P2P responses |
+| `p2p.ownerProtection.blockConversations` | `bool` | `true` | Block conversation data in P2P responses |
+
+### P2P Reputation
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.minTrustScore` | `float64` | `0.3` | Minimum trust score to accept P2P requests (0.0 - 1.0) |
+
+---
+
 ## Cron
 
 See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](cli/automation.md#cron-commands).

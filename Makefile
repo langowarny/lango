@@ -58,6 +58,10 @@ test:
 test-short:
 	$(GOTEST) -v -short ./...
 
+## test-p2p: Run P2P and wallet spending tests
+test-p2p:
+	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -101,6 +105,12 @@ ci: fmt-check vet lint test
 deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
+
+# ─── Sandbox ──────────────────────────────────────────────────────────────────
+
+## sandbox-image: Build sandbox Docker image for P2P tool isolation
+sandbox-image:
+	docker build -t lango-sandbox:latest -f build/sandbox/Dockerfile bin/
 
 # ─── Docker Build ────────────────────────────────────────────────────────────
 
@@ -147,9 +157,10 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short bench coverage \
+        test test-short test-p2p bench coverage \
         fmt fmt-check vet lint generate ci \
         deps \
+        sandbox-image \
         docker-build docker-push \
         docker-up docker-down docker-logs \
         health clean help

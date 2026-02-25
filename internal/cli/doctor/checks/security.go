@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/session"
 )
@@ -82,6 +85,22 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 			// EntStore implementation: GetChecksum returns error if query fails.
 			// Salt/Checksum usually exist together.
 			issues = append(issues, "Passphrase checksum not found in database (run 'lango security migrate-passphrase'?)")
+			if status < StatusWarn {
+				status = StatusWarn
+			}
+		}
+	}
+
+	// 3. Check DB encryption status.
+	if cfg.Security.DBEncryption.Enabled {
+		dbPath := cfg.Session.DatabasePath
+		if strings.HasPrefix(dbPath, "~/") {
+			if h, err := os.UserHomeDir(); err == nil {
+				dbPath = filepath.Join(h, dbPath[2:])
+			}
+		}
+		if !bootstrap.IsDBEncrypted(dbPath) {
+			issues = append(issues, "DB encryption enabled in config but database is plaintext (run 'lango security db-migrate')")
 			if status < StatusWarn {
 				status = StatusWarn
 			}

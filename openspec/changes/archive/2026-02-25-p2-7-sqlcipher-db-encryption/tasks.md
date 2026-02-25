@@ -1,0 +1,23 @@
+- [x] Add `DBEncryptionConfig` struct to `internal/config/types.go` with `Enabled` and `CipherPageSize` fields
+- [x] Add `DBEncryption` field to `SecurityConfig` in `internal/config/types.go`
+- [x] Add default values in `internal/config/loader.go` (Enabled: false, CipherPageSize: 4096)
+- [x] Add viper defaults for `security.dbEncryption.enabled` and `security.dbEncryption.cipherPageSize`
+- [x] Add `DBEncryption config.DBEncryptionConfig` field to `bootstrap.Options`
+- [x] Implement `IsDBEncrypted(dbPath)` function in `internal/bootstrap/bootstrap.go`
+- [x] Change `openDatabase` signature to accept `encryptionKey string` and `cipherPageSize int`
+- [x] Add `PRAGMA key` and `PRAGMA cipher_page_size` execution when encryption key is non-empty
+- [x] Restructure `Run()` to detect encryption and acquire passphrase before DB open
+- [x] Create `internal/dbmigrate/migrate.go` with `MigrateToEncrypted()` function
+- [x] Create `DecryptToPlaintext()` function in `internal/dbmigrate/migrate.go`
+- [x] Implement `IsEncrypted()` and `IsSQLCipherAvailable()` helpers in dbmigrate
+- [x] Implement `secureDeleteFile()` for zero-overwrite backup deletion
+- [x] Implement `verifySQLCipherAvailable()`, `verifyEncryptedDB()`, `verifyPlaintextDB()` helpers
+- [x] Create `internal/cli/security/db_migrate.go` with `newDBMigrateCmd` and `newDBDecryptCmd`
+- [x] Register `db-migrate` and `db-decrypt` commands in `NewSecurityCmd`
+- [x] Add `Confirm()` function to `internal/cli/prompt/prompt.go`
+- [x] Update `lango security status` to display `DBEncryption` state
+- [x] Update doctor security check to warn on pending migration
+- [x] Write `internal/dbmigrate/migrate_test.go` with table-driven tests
+- [x] Write `internal/bootstrap/bootstrap_encryption_test.go`
+- [x] Verify `go build ./...` passes
+- [x] Verify `go test ./...` passes

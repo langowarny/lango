@@ -234,6 +234,85 @@ func TestCompositeProvider_FirstMatchWins(t *testing.T) {
 	}
 }
 
+func TestCompositeProvider_P2PSessionBlocksHeadless(t *testing.T) {
+	// HeadlessProvider as TTY fallback must NOT be used for P2P sessions.
+	headless := &mockProvider{result: true}
+
+	comp := NewCompositeProvider()
+	comp.SetTTYFallback(headless) // simulates HeadlessProvider as TTY fallback
+
+	req := ApprovalRequest{
+		ID:         "test-p2p-headless",
+		ToolName:   "exec",
+		SessionKey: "p2p:did:key:attacker",
+		CreatedAt:  time.Now(),
+	}
+
+	_, err := comp.RequestApproval(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error: P2P session should not fall through to TTY/HeadlessProvider")
+	}
+	if headless.wasCalled() {
+		t.Error("HeadlessProvider (TTY fallback) should NOT be called for P2P sessions")
+	}
+}
+
+func TestCompositeProvider_P2PFallbackRouting(t *testing.T) {
+	p2pFb := &mockProvider{result: true}
+
+	comp := NewCompositeProvider()
+	comp.SetP2PFallback(p2pFb)
+	comp.SetTTYFallback(&mockProvider{result: true}) // should NOT be used
+
+	req := ApprovalRequest{
+		ID:         "test-p2p-fb",
+		ToolName:   "echo",
+		SessionKey: "p2p:did:key:friend",
+		CreatedAt:  time.Now(),
+	}
+
+	resp, err := comp.RequestApproval(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Approved {
+		t.Error("expected P2P fallback to approve")
+	}
+	if !p2pFb.wasCalled() {
+		t.Error("expected P2P fallback provider to be called")
+	}
+}
+
+func TestCompositeProvider_NonP2PStillUsesTTY(t *testing.T) {
+	tty := &mockProvider{result: true}
+	p2pFb := &mockProvider{result: false}
+
+	comp := NewCompositeProvider()
+	comp.SetTTYFallback(tty)
+	comp.SetP2PFallback(p2pFb)
+
+	req := ApprovalRequest{
+		ID:         "test-non-p2p",
+		ToolName:   "exec",
+		SessionKey: "local:session:123",
+		CreatedAt:  time.Now(),
+	}
+
+	resp, err := comp.RequestApproval(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Approved {
+		t.Error("expected TTY fallback to approve for non-P2P session")
+	}
+	if !tty.wasCalled() {
+		t.Error("expected TTY fallback to be called for non-P2P session")
+	}
+	if p2pFb.wasCalled() {
+		t.Error("P2P fallback should NOT be called for non-P2P session")
+	}
+}
+
 func TestGatewayProvider(t *testing.T) {
 	tests := []struct {
 		give           string

@@ -111,7 +111,7 @@ func buildBalanceTool(svc *payment.Service) *agent.Tool {
 
 			return map[string]interface{}{
 				"balance":  balance,
-				"currency": "USDC",
+				"currency": wallet.CurrencyUSDC,
 				"address":  addr,
 				"chainId":  svc.ChainID(),
 				"network":  wallet.NetworkName(svc.ChainID()),
@@ -178,7 +178,7 @@ func buildLimitsTool(limiter wallet.SpendingLimiter) *agent.Tool {
 				return map[string]interface{}{
 					"dailySpent":     wallet.FormatUSDC(spent),
 					"dailyRemaining": wallet.FormatUSDC(remaining),
-					"currency":       "USDC",
+					"currency":       wallet.CurrencyUSDC,
 				}, nil
 			}
 
@@ -187,7 +187,7 @@ func buildLimitsTool(limiter wallet.SpendingLimiter) *agent.Tool {
 				"maxDaily":       wallet.FormatUSDC(entLimiter.MaxDaily()),
 				"dailySpent":     wallet.FormatUSDC(spent),
 				"dailyRemaining": wallet.FormatUSDC(remaining),
-				"currency":       "USDC",
+				"currency":       wallet.CurrencyUSDC,
 			}, nil
 		},
 	}

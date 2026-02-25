@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -14,8 +15,10 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/wallet"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -188,6 +191,7 @@ func New(boot *bootstrap.Result) (*App, error) {
 
 	// 5h. Payment tools (optional)
 	pc := initPayment(cfg, store, app.Secrets)
+	var p2pc *p2pComponents
 	var x402Interceptor *x402pkg.Interceptor
 	if pc != nil {
 		app.WalletProvider = pc.wallet
@@ -201,6 +205,15 @@ func New(boot *bootstrap.Result) (*App, error) {
 		}
 
 		tools = append(tools, buildPaymentTools(pc, x402Interceptor)...)
+
+		// 5h''. P2P networking (optional, requires wallet)
+		p2pc = initP2P(cfg, pc.wallet, pc, boot.DBClient, app.Secrets)
+		if p2pc != nil {
+			app.P2PNode = p2pc.node
+			// Wire P2P payment tool.
+			tools = append(tools, buildP2PTools(p2pc)...)
+			tools = append(tools, buildP2PPaymentTool(p2pc, pc)...)
+		}
 	}
 
 	// 5i. Librarian tools (optional)
@@ -244,9 +257,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 	} else {
 		composite.SetTTYFallback(&approval.TTYProvider{})
 	}
+	// P2P sessions use a dedicated fallback to prevent HeadlessProvider
+	// from auto-approving remote peer requests.
+	if cfg.P2P.Enabled {
+		composite.SetP2PFallback(&approval.TTYProvider{})
+		logger().Info("P2P approval routed to TTY (HeadlessProvider blocked for remote peers)")
+	}
 	app.ApprovalProvider = composite
 
 	grantStore := approval.NewGrantStore()
+	// P2P grants expire after 1 hour to limit the window of implicit trust.
+	if cfg.P2P.Enabled {
+		grantStore.SetTTL(time.Hour)
+	}
 	app.GrantStore = grantStore
 
 	policy := cfg.Security.Interceptor.ApprovalPolicy
@@ -254,8 +277,12 @@ func New(boot *bootstrap.Result) (*App, error) {
 		policy = config.ApprovalPolicyDangerous
 	}
 	if policy != config.ApprovalPolicyNone {
+		var limiter wallet.SpendingLimiter
+		if pc != nil {
+			limiter = pc.limiter
+		}
 		for i, t := range tools {
-			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore)
+			tools[i] = wrapWithApproval(t, cfg.Security.Interceptor, composite, grantStore, limiter)
 		}
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
@@ -274,6 +301,110 @@ func New(boot *bootstrap.Result) (*App, error) {
 	if cfg.A2A.Enabled && cfg.Agent.MultiAgent && adkAgent.ADKAgent() != nil {
 		a2aServer := a2a.NewServer(cfg.A2A, adkAgent.ADKAgent(), logger())
 		a2aServer.RegisterRoutes(app.Gateway.Router())
+	}
+
+	// 9c. P2P executor + REST API routes (if P2P enabled)
+	if p2pc != nil {
+		// Wire executor callback so remote peers can invoke local tools.
+		// Capture the tools slice in a closure for direct tool dispatch.
+		if p2pc.handler != nil {
+			toolIndex := make(map[string]*agent.Tool, len(tools))
+			for _, t := range tools {
+				toolIndex[t.Name] = t
+			}
+			p2pc.handler.SetExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+				t, ok := toolIndex[toolName]
+				if !ok {
+					return nil, fmt.Errorf("tool %q not found", toolName)
+				}
+				result, err := t.Handler(ctx, params)
+				if err != nil {
+					return nil, err
+				}
+				// Coerce the result to map[string]interface{}.
+				switch v := result.(type) {
+				case map[string]interface{}:
+					return v, nil
+				default:
+					return map[string]interface{}{"result": v}, nil
+				}
+			})
+
+			// Wire sandbox executor for P2P tool isolation if enabled.
+			if cfg.P2P.ToolIsolation.Enabled {
+				sbxCfg := sandbox.Config{
+					Enabled:        true,
+					TimeoutPerTool: cfg.P2P.ToolIsolation.TimeoutPerTool,
+					MaxMemoryMB:    cfg.P2P.ToolIsolation.MaxMemoryMB,
+				}
+				var sbxExec sandbox.Executor
+				if cfg.P2P.ToolIsolation.Container.Enabled {
+					containerExec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
+					if err != nil {
+						logger().Warnf("Container sandbox unavailable, falling back to subprocess: %v", err)
+						sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+					} else {
+						sbxExec = containerExec
+						logger().Infof("P2P tool isolation enabled (container mode: %s)", containerExec.RuntimeName())
+					}
+				} else {
+					sbxExec = sandbox.NewSubprocessExecutor(sbxCfg)
+					logger().Info("P2P tool isolation enabled (subprocess mode)")
+				}
+				p2pc.handler.SetSandboxExecutor(func(ctx context.Context, toolName string, params map[string]interface{}) (map[string]interface{}, error) {
+					return sbxExec.Execute(ctx, toolName, params)
+				})
+			}
+
+			// Wire owner approval callback for inbound remote tool invocations.
+			if pc != nil {
+				p2pc.handler.SetApprovalFunc(func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error) {
+					// Never auto-approve dangerous tools via P2P.
+					// Unknown tools (not in index) are also treated as dangerous.
+					t, known := toolIndex[toolName]
+					if !known || t.SafetyLevel.IsDangerous() {
+						goto requireApproval
+					}
+
+					// For non-dangerous paid tools, check if the amount is auto-approvable.
+					if p2pc.pricingFn != nil {
+						if priceStr, isFree := p2pc.pricingFn(toolName); !isFree {
+							amt, err := wallet.ParseUSDC(priceStr)
+							if err == nil {
+								if autoOK, checkErr := pc.limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
+									if grantStore != nil {
+										grantStore.Grant("p2p:"+peerDID, toolName)
+									}
+									return true, nil
+								}
+							}
+						}
+					}
+
+				requireApproval:
+					// Fall back to composite approval provider.
+					req := approval.ApprovalRequest{
+						ID:         fmt.Sprintf("p2p-%d", time.Now().UnixNano()),
+						ToolName:   toolName,
+						SessionKey: "p2p:" + peerDID,
+						Params:     params,
+						Summary:    fmt.Sprintf("Remote peer %s wants to invoke tool '%s'", truncate(peerDID, 16), toolName),
+						CreatedAt:  time.Now(),
+					}
+					resp, err := composite.RequestApproval(ctx, req)
+					if err != nil {
+						return false, nil // fail-closed
+					}
+					// Record grant to avoid double-approval (handler approvalFn + tool's wrapWithApproval).
+					if resp.Approved && grantStore != nil {
+						grantStore.Grant("p2p:"+peerDID, toolName)
+					}
+					return resp.Approved, nil
+				})
+			}
+		}
+		registerP2PRoutes(app.Gateway.Router(), p2pc)
+		logger().Info("P2P REST API routes registered")
 	}
 
 	// 10. Channels
@@ -351,6 +482,15 @@ func (a *App) Start(ctx context.Context) error {
 		logger().Info("proactive librarian buffer started")
 	}
 
+	// Start P2P node if enabled
+	if a.P2PNode != nil {
+		if err := a.P2PNode.Start(&a.wg); err != nil {
+			logger().Errorw("P2P node start error", "error", err)
+		} else {
+			logger().Infow("P2P node started", "peerID", a.P2PNode.PeerID())
+		}
+	}
+
 	// Start cron scheduler if enabled
 	if a.CronScheduler != nil {
 		if err := a.CronScheduler.Start(ctx); err != nil {
@@ -394,6 +534,15 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.WorkflowEngine != nil {
 		a.WorkflowEngine.Shutdown()
 		logger().Info("workflow engine stopped")
+	}
+
+	// Stop P2P node
+	if a.P2PNode != nil {
+		if err := a.P2PNode.Stop(); err != nil {
+			logger().Warnw("P2P node stop error", "error", err)
+		} else {
+			logger().Info("P2P node stopped")
+		}
 	}
 
 	// Signal gateway and channels to stop

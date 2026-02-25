@@ -23,6 +23,11 @@ type SpendingLimiter interface {
 
 	// DailyRemaining returns the remaining daily budget.
 	DailyRemaining(ctx context.Context) (*big.Int, error)
+
+	// IsAutoApprovable checks whether the given amount can be auto-approved
+	// without explicit user confirmation, based on the autoApproveBelow threshold
+	// and spending limits.
+	IsAutoApprovable(ctx context.Context, amount *big.Int) (bool, error)
 }
 
 // USDCDecimals is the number of decimal places for USDC (6).
@@ -62,13 +67,16 @@ func FormatUSDC(amount *big.Int) string {
 
 // EntSpendingLimiter uses Ent PaymentTx records to enforce spending limits.
 type EntSpendingLimiter struct {
-	client   *ent.Client
-	maxPerTx *big.Int
-	maxDaily *big.Int
+	client           *ent.Client
+	maxPerTx         *big.Int
+	maxDaily         *big.Int
+	autoApproveBelow *big.Int
 }
 
 // NewEntSpendingLimiter creates a spending limiter backed by Ent PaymentTx records.
-func NewEntSpendingLimiter(client *ent.Client, maxPerTx, maxDaily string) (*EntSpendingLimiter, error) {
+// autoApproveBelow is the USDC amount threshold below which transactions can be
+// auto-approved without explicit user confirmation. Pass "" or "0" to disable.
+func NewEntSpendingLimiter(client *ent.Client, maxPerTx, maxDaily, autoApproveBelow string) (*EntSpendingLimiter, error) {
 	perTx, err := ParseUSDC(maxPerTx)
 	if err != nil {
 		return nil, fmt.Errorf("parse maxPerTx: %w", err)
@@ -79,10 +87,20 @@ func NewEntSpendingLimiter(client *ent.Client, maxPerTx, maxDaily string) (*EntS
 		return nil, fmt.Errorf("parse maxDaily: %w", err)
 	}
 
+	autoApprove := big.NewInt(0)
+	if autoApproveBelow != "" {
+		parsed, err := ParseUSDC(autoApproveBelow)
+		if err != nil {
+			return nil, fmt.Errorf("parse autoApproveBelow: %w", err)
+		}
+		autoApprove = parsed
+	}
+
 	return &EntSpendingLimiter{
-		client:   client,
-		maxPerTx: perTx,
-		maxDaily: daily,
+		client:           client,
+		maxPerTx:         perTx,
+		maxDaily:         daily,
+		autoApproveBelow: autoApprove,
 	}, nil
 }
 
@@ -163,6 +181,25 @@ func (l *EntSpendingLimiter) MaxPerTx() *big.Int {
 // MaxDaily returns the daily spending limit.
 func (l *EntSpendingLimiter) MaxDaily() *big.Int {
 	return new(big.Int).Set(l.maxDaily)
+}
+
+// IsAutoApprovable checks whether amount can be auto-approved without user confirmation.
+// Returns false when auto-approve is disabled (threshold is 0), when amount exceeds the
+// threshold, or when spending limits would be exceeded.
+func (l *EntSpendingLimiter) IsAutoApprovable(ctx context.Context, amount *big.Int) (bool, error) {
+	if l.autoApproveBelow.Sign() == 0 {
+		return false, nil
+	}
+
+	if amount.Cmp(l.autoApproveBelow) > 0 {
+		return false, nil
+	}
+
+	if err := l.Check(ctx, amount); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func startOfToday() time.Time {

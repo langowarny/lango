@@ -58,6 +58,18 @@ func DefaultConfig() *Config {
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
 			},
+			Keyring: KeyringConfig{
+				Enabled: true,
+			},
+			DBEncryption: DBEncryptionConfig{
+				Enabled:        false,
+				CipherPageSize: 4096,
+			},
+			KMS: KMSConfig{
+				FallbackToLocal:     true,
+				TimeoutPerOperation: 5 * time.Second,
+				MaxRetries:          3,
+			},
 		},
 		Knowledge: KnowledgeConfig{
 			Enabled:            false,
@@ -122,7 +134,48 @@ func DefaultConfig() *Config {
 			MaxPendingInquiries:  2,
 			AutoSaveConfidence:   types.ConfidenceHigh,
 		},
+		P2P: P2PConfig{
+			Enabled: false,
+			ListenAddrs: []string{
+				"/ip4/0.0.0.0/tcp/9000",
+				"/ip4/0.0.0.0/udp/9000/quic-v1",
+			},
+			KeyDir:           "~/.lango/p2p",
+			EnableRelay:      true,
+			EnableMDNS:       true,
+			MaxPeers:         50,
+			HandshakeTimeout: 30 * time.Second,
+			SessionTokenTTL:  24 * time.Hour,
+			GossipInterval:   30 * time.Second,
+			ZKHandshake:      true,
+			ZKAttestation:    true,
+			ZKP: ZKPConfig{
+				ProofCacheDir:    "~/.lango/p2p/zkp-cache",
+				ProvingScheme:    "plonk",
+				SRSMode:          "unsafe",
+				MaxCredentialAge: "24h",
+			},
+			ToolIsolation: ToolIsolationConfig{
+				Enabled:        false,
+				TimeoutPerTool: 30 * time.Second,
+				MaxMemoryMB:    256,
+				Container: ContainerSandboxConfig{
+					Enabled:         false,
+					Runtime:         "auto",
+					Image:           "lango-sandbox:latest",
+					NetworkMode:     "none",
+					ReadOnlyRootfs:  boolPtr(true),
+					PoolSize:        0,
+					PoolIdleTimeout: 5 * time.Minute,
+				},
+			},
+		},
 	}
+}
+
+// boolPtr returns a pointer to a bool value.
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 // Load reads configuration from file and environment
@@ -154,6 +207,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
+	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
+	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
+	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
+	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
+	v.SetDefault("security.kms.timeoutPerOperation", defaults.Security.KMS.TimeoutPerOperation)
+	v.SetDefault("security.kms.maxRetries", defaults.Security.KMS.MaxRetries)
 	v.SetDefault("graph.enabled", defaults.Graph.Enabled)
 	v.SetDefault("graph.backend", defaults.Graph.Backend)
 	v.SetDefault("graph.maxTraversalDepth", defaults.Graph.MaxTraversalDepth)
@@ -197,6 +256,26 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("skill.maxBulkImport", defaults.Skill.MaxBulkImport)
 	v.SetDefault("skill.importConcurrency", defaults.Skill.ImportConcurrency)
 	v.SetDefault("skill.importTimeout", defaults.Skill.ImportTimeout)
+	v.SetDefault("p2p.enabled", defaults.P2P.Enabled)
+	v.SetDefault("p2p.listenAddrs", defaults.P2P.ListenAddrs)
+	v.SetDefault("p2p.keyDir", defaults.P2P.KeyDir)
+	v.SetDefault("p2p.nodeKeyName", "p2p.node.privatekey")
+	v.SetDefault("p2p.enableRelay", defaults.P2P.EnableRelay)
+	v.SetDefault("p2p.enableMdns", defaults.P2P.EnableMDNS)
+	v.SetDefault("p2p.maxPeers", defaults.P2P.MaxPeers)
+	v.SetDefault("p2p.handshakeTimeout", defaults.P2P.HandshakeTimeout)
+	v.SetDefault("p2p.sessionTokenTtl", defaults.P2P.SessionTokenTTL)
+	v.SetDefault("p2p.gossipInterval", defaults.P2P.GossipInterval)
+	v.SetDefault("p2p.zkHandshake", defaults.P2P.ZKHandshake)
+	v.SetDefault("p2p.zkAttestation", defaults.P2P.ZKAttestation)
+	v.SetDefault("p2p.zkp.proofCacheDir", defaults.P2P.ZKP.ProofCacheDir)
+	v.SetDefault("p2p.zkp.provingScheme", defaults.P2P.ZKP.ProvingScheme)
+	v.SetDefault("p2p.toolIsolation.container.enabled", defaults.P2P.ToolIsolation.Container.Enabled)
+	v.SetDefault("p2p.toolIsolation.container.runtime", defaults.P2P.ToolIsolation.Container.Runtime)
+	v.SetDefault("p2p.toolIsolation.container.image", defaults.P2P.ToolIsolation.Container.Image)
+	v.SetDefault("p2p.toolIsolation.container.networkMode", defaults.P2P.ToolIsolation.Container.NetworkMode)
+	v.SetDefault("p2p.toolIsolation.container.poolSize", defaults.P2P.ToolIsolation.Container.PoolSize)
+	v.SetDefault("p2p.toolIsolation.container.poolIdleTimeout", defaults.P2P.ToolIsolation.Container.PoolIdleTimeout)
 
 	// Configure viper
 	v.SetConfigType("json")
@@ -303,12 +382,33 @@ func Validate(cfg *Config) error {
 
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
-		validProviders := map[string]bool{"local": true, "rpc": true, "enclave": true}
+		validProviders := map[string]bool{
+			"local": true, "rpc": true, "enclave": true,
+			"aws-kms": true, "gcp-kms": true, "azure-kv": true, "pkcs11": true,
+		}
 		if !validProviders[cfg.Security.Signer.Provider] {
-			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, or enclave)", cfg.Security.Signer.Provider))
+			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
 			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")
+		}
+		// Validate KMS-specific config.
+		switch cfg.Security.Signer.Provider {
+		case "aws-kms", "gcp-kms":
+			if cfg.Security.KMS.KeyID == "" {
+				errs = append(errs, fmt.Sprintf("security.kms.keyId is required when provider is %q", cfg.Security.Signer.Provider))
+			}
+		case "azure-kv":
+			if cfg.Security.KMS.Azure.VaultURL == "" {
+				errs = append(errs, "security.kms.azure.vaultUrl is required when provider is 'azure-kv'")
+			}
+			if cfg.Security.KMS.KeyID == "" {
+				errs = append(errs, "security.kms.keyId is required when provider is 'azure-kv'")
+			}
+		case "pkcs11":
+			if cfg.Security.KMS.PKCS11.ModulePath == "" {
+				errs = append(errs, "security.kms.pkcs11.modulePath is required when provider is 'pkcs11'")
+			}
 		}
 	}
 
@@ -335,6 +435,25 @@ func Validate(cfg *Config) error {
 		validWalletProviders := map[string]bool{"local": true, "rpc": true, "composite": true}
 		if !validWalletProviders[cfg.Payment.WalletProvider] {
 			errs = append(errs, fmt.Sprintf("invalid payment.walletProvider: %q (must be local, rpc, or composite)", cfg.Payment.WalletProvider))
+		}
+	}
+
+	// Validate P2P config
+	if cfg.P2P.Enabled {
+		if !cfg.Payment.Enabled {
+			errs = append(errs, "p2p requires payment.enabled (wallet needed for identity)")
+		}
+		validSchemes := map[string]bool{"plonk": true, "groth16": true}
+		if cfg.P2P.ZKP.ProvingScheme != "" && !validSchemes[cfg.P2P.ZKP.ProvingScheme] {
+			errs = append(errs, fmt.Sprintf("invalid p2p.zkp.provingScheme: %q (must be plonk or groth16)", cfg.P2P.ZKP.ProvingScheme))
+		}
+	}
+
+	// Validate container sandbox config
+	if cfg.P2P.ToolIsolation.Container.Enabled {
+		validRuntimes := map[string]bool{"auto": true, "docker": true, "gvisor": true, "native": true}
+		if !validRuntimes[cfg.P2P.ToolIsolation.Container.Runtime] {
+			errs = append(errs, fmt.Sprintf("invalid p2p.toolIsolation.container.runtime: %q (must be auto, docker, gvisor, or native)", cfg.P2P.ToolIsolation.Container.Runtime))
 		}
 	}
 

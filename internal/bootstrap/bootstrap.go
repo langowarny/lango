@@ -18,7 +18,8 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
-	"github.com/langoai/lango/internal/passphrase"
+	"github.com/langoai/lango/internal/keyring"
+	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -49,14 +50,18 @@ type Options struct {
 	// KeepKeyfile prevents the keyfile from being shredded after crypto initialization.
 	// Default (false) shreds the keyfile for security.
 	KeepKeyfile bool
+	// DBEncryption configures SQLCipher transparent database encryption.
+	DBEncryption config.DBEncryptionConfig
 }
 
 // Run executes the full bootstrap sequence:
 //  1. Ensure ~/.lango/ directory
-//  2. Open SQLite DB + ent schema migration
+//  2. Detect DB encryption status
 //  3. Acquire passphrase
-//  4. Initialize crypto provider (salt/checksum)
-//  5. Load or create configuration profile
+//  4. Open SQLite/SQLCipher DB + ent schema migration
+//  5. Load security state (salt/checksum)
+//  6. Initialize crypto provider
+//  7. Load or create configuration profile
 func Run(opts Options) (*Result, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -76,30 +81,50 @@ func Run(opts Options) (*Result, error) {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
 
-	// 2. Open database and run schema migration.
-	client, rawDB, err := openDatabase(opts.DBPath)
+	// 2. Determine whether the DB file is encrypted (or encryption is configured).
+	dbEncrypted := IsDBEncrypted(opts.DBPath)
+	needsDBKey := dbEncrypted || opts.DBEncryption.Enabled
+
+	// 3. Acquire passphrase.
+	// If the DB is encrypted or encryption is enabled, we need the passphrase
+	// BEFORE opening the database so we can derive the DB encryption key.
+	var krProvider keyring.Provider
+	if status := keyring.IsAvailable(); status.Available {
+		krProvider = keyring.NewOSProvider()
+	}
+
+	// Determine if this is a first-run scenario: no DB file at all.
+	_, statErr := os.Stat(opts.DBPath)
+	dbExists := statErr == nil
+	firstRunGuess := !dbExists
+
+	pass, source, err := passphrase.Acquire(passphrase.Options{
+		KeyfilePath:     opts.KeyfilePath,
+		AllowCreation:   firstRunGuess,
+		KeyringProvider: krProvider,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("acquire passphrase: %w", err)
+	}
+
+	// 4. Open database with encryption key if needed.
+	var dbKey string
+	if needsDBKey {
+		dbKey = pass
+	}
+	client, rawDB, err := openDatabase(opts.DBPath, dbKey, opts.DBEncryption.CipherPageSize)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// 3. Check existing salt to determine first-run vs returning user.
+	// 5. Check existing salt to determine first-run vs returning user.
 	salt, checksum, firstRun, err := loadSecurityState(rawDB)
 	if err != nil {
 		client.Close()
 		return nil, fmt.Errorf("load security state: %w", err)
 	}
 
-	// 4. Acquire passphrase.
-	pass, source, err := passphrase.Acquire(passphrase.Options{
-		KeyfilePath:   opts.KeyfilePath,
-		AllowCreation: firstRun,
-	})
-	if err != nil {
-		client.Close()
-		return nil, fmt.Errorf("acquire passphrase: %w", err)
-	}
-
-	// 5. Initialize crypto provider.
+	// 6. Initialize crypto provider.
 	provider := security.NewLocalCryptoProvider()
 	if firstRun {
 		if err := provider.Initialize(pass); err != nil {
@@ -129,14 +154,14 @@ func Run(opts Options) (*Result, error) {
 		}
 	}
 
-	// 5b. Shred keyfile after successful crypto initialization.
+	// 6b. Shred keyfile after successful crypto initialization.
 	if source == passphrase.SourceKeyfile && !opts.KeepKeyfile {
 		if err := passphrase.ShredKeyfile(opts.KeyfilePath); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: shred keyfile: %v\n", err)
 		}
 	}
 
-	// 6. Load or create configuration profile.
+	// 7. Load or create configuration profile.
 	store := configstore.NewStore(client, provider)
 	ctx := context.Background()
 
@@ -175,8 +200,10 @@ func Run(opts Options) (*Result, error) {
 	}, nil
 }
 
-// openDatabase opens the SQLite database and runs ent schema migration.
-func openDatabase(dbPath string) (*ent.Client, *sql.DB, error) {
+// openDatabase opens the SQLite/SQLCipher database and runs ent schema migration.
+// When encryptionKey is non-empty, PRAGMA key is executed after opening the connection
+// to enable SQLCipher transparent encryption.
+func openDatabase(dbPath, encryptionKey string, cipherPageSize int) (*ent.Client, *sql.DB, error) {
 	// Expand tilde.
 	if strings.HasPrefix(dbPath, "~/") {
 		home, err := os.UserHomeDir()
@@ -199,6 +226,22 @@ func openDatabase(dbPath string) (*ent.Client, *sql.DB, error) {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
 
+	// When encryption key is provided, set SQLCipher PRAGMAs.
+	// This requires the binary to be built with SQLCipher support.
+	if encryptionKey != "" {
+		if cipherPageSize <= 0 {
+			cipherPageSize = 4096
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA key = '%s'", encryptionKey)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("set PRAGMA key: %w", err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA cipher_page_size = %d", cipherPageSize)); err != nil {
+			db.Close()
+			return nil, nil, fmt.Errorf("set cipher_page_size: %w", err)
+		}
+	}
+
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()
 		return nil, nil, fmt.Errorf("enable foreign keys: %w", err)
@@ -216,6 +259,25 @@ func openDatabase(dbPath string) (*ent.Client, *sql.DB, error) {
 	}
 
 	return client, db, nil
+}
+
+// IsDBEncrypted checks whether a SQLite database file is encrypted.
+// An encrypted DB will not have the standard "SQLite format 3" magic header.
+func IsDBEncrypted(dbPath string) bool {
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return false
+	}
+	f, err := os.Open(dbPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	header := make([]byte, 16)
+	n, err := f.Read(header)
+	if err != nil || n < 16 {
+		return false
+	}
+	return string(header[:15]) != "SQLite format 3"
 }
 
 // ensureSecurityTable creates the security_config table if it does not exist.

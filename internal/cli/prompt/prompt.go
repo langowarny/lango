@@ -1,7 +1,10 @@
 package prompt
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 	"syscall"
 
 	"golang.org/x/term"
@@ -21,6 +24,18 @@ func Passphrase(prompt string) (string, error) {
 		return "", err
 	}
 	return string(bytePassword), nil
+}
+
+// Confirm prompts the user for a yes/no confirmation and returns true for yes.
+func Confirm(msg string) (bool, error) {
+	fmt.Printf("%s [y/N]: ", msg)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+	answer := strings.TrimSpace(strings.ToLower(line))
+	return answer == "y" || answer == "yes", nil
 }
 
 // PassphraseConfirm prompts for a passphrase and its confirmation

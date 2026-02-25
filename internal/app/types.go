@@ -17,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/p2p"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -84,6 +85,9 @@ type App struct {
 
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
+
+	// P2P Components (optional)
+	P2PNode *p2p.Node
 
 	// Channels
 	Channels []Channel

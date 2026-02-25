@@ -3,15 +3,19 @@ package approval
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
 // CompositeProvider routes approval requests to the appropriate provider
 // based on session key prefix. Falls back to TTY, then denies (fail-closed).
+// P2P sessions ("p2p:..." keys) use a dedicated fallback and are never
+// routed to HeadlessProvider to prevent remote peers from auto-approving.
 type CompositeProvider struct {
 	mu          sync.RWMutex
 	providers   []Provider
 	ttyFallback Provider
+	p2pFallback Provider
 }
 
 // NewCompositeProvider creates a new CompositeProvider.
@@ -33,13 +37,25 @@ func (c *CompositeProvider) SetTTYFallback(p Provider) {
 	c.ttyFallback = p
 }
 
+// SetP2PFallback sets a dedicated approval provider for P2P sessions.
+// P2P sessions are never routed to the TTY fallback when it is a
+// HeadlessProvider, preventing remote peers from auto-approving.
+func (c *CompositeProvider) SetP2PFallback(p Provider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.p2pFallback = p
+}
+
 // RequestApproval routes the request to the first provider whose CanHandle
-// returns true. If none match, falls back to TTY. If TTY is unavailable, denies.
+// returns true. P2P sessions ("p2p:..." keys) use a dedicated fallback
+// instead of the TTY fallback to ensure HeadlessProvider never auto-approves
+// remote peer requests. If no provider matches, denies (fail-closed).
 func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalRequest) (ApprovalResponse, error) {
 	c.mu.RLock()
 	providers := make([]Provider, len(c.providers))
 	copy(providers, c.providers)
 	tty := c.ttyFallback
+	p2p := c.p2pFallback
 	c.mu.RUnlock()
 
 	for _, p := range providers {
@@ -48,12 +64,23 @@ func (c *CompositeProvider) RequestApproval(ctx context.Context, req ApprovalReq
 		}
 	}
 
-	// TTY fallback
+	// P2P sessions: use dedicated fallback, NEVER HeadlessProvider.
+	if strings.HasPrefix(req.SessionKey, "p2p:") {
+		if p2p != nil {
+			return p2p.RequestApproval(ctx, req)
+		}
+		return ApprovalResponse{}, fmt.Errorf(
+			"no approval provider for P2P session %q (headless auto-approve is not allowed for remote peers)",
+			req.SessionKey,
+		)
+	}
+
+	// TTY fallback (non-P2P only).
 	if tty != nil {
 		return tty.RequestApproval(ctx, req)
 	}
 
-	// Fail-closed: no provider available
+	// Fail-closed: no provider available.
 	return ApprovalResponse{}, fmt.Errorf("no approval provider for session %q", req.SessionKey)
 }
 

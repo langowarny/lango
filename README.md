@@ -20,6 +20,7 @@ This project includes experimental AI Agent features and is currently in an unst
 - 📊 **Knowledge Graph & Graph RAG** - BoltDB triple store with hybrid vector + graph retrieval
 - 🔀 **Multi-Agent Orchestration** - Hierarchical sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler)
 - 🌍 **A2A Protocol** - Agent-to-Agent protocol for remote agent discovery and integration
+- 🌐 **P2P Network** - Decentralized agent-to-agent connectivity via libp2p with DHT discovery, ZK-enhanced handshake, knowledge firewall, and peer payments
 - 💸 **Blockchain Payments** - USDC payments on Base L2, X402 V2 auto-pay protocol (Coinbase SDK), spending limits
 - ⏰ **Cron Scheduling** - Persistent cron jobs with cron/interval/one-time schedules, multi-channel delivery
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
@@ -92,7 +93,7 @@ lango config validate            Validate the active profile
 lango security status [--json]   Show security configuration status
 lango security migrate-passphrase Rotate encryption passphrase
 lango security secrets list      List stored secrets (values hidden)
-lango security secrets set <n>   Store an encrypted secret
+lango security secrets set <n>   Store an encrypted secret (--value-hex for non-interactive)
 lango security secrets delete <n> Delete a stored secret (--force)
 
 lango memory list [--json]       List observational memory entries
@@ -125,6 +126,18 @@ lango workflow list              List workflow runs
 lango workflow status <run-id>   Show workflow run status with step details
 lango workflow cancel <run-id>   Cancel a running workflow
 lango workflow history           Show workflow execution history
+
+lango p2p status                 Show P2P node status
+lango p2p peers                  List connected peers
+lango p2p connect <multiaddr>    Connect to a peer by multiaddr
+lango p2p disconnect <peer-id>   Disconnect from a peer
+lango p2p firewall list          List firewall ACL rules
+lango p2p firewall add           Add a firewall ACL rule
+lango p2p firewall remove        Remove firewall rules for a peer
+lango p2p discover               Discover agents by capability
+lango p2p identity               Show local DID and peer identity
+lango p2p reputation             Query peer trust score
+lango p2p pricing                Show tool pricing
 ```
 
 ### Diagnostics
@@ -193,12 +206,13 @@ lango/
 │   ├── background/         # Background task manager, notifications, monitoring
 │   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail)
+│   ├── p2p/                # P2P networking (libp2p node, identity, handshake, firewall, discovery, ZKP)
 │   ├── supervisor/         # Provider proxy, privileged tool execution
 │   ├── wallet/             # Wallet providers (local, rpc, composite), spending limiter
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
 │   └── tools/              # browser, crypto, exec, filesystem, secrets, payment
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
-├── skills/                 # 30 embedded default skills (go:embed SKILL.md files)
+├── skills/                 # 38 embedded default skills (go:embed SKILL.md files)
 └── openspec/               # Specifications (OpenSpec workflow)
 ```
 
@@ -339,6 +353,47 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `payment.limits.autoApproveBelow` | string | - | Auto-approve amount threshold |
 | `payment.x402.autoIntercept` | bool | `false` | Auto-intercept HTTP 402 responses |
 | `payment.x402.maxAutoPayAmount` | string | - | Max amount for X402 auto-pay |
+| **P2P Network** (🧪 Experimental Features) | | | |
+| `p2p.enabled` | bool | `false` | Enable P2P networking |
+| `p2p.listenAddrs` | []string | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.bootstrapPeers` | []string | `[]` | Bootstrap peers for DHT |
+| `p2p.keyDir` | string | `~/.lango/p2p` | Node key directory (deprecated — keys now stored in SecretsStore) |
+| `p2p.enableRelay` | bool | `false` | Enable relay for NAT traversal |
+| `p2p.enableMdns` | bool | `true` | Enable mDNS discovery |
+| `p2p.maxPeers` | int | `50` | Maximum connected peers |
+| `p2p.autoApproveKnownPeers` | bool | `false` | Skip approval for previously authenticated peers |
+| `p2p.minTrustScore` | float64 | `0.3` | Minimum reputation score for accepting peer requests |
+| `p2p.pricing.enabled` | bool | `false` | Enable paid tool invocations |
+| `p2p.pricing.perQuery` | string | `"0.10"` | Default USDC price per query |
+| `p2p.zkHandshake` | bool | `false` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | bool | `false` | Enable ZK response attestation |
+| `p2p.sessionTokenTtl` | duration | `1h` | Session token lifetime after handshake |
+| `p2p.requireSignedChallenge` | bool | `false` | Reject unsigned (v1.0) challenges from peers |
+| `p2p.toolIsolation.enabled` | bool | `false` | Enable subprocess isolation for remote tool execution |
+| `p2p.toolIsolation.timeoutPerTool` | duration | `30s` | Max duration per tool execution |
+| `p2p.toolIsolation.maxMemoryMB` | int | `512` | Soft memory limit per tool process |
+| `p2p.toolIsolation.container.enabled` | bool | `false` | Enable container-based sandbox |
+| `p2p.toolIsolation.container.runtime` | string | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.image` | string | `lango-sandbox:latest` | Docker image for sandbox |
+| `p2p.toolIsolation.container.networkMode` | string | `none` | Docker network mode |
+| `p2p.toolIsolation.container.poolSize` | int | `0` | Pre-warmed container pool size (0 = disabled) |
+| `p2p.zkp.srsMode` | string | `unsafe` | SRS generation mode: `unsafe` or `file` |
+| `p2p.zkp.srsPath` | string | - | Path to SRS file (when srsMode = file) |
+| `p2p.zkp.maxCredentialAge` | string | `24h` | Maximum age for ZK credentials |
+| **Security** | | | |
+| `security.keyring.enabled` | bool | `false` | Enable OS keyring for passphrase storage |
+| `security.dbEncryption.enabled` | bool | `false` | Enable SQLCipher database encryption |
+| `security.dbEncryption.cipherPageSize` | int | `4096` | SQLCipher cipher page size |
+| `security.signer.provider` | string | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` |
+| `security.kms.region` | string | - | Cloud region for KMS API calls |
+| `security.kms.keyId` | string | - | KMS key identifier (ARN, resource name, or alias) |
+| `security.kms.fallbackToLocal` | bool | `true` | Auto-fallback to local CryptoProvider when KMS unavailable |
+| `security.kms.timeoutPerOperation` | duration | `5s` | Max duration per KMS API call |
+| `security.kms.maxRetries` | int | `3` | Retry attempts for transient KMS errors |
+| `security.kms.azure.vaultUrl` | string | - | Azure Key Vault URL |
+| `security.kms.pkcs11.modulePath` | string | - | Path to PKCS#11 shared library |
+| `security.kms.pkcs11.slotId` | int | `0` | PKCS#11 slot number |
+| `security.kms.pkcs11.keyLabel` | string | - | Key label in HSM |
 | **Cron Scheduling** | | | |
 | `cron.enabled` | bool | `false` | Enable cron job scheduling |
 | `cron.timezone` | string | `UTC` | Default timezone for cron expressions |
@@ -522,6 +577,103 @@ Lango supports the Agent-to-Agent (A2A) protocol for inter-agent communication:
 Configure via `lango onboard` > A2A Protocol menu. Remote agents (name + URL pairs) should be configured via `lango config export` → edit JSON → `lango config import`.
 
 > **Note:** All settings are stored in the encrypted profile database — no plaintext config files. Use `lango onboard` for interactive configuration or `lango config import/export` for programmatic configuration.
+
+## P2P Network (🧪 Experimental Features)
+
+Lango supports decentralized peer-to-peer agent connectivity via the Sovereign Agent Network (SAN):
+
+- **libp2p Transport** — TCP/QUIC with Noise encryption
+- **DID Identity** — `did:lango:<pubkey>` derived from wallet keys
+- **Knowledge Firewall** — Default deny-all ACL with per-peer, per-tool rules and rate limiting
+- **Agent Discovery** — GossipSub-based agent card propagation with capability search
+- **ZK Handshake** — Optional zero-knowledge proof verification during authentication
+- **ZK Attestation** — Prove response authenticity without revealing internal state
+- **Payment Gate** — USDC-based paid tool invocations with configurable per-tool pricing
+- **Approval Pipeline** — Three-stage inbound gate (firewall → owner approval → execution) with auto-approve for paid tools below threshold
+- **Reputation System** — Trust score tracking based on exchange outcomes (successes, failures, timeouts)
+- **Owner Shield** — PII protection that sanitizes outgoing P2P responses to prevent owner data leakage
+- **Signed Challenges** — ECDSA signed handshake challenges with nonce replay protection and timestamp validation
+- **Session Management** — TTL + explicit session invalidation with security event auto-revocation
+- **Tool Sandbox** — Subprocess and container-based isolation for remote tool execution
+- **Cloud KMS / HSM** — AWS KMS, GCP KMS, Azure Key Vault, PKCS#11 HSM integration for signing and encryption
+- **Database Encryption** — SQLCipher transparent encryption for the application database
+- **OS Keyring** — Hardware-backed passphrase storage in OS keyring (macOS Keychain, Linux secret-service, Windows DPAPI)
+- **Credential Revocation** — DID revocation and max credential age enforcement via gossip
+
+#### Paid Value Exchange
+
+Lango supports monetized P2P tool invocations. Peers can set prices for their tools in USDC, and callers follow a structured flow:
+
+1. **Discover** peers with the desired capability
+2. **Check reputation** to verify peer trustworthiness
+3. **Query pricing** to see the cost before committing
+4. **Send payment** in USDC via on-chain transfer
+5. **Invoke the tool** after payment confirmation
+
+> **Auto-Approval**: Payments below `payment.limits.autoApproveBelow` are auto-approved without confirmation, provided they also satisfy `maxPerTx` and `maxDaily` limits.
+
+Configure pricing in the P2P config:
+
+```json
+{
+  "pricing": {
+    "enabled": true,
+    "perQuery": "0.10",
+    "toolPrices": {
+      "knowledge_search": "0.25"
+    }
+  }
+}
+```
+
+### REST API
+
+When the gateway is running, P2P status endpoints are available for monitoring and automation:
+
+```bash
+curl http://localhost:18789/api/p2p/status     # Peer ID, listen addrs, peer count
+curl http://localhost:18789/api/p2p/peers      # Connected peers with addrs
+curl http://localhost:18789/api/p2p/identity   # Local DID and peer ID
+curl "http://localhost:18789/api/p2p/reputation?peer_did=did:lango:02abc..."  # Trust score
+curl http://localhost:18789/api/p2p/pricing    # Tool pricing
+```
+
+### CLI Usage
+
+```bash
+# Check node status
+lango p2p status
+
+# List connected peers
+lango p2p peers
+
+# Connect to a peer
+lango p2p connect /ip4/1.2.3.4/tcp/9000/p2p/QmPeerId
+
+# Discover agents by capability
+lango p2p discover --tag research
+
+# Manage firewall rules
+lango p2p firewall list
+lango p2p firewall add --peer-did "did:lango:02abc..." --action allow --tools "search_*"
+
+# Show identity
+lango p2p identity
+
+# Manage peer sessions
+lango p2p session list
+lango p2p session revoke --peer-did "did:lango:02abc..."
+lango p2p session revoke-all
+
+# Sandbox management
+lango p2p sandbox status
+lango p2p sandbox test
+lango p2p sandbox cleanup
+```
+
+### Configuration
+
+Configure via `lango settings` → P2P Network, or import JSON with `lango config import`. Requires `security.signer` to be configured for wallet-based DID derivation.
 
 ## Blockchain Payments (🧪 Experimental Features)
 
@@ -799,6 +951,57 @@ Lango supports optional companion apps for hardware-backed security. Companion d
 - **mDNS Discovery** — auto-discovers companion apps on the local network via `_lango-companion._tcp`
 - **Manual Config** — set a fixed companion address
 
+### OS Keyring
+
+Store the master passphrase in the OS keyring for automatic unlock on startup:
+
+```bash
+lango security keyring store    # Store passphrase (interactive)
+lango security keyring status   # Check keyring availability
+lango security keyring clear    # Remove stored passphrase
+```
+
+Supported: macOS Keychain, Linux secret-service (GNOME Keyring), Windows Credential Manager. Configure via `security.keyring.enabled`.
+
+### Database Encryption
+
+Encrypt the application database at rest using SQLCipher:
+
+```bash
+lango security db-migrate    # Encrypt plaintext DB
+lango security db-decrypt    # Decrypt back to plaintext
+```
+
+Configure via `security.dbEncryption.enabled` and `security.dbEncryption.cipherPageSize` (default: 4096).
+
+### Cloud KMS / HSM
+
+Delegate cryptographic operations to managed key services:
+
+| Provider | Config Value | Build Tag |
+|----------|-------------|-----------|
+| AWS KMS | `aws-kms` | `kms_aws` |
+| GCP Cloud KMS | `gcp-kms` | `kms_gcp` |
+| Azure Key Vault | `azure-kv` | `kms_azure` |
+| PKCS#11 HSM | `pkcs11` | `kms_pkcs11` |
+
+```bash
+lango security kms status    # Check KMS connection
+lango security kms test      # Test encrypt/decrypt roundtrip
+lango security kms keys      # List registered keys
+```
+
+Set `security.signer.provider` to the desired KMS backend and configure `security.kms.*` settings.
+
+### P2P Security Hardening
+
+The P2P network includes multiple security layers:
+
+- **Signed Challenges** — ECDSA signed handshake (nonce || timestamp || DID), timestamp validation (5min past + 30s future), nonce replay protection
+- **Session Management** — TTL + explicit invalidation with auto-revocation on reputation drop or repeated failures
+- **Tool Sandbox** — Subprocess and container-based process isolation for remote tool execution
+- **Credential Revocation** — DID revocation set and max credential age enforcement via gossip discovery
+
 ### Authentication
 
 Lango supports OIDC authentication for the gateway. Configure OIDC providers via `lango onboard` > Auth menu, or include them in a JSON config file and import with `lango config import`.
@@ -878,6 +1081,24 @@ Environment variables (optional):
 - `LANGO_PROFILE` — profile name to create (default: `default`)
 - `LANGO_CONFIG_FILE` — override config secret path (default: `/run/secrets/lango_config`)
 - `LANGO_PASSPHRASE_FILE` — override passphrase secret path (default: `/run/secrets/lango_passphrase`)
+
+## Examples
+
+### P2P Trading (Docker Compose)
+
+A complete multi-agent integration example with 3 Lango agents (Alice, Bob, Charlie) trading USDC on a local Ethereum chain:
+
+- **P2P Discovery** — agents discover each other via mDNS
+- **DID Identity** — `did:lango:` identifiers derived from wallet keys
+- **USDC Payments** — MockUSDC contract on Anvil (local EVM)
+- **E2E Tests** — automated health, discovery, balance, and transfer verification
+
+```bash
+cd examples/p2p-trading
+make all    # Build, start, wait for health, run tests, shut down
+```
+
+See [`examples/p2p-trading/README.md`](examples/p2p-trading/README.md) for architecture details and prerequisites.
 
 ## Development
 
