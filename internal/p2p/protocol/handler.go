@@ -228,29 +228,35 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 		}
 	}
 
-	// Owner approval check.
+	// Owner approval check (default-deny when no approval handler is configured).
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}
 	}
 
-	if h.approvalFn != nil {
-		approved, err := h.approvalFn(ctx, peerDID, toolName, params)
-		if err != nil {
-			return &Response{
-				RequestID: req.RequestID,
-				Status:    "error",
-				Error:     fmt.Sprintf("approval check: %v", err),
-				Timestamp: time.Now(),
-			}
+	if h.approvalFn == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "denied",
+			Error:     "no approval handler configured for remote tool invocation",
+			Timestamp: time.Now(),
 		}
-		if !approved {
-			return &Response{
-				RequestID: req.RequestID,
-				Status:    "denied",
-				Error:     "tool invocation denied by owner",
-				Timestamp: time.Now(),
-			}
+	}
+	approved, err := h.approvalFn(ctx, peerDID, toolName, params)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     fmt.Sprintf("approval check: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+	if !approved {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "denied",
+			Error:     "tool invocation denied by owner",
+			Timestamp: time.Now(),
 		}
 	}
 
@@ -418,29 +424,35 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 		}
 	}
 
-	// 3. Owner approval check.
+	// 3. Owner approval check (default-deny when no approval handler is configured).
 	params, _ := req.Payload["params"].(map[string]interface{})
 	if params == nil {
 		params = map[string]interface{}{}
 	}
 
-	if h.approvalFn != nil {
-		approved, err := h.approvalFn(ctx, peerDID, toolName, params)
-		if err != nil {
-			return &Response{
-				RequestID: req.RequestID,
-				Status:    "error",
-				Error:     fmt.Sprintf("approval check: %v", err),
-				Timestamp: time.Now(),
-			}
+	if h.approvalFn == nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "denied",
+			Error:     "no approval handler configured for remote tool invocation",
+			Timestamp: time.Now(),
 		}
-		if !approved {
-			return &Response{
-				RequestID: req.RequestID,
-				Status:    "denied",
-				Error:     "tool invocation denied by owner",
-				Timestamp: time.Now(),
-			}
+	}
+	approved, err := h.approvalFn(ctx, peerDID, toolName, params)
+	if err != nil {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "error",
+			Error:     fmt.Sprintf("approval check: %v", err),
+			Timestamp: time.Now(),
+		}
+	}
+	if !approved {
+		return &Response{
+			RequestID: req.RequestID,
+			Status:    "denied",
+			Error:     "tool invocation denied by owner",
+			Timestamp: time.Now(),
 		}
 	}
 

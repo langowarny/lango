@@ -97,23 +97,31 @@ The protocol package SHALL define a `ToolApprovalFunc` callback type with signat
 - **WHEN** the protocol package is compiled
 - **THEN** ToolApprovalFunc type SHALL be available for use by callers
 
-### Requirement: Handler owner approval for free tool invocations
-Handler.handleToolInvoke SHALL check the approvalFn callback after firewall ACL check and before tool execution. If the approval function returns false, the handler SHALL return a "denied" response with error "tool invocation denied by owner".
+### Requirement: Tool invocation approval check
+The protocol handler SHALL deny tool invocation requests when no approval handler (`approvalFn`) is configured. The handler MUST return a response with status "denied" and error message "no approval handler configured for remote tool invocation". This applies to both free (`tool_invoke`) and paid (`tool_invoke_paid`) request types.
 
-#### Scenario: Approval granted for free tool
-- **WHEN** a remote peer invokes a free tool AND approvalFn returns true
-- **THEN** the tool SHALL execute normally
+#### Scenario: No approval handler configured for tool_invoke
+- **WHEN** a remote peer sends a `tool_invoke` request and `approvalFn` is nil
+- **THEN** the handler SHALL return status "denied" with error "no approval handler configured for remote tool invocation"
 
-#### Scenario: Approval denied for free tool
-- **WHEN** a remote peer invokes a free tool AND approvalFn returns false
+#### Scenario: No approval handler configured for tool_invoke_paid
+- **WHEN** a remote peer sends a `tool_invoke_paid` request and `approvalFn` is nil
+- **THEN** the handler SHALL return status "denied" with error "no approval handler configured for remote tool invocation"
+
+#### Scenario: Approval handler configured and approves
+- **WHEN** a remote peer sends a `tool_invoke` request and `approvalFn` returns (true, nil)
+- **THEN** the handler SHALL proceed to execute the tool and return status "ok"
+
+#### Scenario: Approval handler configured and denies
+- **WHEN** a remote peer sends a `tool_invoke` request and `approvalFn` returns (false, nil)
 - **THEN** the handler SHALL return status "denied" with error "tool invocation denied by owner"
 
-#### Scenario: No approval function configured
-- **WHEN** a remote peer invokes a tool AND approvalFn is nil
-- **THEN** the tool SHALL execute without approval check (backward compatible)
+#### Scenario: Approval handler returns error
+- **WHEN** a remote peer sends a `tool_invoke` request and `approvalFn` returns an error
+- **THEN** the handler SHALL return status "error" with the approval error message
 
 ### Requirement: Handler owner approval for paid tool invocations
-Handler.handleToolInvokePaid SHALL check the approvalFn callback after payment verification and before tool execution.
+Handler.handleToolInvokePaid SHALL check the approvalFn callback after payment verification and before tool execution. If `approvalFn` is nil, the handler SHALL return "denied" with error "no approval handler configured for remote tool invocation".
 
 #### Scenario: Approval granted for paid tool
 - **WHEN** a remote peer invokes a paid tool with valid payment AND approvalFn returns true

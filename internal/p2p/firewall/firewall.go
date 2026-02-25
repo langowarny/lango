@@ -58,14 +58,23 @@ type Firewall struct {
 // New creates a new Firewall with deny-all default policy.
 func New(rules []ACLRule, logger *zap.SugaredLogger) *Firewall {
 	f := &Firewall{
-		rules:    make([]ACLRule, len(rules)),
+		rules:    make([]ACLRule, 0, len(rules)),
 		limiters: make(map[string]*rate.Limiter),
 		logger:   logger,
 	}
-	copy(f.rules, rules)
 
-	// Initialize per-peer rate limiters from rules.
+	// Initialize from provided rules; warn on overly permissive ones
+	// but still load them for backward compatibility.
 	for _, r := range rules {
+		if err := ValidateRule(r); err != nil {
+			logger.Warnw("loading overly permissive firewall rule (consider removing)",
+				"peerDID", r.PeerDID,
+				"action", r.Action,
+				"tools", r.Tools,
+				"warning", err.Error(),
+			)
+		}
+		f.rules = append(f.rules, r)
 		if r.RateLimit > 0 && r.PeerDID != "" {
 			f.limiters[r.PeerDID] = rate.NewLimiter(rate.Every(time.Minute/time.Duration(r.RateLimit)), r.RateLimit)
 		}
@@ -196,8 +205,36 @@ func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*Attestati
 	return fn(responseHash, agentDIDHash)
 }
 
-// AddRule adds a new ACL rule.
-func (f *Firewall) AddRule(rule ACLRule) {
+// ValidateRule checks whether an ACL rule is safe to add. It rejects
+// overly permissive allow rules (wildcard peer + wildcard tools).
+func ValidateRule(rule ACLRule) error {
+	if rule.Action != "allow" {
+		return nil // deny rules are always safe
+	}
+
+	isWildcardPeer := rule.PeerDID == "*"
+	isWildcardTools := len(rule.Tools) == 0
+	for _, t := range rule.Tools {
+		if t == "*" {
+			isWildcardTools = true
+			break
+		}
+	}
+
+	if isWildcardPeer && isWildcardTools {
+		return fmt.Errorf("overly permissive rule: allow all peers with all tools is prohibited")
+	}
+
+	return nil
+}
+
+// AddRule validates and adds a new ACL rule. Returns an error if the rule
+// is overly permissive (e.g. allow * with all tools).
+func (f *Firewall) AddRule(rule ACLRule) error {
+	if err := ValidateRule(rule); err != nil {
+		return err
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -212,6 +249,7 @@ func (f *Firewall) AddRule(rule ACLRule) {
 		"action", rule.Action,
 		"tools", rule.Tools,
 	)
+	return nil
 }
 
 // RemoveRule removes ACL rules matching the peer DID.

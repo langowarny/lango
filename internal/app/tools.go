@@ -2368,12 +2368,15 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 					rateLimit = int(rl)
 				}
 
-				pc.fw.AddRule(firewall.ACLRule{
+				rule := firewall.ACLRule{
 					PeerDID:   peerDID,
 					Action:    action,
 					Tools:     tools,
 					RateLimit: rateLimit,
-				})
+				}
+				if err := pc.fw.AddRule(rule); err != nil {
+					return nil, fmt.Errorf("add firewall rule: %w", err)
+				}
 
 				return map[string]interface{}{
 					"status":  "added",

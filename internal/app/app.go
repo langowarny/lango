@@ -257,9 +257,19 @@ func New(boot *bootstrap.Result) (*App, error) {
 	} else {
 		composite.SetTTYFallback(&approval.TTYProvider{})
 	}
+	// P2P sessions use a dedicated fallback to prevent HeadlessProvider
+	// from auto-approving remote peer requests.
+	if cfg.P2P.Enabled {
+		composite.SetP2PFallback(&approval.TTYProvider{})
+		logger().Info("P2P approval routed to TTY (HeadlessProvider blocked for remote peers)")
+	}
 	app.ApprovalProvider = composite
 
 	grantStore := approval.NewGrantStore()
+	// P2P grants expire after 1 hour to limit the window of implicit trust.
+	if cfg.P2P.Enabled {
+		grantStore.SetTTL(time.Hour)
+	}
 	app.GrantStore = grantStore
 
 	policy := cfg.Security.Interceptor.ApprovalPolicy
@@ -345,37 +355,53 @@ func New(boot *bootstrap.Result) (*App, error) {
 					return sbxExec.Execute(ctx, toolName, params)
 				})
 			}
-		}
-		// Wire owner approval callback for inbound remote tool invocations.
-		if pc != nil {
-			p2pc.handler.SetApprovalFunc(func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error) {
-				// For paid tools, check if the amount is auto-approvable.
-				if p2pc.pricingFn != nil {
-					if priceStr, isFree := p2pc.pricingFn(toolName); !isFree {
-						amt, err := wallet.ParseUSDC(priceStr)
-						if err == nil {
-							if autoOK, checkErr := pc.limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
-								return true, nil
+
+			// Wire owner approval callback for inbound remote tool invocations.
+			if pc != nil {
+				p2pc.handler.SetApprovalFunc(func(ctx context.Context, peerDID, toolName string, params map[string]interface{}) (bool, error) {
+					// Never auto-approve dangerous tools via P2P.
+					// Unknown tools (not in index) are also treated as dangerous.
+					t, known := toolIndex[toolName]
+					if !known || t.SafetyLevel.IsDangerous() {
+						goto requireApproval
+					}
+
+					// For non-dangerous paid tools, check if the amount is auto-approvable.
+					if p2pc.pricingFn != nil {
+						if priceStr, isFree := p2pc.pricingFn(toolName); !isFree {
+							amt, err := wallet.ParseUSDC(priceStr)
+							if err == nil {
+								if autoOK, checkErr := pc.limiter.IsAutoApprovable(ctx, amt); checkErr == nil && autoOK {
+									if grantStore != nil {
+										grantStore.Grant("p2p:"+peerDID, toolName)
+									}
+									return true, nil
+								}
 							}
 						}
 					}
-				}
 
-				// Fall back to composite approval provider.
-				req := approval.ApprovalRequest{
-					ID:         fmt.Sprintf("p2p-%d", time.Now().UnixNano()),
-					ToolName:   toolName,
-					SessionKey: "p2p:" + peerDID,
-					Params:     params,
-					Summary:    fmt.Sprintf("Remote peer %s wants to invoke tool '%s'", truncate(peerDID, 16), toolName),
-					CreatedAt:  time.Now(),
-				}
-				resp, err := composite.RequestApproval(ctx, req)
-				if err != nil {
-					return false, nil // fail-closed
-				}
-				return resp.Approved, nil
-			})
+				requireApproval:
+					// Fall back to composite approval provider.
+					req := approval.ApprovalRequest{
+						ID:         fmt.Sprintf("p2p-%d", time.Now().UnixNano()),
+						ToolName:   toolName,
+						SessionKey: "p2p:" + peerDID,
+						Params:     params,
+						Summary:    fmt.Sprintf("Remote peer %s wants to invoke tool '%s'", truncate(peerDID, 16), toolName),
+						CreatedAt:  time.Now(),
+					}
+					resp, err := composite.RequestApproval(ctx, req)
+					if err != nil {
+						return false, nil // fail-closed
+					}
+					// Record grant to avoid double-approval (handler approvalFn + tool's wrapWithApproval).
+					if resp.Approved && grantStore != nil {
+						grantStore.Grant("p2p:"+peerDID, toolName)
+					}
+					return resp.Approved, nil
+				})
+			}
 		}
 		registerP2PRoutes(app.Gateway.Router(), p2pc)
 		logger().Info("P2P REST API routes registered")
