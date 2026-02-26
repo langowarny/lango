@@ -72,15 +72,17 @@ func buildTools(sv *supervisor.Supervisor, fsCfg filesystem.Config, browserSM *b
 	return tools
 }
 
-// blockLangoExec checks if the command attempts to invoke the lango CLI for
-// automation features that have in-process equivalents. Returns a guidance
-// message if blocked, or empty string if allowed.
+// blockLangoExec checks if the command attempts to invoke the lango CLI.
+// ALL lango CLI commands require passphrase authentication via bootstrap and
+// will fail when spawned as a subprocess (non-interactive stdin). Returns a
+// guidance message if blocked, or empty string if allowed.
 func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
 
+	// --- Phase 1: Subcommands with in-process tool equivalents ---
 	type guard struct {
 		prefix  string
-		feature string
+		feature string // key in automationAvailable; empty = always available
 		tools   string
 	}
 	guards := []guard{
@@ -88,21 +90,33 @@ func blockLangoExec(cmd string, automationAvailable map[string]bool) string {
 		{"lango bg", "background", "bg_submit, bg_status, bg_list, bg_result, bg_cancel"},
 		{"lango background", "background", "bg_submit, bg_status, bg_list, bg_result, bg_cancel"},
 		{"lango workflow", "workflow", "workflow_run, workflow_status, workflow_list, workflow_cancel, workflow_save"},
+		{"lango graph", "", "graph_traverse, graph_query, rag_retrieve"},
+		{"lango memory", "", "memory_list_observations, memory_list_reflections"},
+		{"lango p2p", "", "p2p_status, p2p_connect, p2p_disconnect, p2p_peers, p2p_query, p2p_discover, p2p_firewall_rules, p2p_firewall_add, p2p_firewall_remove, p2p_reputation, p2p_pay, p2p_price_query"},
+		{"lango security", "", "crypto_encrypt, crypto_decrypt, crypto_sign, crypto_hash, crypto_keys, secrets_store, secrets_get, secrets_list, secrets_delete"},
+		{"lango payment", "", "payment_send, payment_create_wallet, payment_x402_fetch"},
 	}
 
 	for _, g := range guards {
 		if strings.HasPrefix(lower, g.prefix) {
-			if automationAvailable[g.feature] {
+			if g.feature == "" || automationAvailable[g.feature] {
 				return fmt.Sprintf(
-					"Do not use exec to run '%s' — use the built-in %s tools instead (%s). "+
-						"Spawning a new lango process requires passphrase authentication and will fail.",
-					g.prefix, g.feature, g.tools)
+					"Do not use exec to run '%s' — use the built-in tools instead (%s). "+
+						"Spawning a new lango process requires passphrase authentication and will fail in non-interactive mode.",
+					g.prefix, g.tools)
 			}
 			return fmt.Sprintf(
 				"Cannot run '%s' via exec — spawning a new lango process requires passphrase authentication. "+
 					"Enable the %s feature in Settings to use the built-in tools (%s).",
 				g.prefix, g.feature, g.tools)
 		}
+	}
+
+	// --- Phase 2: Catch-all for any remaining lango subcommand ---
+	if strings.HasPrefix(lower, "lango ") || lower == "lango" {
+		return "Do not use exec to run the lango CLI — every lango command requires passphrase authentication " +
+			"via bootstrap and will fail when spawned as a subprocess. " +
+			"Use the built-in tools for the operation you need, or ask the user to run this command directly in their terminal."
 	}
 
 	// Redirect skill-related git clone to import_skill tool.
@@ -515,13 +529,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
-			Description: "Save a piece of knowledge (user rule, definition, preference, or fact) for future reference",
+			Description: "Save a piece of knowledge (user rule, definition, preference, fact, pattern, or correction) for future reference",
 			SafetyLevel: agent.SafetyLevelModerate,
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"key":      map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
-					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, or fact", "enum": []string{"rule", "definition", "preference", "fact"}},
+					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
 					"content":  map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
 					"tags":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
 					"source":   map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
@@ -538,6 +552,11 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("key, category, and content are required")
 				}
 
+				cat := entknowledge.Category(category)
+				if err := entknowledge.CategoryValidator(cat); err != nil {
+					return nil, fmt.Errorf("invalid category %q: %w", category, err)
+				}
+
 				var tags []string
 				if rawTags, ok := params["tags"].([]interface{}); ok {
 					for _, t := range rawTags {
@@ -549,7 +568,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 
 				entry := knowledge.KnowledgeEntry{
 					Key:      key,
-					Category: entknowledge.Category(category),
+					Category: cat,
 					Content:  content,
 					Tags:     tags,
 					Source:   source,
