@@ -1865,7 +1865,8 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 	}
 
 	parts = append(parts, `### Important
-- ALWAYS use the built-in automation tools above. NEVER use exec to run "lango cron", "lango bg", or "lango workflow" commands — this will fail because spawning a new lango process requires passphrase authentication.
+- ALWAYS use the built-in tools. NEVER use exec to run ANY "lango" CLI command — this includes "lango cron", "lango bg", "lango workflow", "lango graph", "lango memory", "lango p2p", "lango security", "lango payment", "lango config", "lango doctor", or any other subcommand. Every lango CLI invocation requires passphrase authentication during bootstrap and will fail when spawned as a non-interactive subprocess.
+- If you need functionality without a built-in tool equivalent (e.g., config management, diagnostics), ask the user to run the command in their terminal.
 `)
 
 	content := strings.Join(parts, "\n")
