@@ -29,14 +29,24 @@ func NewCommand() *cobra.Command {
 		Long: `The doctor command checks your Lango configuration and environment
 for common issues and can automatically fix some problems.
 
-Checks performed:
-  - Encrypted configuration profile validity
-  - API key and provider configuration
-  - Channel token validation
+Checks performed (14 total):
+  - Configuration profile validity
+  - AI provider configuration and API keys
+  - API key security (env-var best practices)
+  - Channel token validation (Telegram, Discord, Slack)
   - Session database accessibility
   - Server port availability
-  - Security configuration (signer, interceptor, passphrase)
+  - Security configuration (signer, interceptor, encryption)
   - Companion connectivity (WebSocket gateway status)
+  - Observational memory configuration
+  - Output scanning and interceptor settings
+  - Embedding / RAG provider and model setup
+  - Graph store configuration
+  - Multi-agent orchestration settings
+  - A2A protocol connectivity
+
+Use --fix to attempt automatic repair of fixable issues.
+Use --json for machine-readable output.
 
 See Also:
   lango settings - Interactive settings editor (TUI)

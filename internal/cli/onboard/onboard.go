@@ -23,10 +23,10 @@ func NewCommand() *cobra.Command {
 		Short: "Guided 5-step setup wizard for Lango",
 		Long: `The onboard command walks you through configuring Lango in five guided steps:
 
-  1. Provider Setup   — Choose an AI provider and enter API credentials
-  2. Agent Config     — Select model, max tokens, and temperature
+  1. Provider Setup   — Choose a provider (Anthropic, OpenAI, Gemini, Ollama, GitHub)
+  2. Agent Config     — Select model (auto-fetched from provider), tokens, temperature
   3. Channel Setup    — Configure Telegram, Discord, or Slack
-  4. Security & Auth  — Enable privacy interceptor and PII protection
+  4. Security & Auth  — Privacy interceptor, PII redaction, approval policy
   5. Test Config      — Validate your configuration
 
 For the full configuration editor with all options, use "lango settings".
