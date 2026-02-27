@@ -90,7 +90,8 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Let the menu handle esc to cancel search
 					break
 				}
-				return e, tea.Quit
+				e.step = StepWelcome
+				return e, nil
 			case StepProvidersList:
 				e.step = StepMenu
 				return e, nil

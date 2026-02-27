@@ -293,7 +293,7 @@ func (m MenuModel) View() string {
 			tui.HelpEntry("↑↓", "Navigate"),
 			tui.HelpEntry("Enter", "Select"),
 			tui.HelpEntry("/", "Search"),
-			tui.HelpEntry("Esc", "Quit"),
+			tui.HelpEntry("Esc", "Back"),
 		))
 	}
 

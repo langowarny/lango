@@ -15,9 +15,9 @@ import (
 
 const modelFetchTimeout = 5 * time.Second
 
-// newProviderFromConfig creates a lightweight provider instance from config.
+// NewProviderFromConfig creates a lightweight provider instance from config.
 // Returns nil if the provider cannot be created (missing API key, unknown type, etc.).
-func newProviderFromConfig(id string, pCfg config.ProviderConfig) provider.Provider {
+func NewProviderFromConfig(id string, pCfg config.ProviderConfig) provider.Provider {
 	apiKey := pCfg.APIKey
 	if apiKey == "" && pCfg.Type != types.ProviderOllama {
 		return nil
@@ -51,16 +51,16 @@ func newProviderFromConfig(id string, pCfg config.ProviderConfig) provider.Provi
 	}
 }
 
-// fetchModelOptions fetches available models from a provider.
+// FetchModelOptions fetches available models from a provider.
 // Returns a sorted list of model IDs, or nil if fetching fails.
 // The currentModel (if non-empty) is always included in the result.
-func fetchModelOptions(providerID string, cfg *config.Config, currentModel string) []string {
+func FetchModelOptions(providerID string, cfg *config.Config, currentModel string) []string {
 	pCfg, ok := cfg.Providers[providerID]
 	if !ok {
 		return nil
 	}
 
-	p := newProviderFromConfig(providerID, pCfg)
+	p := NewProviderFromConfig(providerID, pCfg)
 	if p == nil {
 		return nil
 	}

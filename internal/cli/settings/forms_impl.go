@@ -44,7 +44,7 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	// Try to fetch models dynamically from the selected provider
-	if modelOpts := fetchModelOptions(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
+	if modelOpts := FetchModelOptions(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
 		f := form.Fields[len(form.Fields)-1]
 		f.Type = tuicore.InputSelect
 		f.Options = modelOpts
@@ -104,7 +104,7 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	if cfg.Agent.FallbackProvider != "" {
-		if fbModelOpts := fetchModelOptions(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
+		if fbModelOpts := FetchModelOptions(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
 			fbModelOpts = append([]string{""}, fbModelOpts...)
 			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
 			form.Fields[len(form.Fields)-1].Options = fbModelOpts
@@ -596,7 +596,7 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 	if omFetchProvider == "" {
 		omFetchProvider = cfg.Agent.Provider
 	}
-	if omModelOpts := fetchModelOptions(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
+	if omModelOpts := FetchModelOptions(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
 		omModelOpts = append([]string{""}, omModelOpts...)
 		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
 		form.Fields[len(form.Fields)-1].Options = omModelOpts
@@ -696,7 +696,7 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 	})
 
 	if cfg.Embedding.Provider != "" {
-		if embModelOpts := fetchModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
+		if embModelOpts := FetchModelOptions(cfg.Embedding.Provider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
 			embModelOpts = append([]string{""}, embModelOpts...)
 			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
 			form.Fields[len(form.Fields)-1].Options = embModelOpts
@@ -1203,7 +1203,7 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 	if libFetchProvider == "" {
 		libFetchProvider = cfg.Agent.Provider
 	}
-	if libModelOpts := fetchModelOptions(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
+	if libModelOpts := FetchModelOptions(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
 		libModelOpts = append([]string{""}, libModelOpts...)
 		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
 		form.Fields[len(form.Fields)-1].Options = libModelOpts
@@ -1760,7 +1760,7 @@ func NewProviderForm(id string, cfg config.ProviderConfig) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "type", Label: "Type", Type: tuicore.InputSelect,
 		Value:       string(cfg.Type),
-		Options:     []string{"openai", "anthropic", "gemini", "ollama"},
+		Options:     []string{"openai", "anthropic", "gemini", "ollama", "github"},
 		Description: "LLM provider type; determines API format and authentication method",
 	})
 
