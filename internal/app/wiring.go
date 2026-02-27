@@ -560,9 +560,6 @@ func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, m
 		APIKey:     apiKey,
 		BaseURL:    emb.Local.BaseURL,
 	}
-	if backendType == "local" && emb.Local.Model != "" {
-		providerCfg.Model = emb.Local.Model
-	}
 
 	registry, err := embedding.NewRegistry(providerCfg, nil, logger())
 	if err != nil {

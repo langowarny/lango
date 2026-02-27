@@ -444,6 +444,9 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 
 		// Security KMS
+		case "kms_backend":
+			// Syncs the KMS backend selector with signer provider.
+			s.Current.Security.Signer.Provider = val
 		case "kms_region":
 			s.Current.Security.KMS.Region = val
 		case "kms_key_id":

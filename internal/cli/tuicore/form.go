@@ -15,7 +15,7 @@ import (
 type FormModel struct {
 	Title    string
 	Fields   []*Field
-	Cursor   int
+	Cursor   int // index into VisibleFields()
 	Focus    bool
 	OnSave   func(map[string]interface{})
 	OnCancel func()
@@ -50,6 +50,17 @@ func (m *FormModel) AddField(f *Field) {
 	m.Fields = append(m.Fields, f)
 }
 
+// VisibleFields returns only the fields that pass their visibility check.
+func (m FormModel) VisibleFields() []*Field {
+	var out []*Field
+	for _, f := range m.Fields {
+		if f.IsVisible() {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // Init implements tea.Model.
 func (m FormModel) Init() tea.Cmd {
 	return textinput.Blink
@@ -59,6 +70,16 @@ func (m FormModel) Init() tea.Cmd {
 func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	if !m.Focus {
 		return m, nil
+	}
+
+	visible := m.VisibleFields()
+	if len(visible) == 0 {
+		return m, nil
+	}
+
+	// Clamp cursor in case visibility changed.
+	if m.Cursor >= len(visible) {
+		m.Cursor = len(visible) - 1
 	}
 
 	var cmd tea.Cmd
@@ -71,11 +92,11 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 				m.Cursor--
 			}
 		case "down", "tab":
-			if m.Cursor < len(m.Fields)-1 {
+			if m.Cursor < len(visible)-1 {
 				m.Cursor++
 			}
 		case " ":
-			field := m.Fields[m.Cursor]
+			field := visible[m.Cursor]
 			if field.Type == InputBool {
 				field.Checked = !field.Checked
 			}
@@ -86,8 +107,17 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 		}
 	}
 
-	// Update specific field logic
-	field := m.Fields[m.Cursor]
+	// Re-evaluate visible after potential toggle change.
+	visible = m.VisibleFields()
+	if len(visible) == 0 {
+		return m, nil
+	}
+	if m.Cursor >= len(visible) {
+		m.Cursor = len(visible) - 1
+	}
+
+	// Update specific field logic.
+	field := visible[m.Cursor]
 	if field.Type == InputText || field.Type == InputInt || field.Type == InputPassword {
 		var inputCmd tea.Cmd
 		field.TextInput, inputCmd = field.TextInput.Update(msg)
@@ -95,7 +125,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 		cmd = inputCmd
 	}
 
-	// Handle Select Logic (Left/Right to cycle options)
+	// Handle Select Logic (Left/Right to cycle options).
 	if field.Type == InputSelect {
 		if msg, ok := msg.(tea.KeyMsg); ok {
 			switch msg.String() {
@@ -139,9 +169,12 @@ func (m FormModel) View() string {
 	b.WriteString(tui.FormTitleBarStyle.Render(m.Title))
 	b.WriteString("\n")
 
-	for i, f := range m.Fields {
+	visible := m.VisibleFields()
+	for vi, f := range visible {
+		isFocused := vi == m.Cursor
+
 		labelStyle := lipgloss.NewStyle().Width(20)
-		if i == m.Cursor {
+		if isFocused {
 			labelStyle = labelStyle.Foreground(tui.Accent).Bold(true)
 		}
 
@@ -149,7 +182,7 @@ func (m FormModel) View() string {
 
 		switch f.Type {
 		case InputText, InputInt, InputPassword:
-			if i == m.Cursor {
+			if isFocused {
 				f.TextInput.Focus()
 				f.TextInput.TextStyle = lipgloss.NewStyle().Foreground(tui.Accent)
 			} else {
@@ -163,7 +196,7 @@ func (m FormModel) View() string {
 			if f.Checked {
 				check = "[x]"
 			}
-			if i == m.Cursor {
+			if isFocused {
 				check = lipgloss.NewStyle().Foreground(tui.Accent).Render(check)
 			}
 			b.WriteString(check)
@@ -173,7 +206,7 @@ func (m FormModel) View() string {
 			if val == "" && len(f.Options) > 0 {
 				val = f.Options[0]
 			}
-			if i == m.Cursor {
+			if isFocused {
 				val = fmt.Sprintf("< %s >", val)
 				val = lipgloss.NewStyle().Foreground(tui.Accent).Render(val)
 			}
@@ -181,8 +214,8 @@ func (m FormModel) View() string {
 		}
 		b.WriteString("\n")
 
-		// Show description for the focused field
-		if i == m.Cursor && f.Description != "" {
+		// Show description for the focused field.
+		if isFocused && f.Description != "" {
 			b.WriteString(tui.FieldDescStyle.Render("ℹ " + f.Description))
 			b.WriteString("\n")
 		}

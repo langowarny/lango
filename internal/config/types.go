@@ -423,8 +423,9 @@ type EmbeddingConfig struct {
 type LocalEmbeddingConfig struct {
 	// BaseURL is the Ollama endpoint (default: http://localhost:11434/v1).
 	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
-	// Model overrides the embedding model for local provider.
-	Model string `mapstructure:"model" json:"model"`
+	// Deprecated: Model is now unified in EmbeddingConfig.Model for all providers.
+	// Retained only for backward-compatible config loading and migration.
+	Model string `mapstructure:"model" json:"model,omitempty"`
 }
 
 // RAGConfig defines retrieval-augmented generation settings.
@@ -931,7 +932,8 @@ func (c *Config) ResolveEmbeddingProvider() (backendType, apiKey string) {
 }
 
 // MigrateEmbeddingProvider migrates legacy configs that use separate ProviderID
-// and Provider fields into the unified Provider field.
+// and Provider fields into the unified Provider field, and consolidates
+// the deprecated Local.Model into the canonical Model field.
 func (c *Config) MigrateEmbeddingProvider() {
 	if c.Embedding.ProviderID != "" && c.Embedding.Provider == "" {
 		c.Embedding.Provider = c.Embedding.ProviderID
@@ -941,4 +943,9 @@ func (c *Config) MigrateEmbeddingProvider() {
 	if c.Embedding.ProviderID != "" && c.Embedding.Provider != "" {
 		c.Embedding.ProviderID = ""
 	}
+	// Migrate deprecated Local.Model into unified Model field.
+	if c.Embedding.Local.Model != "" && c.Embedding.Model == "" {
+		c.Embedding.Model = c.Embedding.Local.Model
+	}
+	c.Embedding.Local.Model = ""
 }

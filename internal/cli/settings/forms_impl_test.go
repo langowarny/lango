@@ -647,6 +647,7 @@ func TestNewKMSForm_AllFields(t *testing.T) {
 	form := NewKMSForm(cfg)
 
 	wantKeys := []string{
+		"kms_backend",
 		"kms_region", "kms_key_id", "kms_endpoint",
 		"kms_fallback_to_local", "kms_timeout", "kms_max_retries",
 		"kms_azure_vault_url", "kms_azure_key_version",

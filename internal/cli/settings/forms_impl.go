@@ -165,45 +165,52 @@ func NewServerForm(cfg *config.Config) *tuicore.FormModel {
 func NewChannelsForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Channels Configuration")
 
-	form.AddField(&tuicore.Field{
+	telegramEnabled := &tuicore.Field{
 		Key: "telegram_enabled", Label: "Telegram", Type: tuicore.InputBool,
 		Checked:     cfg.Channels.Telegram.Enabled,
 		Description: "Enable Telegram bot channel for receiving and sending messages",
-	})
+	}
+	form.AddField(telegramEnabled)
 	form.AddField(&tuicore.Field{
 		Key: "telegram_token", Label: "  Bot Token", Type: tuicore.InputPassword,
 		Value:       cfg.Channels.Telegram.BotToken,
 		Placeholder: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
 		Description: "Bot token from @BotFather; use ${ENV_VAR} to reference environment variables",
+		VisibleWhen: func() bool { return telegramEnabled.Checked },
 	})
 
-	form.AddField(&tuicore.Field{
+	discordEnabled := &tuicore.Field{
 		Key: "discord_enabled", Label: "Discord", Type: tuicore.InputBool,
 		Checked:     cfg.Channels.Discord.Enabled,
 		Description: "Enable Discord bot channel for receiving and sending messages",
-	})
+	}
+	form.AddField(discordEnabled)
 	form.AddField(&tuicore.Field{
 		Key: "discord_token", Label: "  Bot Token", Type: tuicore.InputPassword,
 		Value:       cfg.Channels.Discord.BotToken,
 		Description: "Bot token from Discord Developer Portal; use ${ENV_VAR} for security",
+		VisibleWhen: func() bool { return discordEnabled.Checked },
 	})
 
-	form.AddField(&tuicore.Field{
+	slackEnabled := &tuicore.Field{
 		Key: "slack_enabled", Label: "Slack", Type: tuicore.InputBool,
 		Checked:     cfg.Channels.Slack.Enabled,
 		Description: "Enable Slack bot channel using Socket Mode",
-	})
+	}
+	form.AddField(slackEnabled)
 	form.AddField(&tuicore.Field{
 		Key: "slack_token", Label: "  Bot Token", Type: tuicore.InputPassword,
 		Value:       cfg.Channels.Slack.BotToken,
 		Placeholder: "xoxb-...",
 		Description: "Slack Bot User OAuth Token (starts with xoxb-)",
+		VisibleWhen: func() bool { return slackEnabled.Checked },
 	})
 	form.AddField(&tuicore.Field{
 		Key: "slack_app_token", Label: "  App Token", Type: tuicore.InputPassword,
 		Value:       cfg.Channels.Slack.AppToken,
 		Placeholder: "xapp-...",
 		Description: "Slack App-Level Token for Socket Mode (starts with xapp-)",
+		VisibleWhen: func() bool { return slackEnabled.Checked },
 	})
 
 	return &form
@@ -286,15 +293,19 @@ func NewSessionForm(cfg *config.Config) *tuicore.FormModel {
 func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Security Configuration")
 
-	form.AddField(&tuicore.Field{
+	interceptorEnabled := &tuicore.Field{
 		Key: "interceptor_enabled", Label: "Privacy Interceptor", Type: tuicore.InputBool,
 		Checked:     cfg.Security.Interceptor.Enabled,
 		Description: "Enable the privacy interceptor to filter outgoing data",
-	})
+	}
+	form.AddField(interceptorEnabled)
+	isInterceptorOn := func() bool { return interceptorEnabled.Checked }
+
 	form.AddField(&tuicore.Field{
 		Key: "interceptor_pii", Label: "  Redact PII", Type: tuicore.InputBool,
 		Checked:     cfg.Security.Interceptor.RedactPII,
 		Description: "Automatically redact personally identifiable information from messages",
+		VisibleWhen: isInterceptorOn,
 	})
 	policyVal := string(cfg.Security.Interceptor.ApprovalPolicy)
 	if policyVal == "" {
@@ -305,31 +316,14 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       policyVal,
 		Options:     []string{"dangerous", "all", "configured", "none"},
 		Description: "When to require user approval: dangerous=risky tools, all=every tool, none=skip",
-	})
-
-	form.AddField(&tuicore.Field{
-		Key: "signer_provider", Label: "Signer Provider", Type: tuicore.InputSelect,
-		Value:       cfg.Security.Signer.Provider,
-		Options:     []string{"local", "rpc", "enclave", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
-		Description: "Cryptographic signer backend for message signing and verification",
-	})
-	form.AddField(&tuicore.Field{
-		Key: "signer_rpc", Label: "  RPC URL", Type: tuicore.InputText,
-		Value:       cfg.Security.Signer.RPCUrl,
-		Placeholder: "http://localhost:8080",
-		Description: "URL of the remote signing service (when provider = rpc)",
-	})
-	form.AddField(&tuicore.Field{
-		Key: "signer_keyid", Label: "  Key ID", Type: tuicore.InputText,
-		Value:       cfg.Security.Signer.KeyID,
-		Placeholder: "key-123",
-		Description: "Key identifier for the signer (ARN for AWS, key name for GCP/Azure)",
+		VisibleWhen: isInterceptorOn,
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "interceptor_timeout", Label: "  Approval Timeout (s)", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Security.Interceptor.ApprovalTimeoutSec),
 		Description: "Seconds to wait for user approval before auto-denying; 0 = wait forever",
+		VisibleWhen: isInterceptorOn,
 		Validate: func(s string) error {
 			if i, err := strconv.Atoi(s); err != nil || i < 0 {
 				return fmt.Errorf("must be a non-negative integer")
@@ -343,6 +337,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.Interceptor.NotifyChannel,
 		Options:     []string{"", string(types.ChannelTelegram), string(types.ChannelDiscord), string(types.ChannelSlack)},
 		Description: "Channel to send approval notifications to; empty = no notification",
+		VisibleWhen: isInterceptorOn,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -350,6 +345,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strings.Join(cfg.Security.Interceptor.SensitiveTools, ","),
 		Placeholder: "exec,browser (comma-separated)",
 		Description: "Tools that always require approval regardless of approval policy",
+		VisibleWhen: isInterceptorOn,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -357,6 +353,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strings.Join(cfg.Security.Interceptor.ExemptTools, ","),
 		Placeholder: "filesystem (comma-separated)",
 		Description: "Tools that never require approval, even with 'all' policy",
+		VisibleWhen: isInterceptorOn,
 	})
 
 	// PII Pattern Management
@@ -365,35 +362,68 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strings.Join(cfg.Security.Interceptor.PIIDisabledPatterns, ","),
 		Placeholder: "kr_bank_account,passport,ipv4 (comma-separated)",
 		Description: "Built-in PII pattern names to disable (e.g. ipv4, passport)",
+		VisibleWhen: isInterceptorOn,
 	})
 	form.AddField(&tuicore.Field{
 		Key: "interceptor_pii_custom", Label: "  Custom PII Patterns", Type: tuicore.InputText,
 		Value:       formatCustomPatterns(cfg.Security.Interceptor.PIICustomPatterns),
 		Placeholder: `my_id:\bID-\d{6}\b (name:regex, comma-sep)`,
 		Description: "Custom regex patterns for PII detection in name:regex format",
+		VisibleWhen: isInterceptorOn,
 	})
 
 	// Presidio Integration
-	form.AddField(&tuicore.Field{
+	presidioEnabled := &tuicore.Field{
 		Key: "presidio_enabled", Label: "  Presidio (Docker)", Type: tuicore.InputBool,
 		Checked:     cfg.Security.Interceptor.Presidio.Enabled,
 		Description: "Use Microsoft Presidio (Docker) for advanced NLP-based PII detection",
-	})
+		VisibleWhen: isInterceptorOn,
+	}
+	form.AddField(presidioEnabled)
+	isPresidioOn := func() bool { return isInterceptorOn() && presidioEnabled.Checked }
 	form.AddField(&tuicore.Field{
-		Key: "presidio_url", Label: "  Presidio URL", Type: tuicore.InputText,
+		Key: "presidio_url", Label: "    Presidio URL", Type: tuicore.InputText,
 		Value:       cfg.Security.Interceptor.Presidio.URL,
 		Placeholder: "http://localhost:5002",
 		Description: "URL of the Presidio analyzer service endpoint",
+		VisibleWhen: isPresidioOn,
 	})
 	presidioLang := cfg.Security.Interceptor.Presidio.Language
 	if presidioLang == "" {
 		presidioLang = "en"
 	}
 	form.AddField(&tuicore.Field{
-		Key: "presidio_language", Label: "  Presidio Language", Type: tuicore.InputSelect,
+		Key: "presidio_language", Label: "    Presidio Language", Type: tuicore.InputSelect,
 		Value:       presidioLang,
 		Options:     []string{"en", "ko", "ja", "zh", "de", "fr", "es", "it", "pt", "nl", "ru"},
 		Description: "Primary language for Presidio NLP analysis",
+		VisibleWhen: isPresidioOn,
+	})
+
+	// Signer Configuration
+	signerField := &tuicore.Field{
+		Key: "signer_provider", Label: "Signer Provider", Type: tuicore.InputSelect,
+		Value:       cfg.Security.Signer.Provider,
+		Options:     []string{"local", "rpc", "enclave", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
+		Description: "Cryptographic signer backend for message signing and verification",
+	}
+	form.AddField(signerField)
+	form.AddField(&tuicore.Field{
+		Key: "signer_rpc", Label: "  RPC URL", Type: tuicore.InputText,
+		Value:       cfg.Security.Signer.RPCUrl,
+		Placeholder: "http://localhost:8080",
+		Description: "URL of the remote signing service",
+		VisibleWhen: func() bool { return signerField.Value == "rpc" },
+	})
+	form.AddField(&tuicore.Field{
+		Key: "signer_keyid", Label: "  Key ID", Type: tuicore.InputText,
+		Value:       cfg.Security.Signer.KeyID,
+		Placeholder: "key-123",
+		Description: "Key identifier for the signer (ARN for AWS, key name for GCP/Azure)",
+		VisibleWhen: func() bool {
+			v := signerField.Value
+			return v == "rpc" || v == "aws-kms" || v == "gcp-kms" || v == "azure-kv" || v == "pkcs11"
+		},
 	})
 
 	return &form
@@ -551,14 +581,15 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "om_provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.ObservationalMemory.Provider,
 		Options:     omProviderOpts,
-		Description: "LLM provider for memory processing; empty = use agent default",
+		Placeholder: "(inherits from Agent)",
+		Description: fmt.Sprintf("LLM provider for memory processing; empty = inherit from Agent (%s)", cfg.Agent.Provider),
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "om_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.ObservationalMemory.Model,
-		Placeholder: "leave empty for agent default",
-		Description: "Model for observation/reflection generation; empty = use agent default",
+		Placeholder: "(inherits from Agent)",
+		Description: fmt.Sprintf("Model for observation/reflection generation; empty = inherit from Agent (%s)", cfg.Agent.Model),
 	})
 
 	omFetchProvider := cfg.ObservationalMemory.Provider
@@ -1157,14 +1188,15 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "lib_provider", Label: "Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Librarian.Provider,
 		Options:     libProviderOpts,
-		Description: "LLM provider for librarian processing; empty = use agent default",
+		Placeholder: "(inherits from Agent)",
+		Description: fmt.Sprintf("LLM provider for librarian processing; empty = inherit from Agent (%s)", cfg.Agent.Provider),
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "lib_model", Label: "Model", Type: tuicore.InputText,
 		Value:       cfg.Librarian.Model,
-		Placeholder: "leave empty for agent default",
-		Description: "Model for knowledge extraction; empty = use agent default",
+		Placeholder: "(inherits from Agent)",
+		Description: fmt.Sprintf("Model for knowledge extraction; empty = inherit from Agent (%s)", cfg.Agent.Model),
 	})
 
 	libFetchProvider := cfg.Librarian.Provider
@@ -1455,11 +1487,13 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		},
 	})
 
-	form.AddField(&tuicore.Field{
+	containerEnabled := &tuicore.Field{
 		Key: "container_enabled", Label: "Container Sandbox", Type: tuicore.InputBool,
 		Checked:     cfg.P2P.ToolIsolation.Container.Enabled,
 		Description: "Use container-based isolation (Docker/gVisor) for stronger security",
-	})
+	}
+	form.AddField(containerEnabled)
+	isContainerOn := func() bool { return containerEnabled.Checked }
 
 	runtime := cfg.P2P.ToolIsolation.Container.Runtime
 	if runtime == "" {
@@ -1470,6 +1504,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       runtime,
 		Options:     []string{"auto", "docker", "gvisor", "native"},
 		Description: "Container runtime: auto=detect best, gvisor=strongest isolation",
+		VisibleWhen: isContainerOn,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1477,6 +1512,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.P2P.ToolIsolation.Container.Image,
 		Placeholder: "lango-sandbox:latest",
 		Description: "Docker image to use for sandboxed tool execution",
+		VisibleWhen: isContainerOn,
 	})
 
 	networkMode := cfg.P2P.ToolIsolation.Container.NetworkMode
@@ -1488,12 +1524,14 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       networkMode,
 		Options:     []string{"none", "host", "bridge"},
 		Description: "Container network: none=no network, host=full access, bridge=isolated",
+		VisibleWhen: isContainerOn,
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "container_readonly_rootfs", Label: "  Read-Only Rootfs", Type: tuicore.InputBool,
 		Checked:     derefBool(cfg.P2P.ToolIsolation.Container.ReadOnlyRootfs, true),
 		Description: "Mount container root filesystem as read-only for security",
+		VisibleWhen: isContainerOn,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1501,6 +1539,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strconv.FormatInt(cfg.P2P.ToolIsolation.Container.CPUQuotaUS, 10),
 		Placeholder: "0 (0 = unlimited)",
 		Description: "CPU quota in microseconds per 100ms period; 0 = unlimited",
+		VisibleWhen: isContainerOn,
 		Validate: func(s string) error {
 			if i, err := strconv.ParseInt(s, 10, 64); err != nil || i < 0 {
 				return fmt.Errorf("must be a non-negative integer")
@@ -1514,6 +1553,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strconv.Itoa(cfg.P2P.ToolIsolation.Container.PoolSize),
 		Placeholder: "0 (0 = disabled)",
 		Description: "Number of pre-warmed containers in the pool; 0 = create on demand",
+		VisibleWhen: isContainerOn,
 		Validate: func(s string) error {
 			if i, err := strconv.Atoi(s); err != nil || i < 0 {
 				return fmt.Errorf("must be a non-negative integer")
@@ -1527,6 +1567,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.P2P.ToolIsolation.Container.PoolIdleTimeout.String(),
 		Placeholder: "5m",
 		Description: "Time before idle pooled containers are destroyed",
+		VisibleWhen: isContainerOn,
 	})
 
 	return &form
@@ -1575,11 +1616,33 @@ func NewDBEncryptionForm(cfg *config.Config) *tuicore.FormModel {
 func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 	form := tuicore.NewFormModel("Security KMS Configuration")
 
+	// Backend selector mirrors signer provider to drive field visibility.
+	signerProv := cfg.Security.Signer.Provider
+	if signerProv == "" {
+		signerProv = "local"
+	}
+	backendField := &tuicore.Field{
+		Key: "kms_backend", Label: "KMS Backend", Type: tuicore.InputSelect,
+		Value:       signerProv,
+		Options:     []string{"local", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
+		Description: "Cloud KMS or HSM backend; must match Signer Provider in Security settings",
+	}
+	form.AddField(backendField)
+
+	isCloudKMS := func() bool {
+		v := backendField.Value
+		return v == "aws-kms" || v == "gcp-kms" || v == "azure-kv"
+	}
+	isAnyKMS := func() bool {
+		return backendField.Value != "local"
+	}
+
 	form.AddField(&tuicore.Field{
 		Key: "kms_region", Label: "Region", Type: tuicore.InputText,
 		Value:       cfg.Security.KMS.Region,
 		Placeholder: "us-east-1 or us-central1",
 		Description: "Cloud region for KMS API calls (AWS region or GCP location)",
+		VisibleWhen: isCloudKMS,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1587,6 +1650,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.KeyID,
 		Placeholder: "arn:aws:kms:... or alias/my-key",
 		Description: "KMS key identifier (AWS ARN, GCP resource name, or Azure key name)",
+		VisibleWhen: isAnyKMS,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1594,12 +1658,14 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.Endpoint,
 		Placeholder: "http://localhost:8080 (optional)",
 		Description: "Custom KMS API endpoint; leave empty for default cloud endpoints",
+		VisibleWhen: isCloudKMS,
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "kms_fallback_to_local", Label: "Fallback to Local", Type: tuicore.InputBool,
 		Checked:     cfg.Security.KMS.FallbackToLocal,
 		Description: "Fall back to local key signing if cloud KMS is unavailable",
+		VisibleWhen: isAnyKMS,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1607,6 +1673,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.TimeoutPerOperation.String(),
 		Placeholder: "5s",
 		Description: "Timeout for each individual KMS API call",
+		VisibleWhen: isAnyKMS,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1614,6 +1681,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strconv.Itoa(cfg.Security.KMS.MaxRetries),
 		Placeholder: "3",
 		Description: "Number of retry attempts for failed KMS operations",
+		VisibleWhen: isAnyKMS,
 		Validate: func(s string) error {
 			if i, err := strconv.Atoi(s); err != nil || i < 0 {
 				return fmt.Errorf("must be a non-negative integer")
@@ -1622,11 +1690,13 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		},
 	})
 
+	isAzure := func() bool { return backendField.Value == "azure-kv" }
 	form.AddField(&tuicore.Field{
 		Key: "kms_azure_vault_url", Label: "Azure Vault URL", Type: tuicore.InputText,
 		Value:       cfg.Security.KMS.Azure.VaultURL,
 		Placeholder: "https://myvault.vault.azure.net",
-		Description: "Azure Key Vault URL (required when using Azure KMS backend)",
+		Description: "Azure Key Vault URL (required for Azure backend)",
+		VisibleWhen: isAzure,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1634,13 +1704,16 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.Azure.KeyVersion,
 		Placeholder: "empty = latest",
 		Description: "Specific key version to use; empty = always use latest version",
+		VisibleWhen: isAzure,
 	})
 
+	isPKCS11 := func() bool { return backendField.Value == "pkcs11" }
 	form.AddField(&tuicore.Field{
 		Key: "kms_pkcs11_module", Label: "PKCS#11 Module Path", Type: tuicore.InputText,
 		Value:       cfg.Security.KMS.PKCS11.ModulePath,
 		Placeholder: "/usr/lib/pkcs11/opensc-pkcs11.so",
 		Description: "Path to the PKCS#11 shared library for HSM access",
+		VisibleWhen: isPKCS11,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1648,6 +1721,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       strconv.Itoa(cfg.Security.KMS.PKCS11.SlotID),
 		Placeholder: "0",
 		Description: "HSM slot index to use for key operations",
+		VisibleWhen: isPKCS11,
 		Validate: func(s string) error {
 			if i, err := strconv.Atoi(s); err != nil || i < 0 {
 				return fmt.Errorf("must be a non-negative integer")
@@ -1661,6 +1735,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.PKCS11.Pin,
 		Placeholder: "prefer LANGO_PKCS11_PIN env var",
 		Description: "HSM PIN/password; strongly prefer LANGO_PKCS11_PIN env var for security",
+		VisibleWhen: isPKCS11,
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1668,6 +1743,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.KMS.PKCS11.KeyLabel,
 		Placeholder: "my-signing-key",
 		Description: "Label of the signing key stored in the HSM",
+		VisibleWhen: isPKCS11,
 	})
 
 	return &form

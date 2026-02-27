@@ -157,4 +157,37 @@ func TestMigrateEmbeddingProvider(t *testing.T) {
 			t.Errorf("Provider: want %q, got %q", "local", cfg.Embedding.Provider)
 		}
 	})
+
+	t.Run("migrates Local.Model to Model", func(t *testing.T) {
+		cfg := &Config{
+			Embedding: EmbeddingConfig{
+				Provider: "local",
+				Local:    LocalEmbeddingConfig{Model: "nomic-embed-text"},
+			},
+		}
+		cfg.MigrateEmbeddingProvider()
+		if cfg.Embedding.Model != "nomic-embed-text" {
+			t.Errorf("Model: want %q, got %q", "nomic-embed-text", cfg.Embedding.Model)
+		}
+		if cfg.Embedding.Local.Model != "" {
+			t.Errorf("Local.Model should be cleared, got %q", cfg.Embedding.Local.Model)
+		}
+	})
+
+	t.Run("Model takes precedence over Local.Model", func(t *testing.T) {
+		cfg := &Config{
+			Embedding: EmbeddingConfig{
+				Provider: "local",
+				Model:    "text-embedding-3-small",
+				Local:    LocalEmbeddingConfig{Model: "nomic-embed-text"},
+			},
+		}
+		cfg.MigrateEmbeddingProvider()
+		if cfg.Embedding.Model != "text-embedding-3-small" {
+			t.Errorf("Model: want %q, got %q", "text-embedding-3-small", cfg.Embedding.Model)
+		}
+		if cfg.Embedding.Local.Model != "" {
+			t.Errorf("Local.Model should be cleared, got %q", cfg.Embedding.Local.Model)
+		}
+	})
 }
