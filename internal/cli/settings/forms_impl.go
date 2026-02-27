@@ -43,6 +43,15 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Model identifier from the selected provider",
 	})
 
+	// Try to fetch models dynamically from the selected provider
+	if modelOpts := fetchModelOptions(cfg.Agent.Provider, cfg, cfg.Agent.Model); len(modelOpts) > 0 {
+		f := form.Fields[len(form.Fields)-1]
+		f.Type = tuicore.InputSelect
+		f.Options = modelOpts
+		f.Placeholder = ""
+		f.Description = fmt.Sprintf("Fetched %d models from provider; use ←→ to browse", len(modelOpts))
+	}
+
 	form.AddField(&tuicore.Field{
 		Key: "maxtokens", Label: "Max Tokens", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Agent.MaxTokens),
@@ -93,6 +102,15 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "e.g. gpt-4o",
 		Description: "Model to use with the fallback provider",
 	})
+
+	if cfg.Agent.FallbackProvider != "" {
+		if fbModelOpts := fetchModelOptions(cfg.Agent.FallbackProvider, cfg, cfg.Agent.FallbackModel); len(fbModelOpts) > 0 {
+			fbModelOpts = append([]string{""}, fbModelOpts...)
+			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+			form.Fields[len(form.Fields)-1].Options = fbModelOpts
+			form.Fields[len(form.Fields)-1].Placeholder = ""
+		}
+	}
 
 	form.AddField(&tuicore.Field{
 		Key: "request_timeout", Label: "Request Timeout", Type: tuicore.InputText,
@@ -543,6 +561,17 @@ func NewObservationalMemoryForm(cfg *config.Config) *tuicore.FormModel {
 		Description: "Model for observation/reflection generation; empty = use agent default",
 	})
 
+	omFetchProvider := cfg.ObservationalMemory.Provider
+	if omFetchProvider == "" {
+		omFetchProvider = cfg.Agent.Provider
+	}
+	if omModelOpts := fetchModelOptions(omFetchProvider, cfg, cfg.ObservationalMemory.Model); len(omModelOpts) > 0 {
+		omModelOpts = append([]string{""}, omModelOpts...)
+		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+		form.Fields[len(form.Fields)-1].Options = omModelOpts
+		form.Fields[len(form.Fields)-1].Placeholder = ""
+	}
+
 	form.AddField(&tuicore.Field{
 		Key: "om_msg_threshold", Label: "Message Token Threshold",
 		Type:        tuicore.InputInt,
@@ -639,6 +668,19 @@ func NewEmbeddingForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "e.g. text-embedding-3-small",
 		Description: "Embedding model name; must be supported by the selected provider",
 	})
+
+	embFetchProvider := cfg.Embedding.ProviderID
+	if embFetchProvider == "" && cfg.Embedding.Provider != "" {
+		embFetchProvider = cfg.Embedding.Provider
+	}
+	if embFetchProvider != "" {
+		if embModelOpts := fetchModelOptions(embFetchProvider, cfg, cfg.Embedding.Model); len(embModelOpts) > 0 {
+			embModelOpts = append([]string{""}, embModelOpts...)
+			form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+			form.Fields[len(form.Fields)-1].Options = embModelOpts
+			form.Fields[len(form.Fields)-1].Placeholder = ""
+		}
+	}
 
 	form.AddField(&tuicore.Field{
 		Key: "emb_dimensions", Label: "Dimensions", Type: tuicore.InputInt,
@@ -1133,6 +1175,17 @@ func NewLibrarianForm(cfg *config.Config) *tuicore.FormModel {
 		Placeholder: "leave empty for agent default",
 		Description: "Model for knowledge extraction; empty = use agent default",
 	})
+
+	libFetchProvider := cfg.Librarian.Provider
+	if libFetchProvider == "" {
+		libFetchProvider = cfg.Agent.Provider
+	}
+	if libModelOpts := fetchModelOptions(libFetchProvider, cfg, cfg.Librarian.Model); len(libModelOpts) > 0 {
+		libModelOpts = append([]string{""}, libModelOpts...)
+		form.Fields[len(form.Fields)-1].Type = tuicore.InputSelect
+		form.Fields[len(form.Fields)-1].Options = libModelOpts
+		form.Fields[len(form.Fields)-1].Placeholder = ""
+	}
 
 	return &form
 }
