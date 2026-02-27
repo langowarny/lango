@@ -54,7 +54,18 @@ func NewAgentForm(cfg *config.Config) *tuicore.FormModel {
 
 	form.AddField(&tuicore.Field{
 		Key: "temp", Label: "Temperature", Type: tuicore.InputText,
-		Value: fmt.Sprintf("%.1f", cfg.Agent.Temperature),
+		Value:       fmt.Sprintf("%.1f", cfg.Agent.Temperature),
+		Placeholder: "0.0 to 2.0",
+		Validate: func(s string) error {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return fmt.Errorf("must be a number")
+			}
+			if f < 0 || f > 2.0 {
+				return fmt.Errorf("must be between 0.0 and 2.0")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -191,6 +202,12 @@ func NewToolsForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "fs_max_read", Label: "Max Read Size", Type: tuicore.InputInt,
 		Value: strconv.FormatInt(cfg.Tools.Filesystem.MaxReadSize, 10),
+		Validate: func(s string) error {
+			if i, err := strconv.ParseInt(s, 10, 64); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	return &form
@@ -208,6 +225,12 @@ func NewSessionForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "max_history_turns", Label: "Max History Turns", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Session.MaxHistoryTurns),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	return &form
@@ -302,10 +325,14 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       cfg.Security.Interceptor.Presidio.URL,
 		Placeholder: "http://localhost:5002",
 	})
+	presidioLang := cfg.Security.Interceptor.Presidio.Language
+	if presidioLang == "" {
+		presidioLang = "en"
+	}
 	form.AddField(&tuicore.Field{
-		Key: "presidio_language", Label: "  Presidio Language", Type: tuicore.InputText,
-		Value:       cfg.Security.Interceptor.Presidio.Language,
-		Placeholder: "en",
+		Key: "presidio_language", Label: "  Presidio Language", Type: tuicore.InputSelect,
+		Value:   presidioLang,
+		Options: []string{"en", "ko", "ja", "zh", "de", "fr", "es", "it", "pt", "nl", "ru"},
 	})
 
 	return &form
@@ -376,6 +403,12 @@ func NewKnowledgeForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "knowledge_max_context", Label: "Max Context/Layer", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Knowledge.MaxContextPerLayer),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	return &form
@@ -405,12 +438,24 @@ func NewSkillForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "skill_max_bulk", Label: "Max Bulk Import", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Skill.MaxBulkImport),
 		Placeholder: "50",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "skill_import_concurrency", Label: "Import Concurrency", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Skill.ImportConcurrency),
 		Placeholder: "5",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -800,6 +845,12 @@ func NewCronForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "cron_max_jobs", Label: "Max Concurrent Jobs", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Cron.MaxConcurrentJobs),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	sessionMode := cfg.Cron.DefaultSessionMode
@@ -839,11 +890,23 @@ func NewBackgroundForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "bg_yield_ms", Label: "Yield Time (ms)", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Background.YieldMs),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "bg_max_tasks", Label: "Max Concurrent Tasks", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Background.MaxConcurrentTasks),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -867,6 +930,12 @@ func NewWorkflowForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "wf_max_steps", Label: "Max Concurrent Steps", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.Workflow.MaxConcurrentSteps),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1001,6 +1070,12 @@ func NewP2PForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "p2p_max_peers", Label: "Max Peers", Type: tuicore.InputInt,
 		Value: strconv.Itoa(cfg.P2P.MaxPeers),
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1045,6 +1120,16 @@ func NewP2PForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "p2p_min_trust_score", Label: "Min Trust Score", Type: tuicore.InputText,
 		Value:       fmt.Sprintf("%.1f", cfg.P2P.MinTrustScore),
 		Placeholder: "0.3 (0.0 to 1.0)",
+		Validate: func(s string) error {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				return fmt.Errorf("must be a number")
+			}
+			if f < 0 || f > 1.0 {
+				return fmt.Errorf("must be between 0.0 and 1.0")
+			}
+			return nil
+		},
 	})
 
 	return &form
@@ -1174,6 +1259,12 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "sandbox_max_memory_mb", Label: "Max Memory (MB)", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.P2P.ToolIsolation.MaxMemoryMB),
 		Placeholder: "256",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
+				return fmt.Errorf("must be a positive integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1216,12 +1307,24 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "container_cpu_quota", Label: "  CPU Quota (us)", Type: tuicore.InputInt,
 		Value:       strconv.FormatInt(cfg.P2P.ToolIsolation.Container.CPUQuotaUS, 10),
 		Placeholder: "0 (0 = unlimited)",
+		Validate: func(s string) error {
+			if i, err := strconv.ParseInt(s, 10, 64); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
 		Key: "container_pool_size", Label: "  Pool Size", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.P2P.ToolIsolation.Container.PoolSize),
 		Placeholder: "0 (0 = disabled)",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1306,6 +1409,12 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "kms_max_retries", Label: "Max Retries", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Security.KMS.MaxRetries),
 		Placeholder: "3",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
@@ -1330,6 +1439,12 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "kms_pkcs11_slot_id", Label: "PKCS#11 Slot ID", Type: tuicore.InputInt,
 		Value:       strconv.Itoa(cfg.Security.KMS.PKCS11.SlotID),
 		Placeholder: "0",
+		Validate: func(s string) error {
+			if i, err := strconv.Atoi(s); err != nil || i < 0 {
+				return fmt.Errorf("must be a non-negative integer")
+			}
+			return nil
+		},
 	})
 
 	form.AddField(&tuicore.Field{
