@@ -1,0 +1,28 @@
+- [x] Add `ContainerSandboxConfig` struct to `internal/config/types.go`
+- [x] Add `Container` field to `ToolIsolationConfig`
+- [x] Add defaults in `internal/config/loader.go` (Runtime: "auto", Image: "lango-sandbox:latest", NetworkMode: "none", etc.)
+- [x] Add viper defaults for container sandbox configuration
+- [x] Create `internal/sandbox/container_runtime.go` with `ContainerConfig`, `ContainerRuntime` interface, and error types
+- [x] Add `Version int` field to `ExecutionRequest` in `internal/sandbox/executor.go`
+- [x] Create `internal/sandbox/docker_runtime.go` with Docker Go SDK implementation
+- [x] Implement container create, attach, start, stdin/stdout, wait, remove lifecycle
+- [x] Implement `stripDockerStreamHeaders` for Docker multiplexed output
+- [x] Implement `Cleanup` for orphaned container removal by label
+- [x] Create `internal/sandbox/native_runtime.go` wrapping `SubprocessExecutor`
+- [x] Create `internal/sandbox/gvisor_runtime.go` stub (IsAvailable=false)
+- [x] Create `internal/sandbox/container_executor.go` with runtime probe chain
+- [x] Implement `NewContainerExecutor` with Docker → gVisor → Native fallback
+- [x] Create `internal/sandbox/container_pool.go` with channel-based pool
+- [x] Implement `Acquire`, `Release`, `Close` pool lifecycle
+- [x] Create `build/sandbox/Dockerfile` with Debian slim, sandbox user, entrypoint
+- [x] Add `sandbox-image` target to `Makefile`
+- [x] Update `internal/app/app.go` wiring for container executor with fallback
+- [x] Create `internal/cli/p2p/sandbox.go` with status, test, cleanup subcommands
+- [x] Register sandbox command in `internal/cli/p2p/p2p.go`
+- [x] Add `github.com/docker/docker` dependency to `go.mod`
+- [x] Write `internal/sandbox/container_runtime_test.go` (NativeRuntime tests)
+- [x] Write `internal/sandbox/docker_runtime_test.go` (integration tests, skip in short)
+- [x] Write `internal/sandbox/container_executor_test.go` (mock runtime fallback tests)
+- [x] Write `internal/sandbox/container_pool_test.go` (acquire/release/expiry tests)
+- [x] Verify `go build ./...` passes
+- [x] Verify `go test ./...` passes

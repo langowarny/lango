@@ -31,6 +31,23 @@ Security Status
   Interceptor:        enabled
   PII Redaction:      disabled
   Approval Policy:    dangerous
+  DB Encryption:      disabled (plaintext)
+```
+
+```bash
+# With KMS configured
+$ lango security status
+Security Status
+  Signer Provider:    aws-kms
+  Encryption Keys:    2
+  Stored Secrets:     5
+  Interceptor:        enabled
+  PII Redaction:      disabled
+  Approval Policy:    dangerous
+  DB Encryption:      encrypted (active)
+  KMS Provider:       aws-kms
+  KMS Key ID:         arn:aws:kms:us-east-1:...
+  KMS Fallback:       enabled
 ```
 
 **JSON output fields:**
@@ -43,6 +60,10 @@ Security Status
 | `interceptor` | string | Interceptor status (`enabled`/`disabled`) |
 | `pii_redaction` | string | PII redaction status (`enabled`/`disabled`) |
 | `approval_policy` | string | Tool approval policy (`always`, `dangerous`, `never`) |
+| `db_encryption` | string | Database encryption status |
+| `kms_provider` | string | KMS provider name (when configured) |
+| `kms_key_id` | string | KMS key identifier (when configured) |
+| `kms_fallback` | string | KMS fallback status (when configured) |
 
 ---
 
@@ -84,6 +105,230 @@ Migration completed successfully!
 
 ---
 
+## Hardware Keyring
+
+Manage hardware-backed keyring passphrase storage. Only secure hardware backends are supported (macOS Touch ID / Linux TPM 2.0) to prevent same-UID attacks.
+
+### lango security keyring store
+
+Store the master passphrase using the best available secure hardware backend. Requires an interactive terminal and a hardware backend (Touch ID or TPM 2.0).
+
+```
+lango security keyring store
+```
+
+!!! warning "Requirements"
+    - An interactive terminal (cannot be used in CI/CD)
+    - A secure hardware backend (Touch ID on macOS or TPM 2.0 on Linux)
+    - On macOS: binary must be codesigned for biometric protection
+
+**Example:**
+
+```bash
+$ lango security keyring store
+Enter passphrase to store: ********
+Passphrase stored with biometric protection.
+  Next launch will load it automatically.
+```
+
+---
+
+### lango security keyring clear
+
+Remove the master passphrase from all hardware keyring backends.
+
+```
+lango security keyring clear [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt |
+
+**Examples:**
+
+```bash
+# Interactive
+$ lango security keyring clear
+Remove passphrase from all keyring backends? [y/N] y
+Removed passphrase from secure provider.
+
+# Non-interactive
+$ lango security keyring clear --force
+Removed passphrase from secure provider.
+```
+
+---
+
+### lango security keyring status
+
+Show hardware keyring availability and stored passphrase status.
+
+```
+lango security keyring status [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security keyring status
+Hardware Keyring Status
+  Available:       true
+  Security Tier:   biometric
+  Has Passphrase:  true
+```
+
+**JSON output fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `available` | bool | Whether a hardware keyring is available |
+| `security_tier` | string | Security tier (`biometric`, `tpm`, or `none`) |
+| `has_passphrase` | bool | Whether passphrase is stored |
+
+---
+
+## Database Encryption
+
+Encrypt or decrypt the application database using SQLCipher.
+
+### lango security db-migrate
+
+Convert the plaintext SQLite database to SQLCipher-encrypted format using the current passphrase.
+
+```
+lango security db-migrate [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt (enables non-interactive mode) |
+
+**Example:**
+
+```bash
+$ lango security db-migrate
+This will encrypt your database. A backup will be created. Continue? [y/N] y
+Enter passphrase for DB encryption: ********
+Encrypting database...
+Database encrypted successfully.
+Set security.dbEncryption.enabled=true in your config to use the encrypted DB.
+```
+
+---
+
+### lango security db-decrypt
+
+Convert a SQLCipher-encrypted database back to plaintext SQLite.
+
+```
+lango security db-decrypt [--force]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--force` | bool | `false` | Skip confirmation prompt (enables non-interactive mode) |
+
+**Example:**
+
+```bash
+$ lango security db-decrypt
+This will decrypt your database to plaintext. Continue? [y/N] y
+Enter passphrase for DB decryption: ********
+Decrypting database...
+Database decrypted successfully.
+Set security.dbEncryption.enabled=false in your config if you no longer want encryption.
+```
+
+---
+
+## Cloud KMS / HSM
+
+Manage Cloud KMS and HSM integration. Requires `security.signer.provider` to be set to a KMS provider (`aws-kms`, `gcp-kms`, `azure-kv`, or `pkcs11`).
+
+### lango security kms status
+
+Show the KMS provider connection status.
+
+```
+lango security kms status [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security kms status
+KMS Status
+  Provider:      aws-kms
+  Key ID:        arn:aws:kms:us-east-1:123456789012:key/example-key
+  Region:        us-east-1
+  Fallback:      enabled
+  Status:        connected
+```
+
+**JSON output fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | KMS provider name |
+| `key_id` | string | KMS key identifier |
+| `region` | string | Cloud region (if applicable) |
+| `fallback` | string | Local fallback status (`enabled`/`disabled`) |
+| `status` | string | Connection status (`connected`, `unreachable`, `not configured`, or error) |
+
+---
+
+### lango security kms test
+
+Test KMS encrypt/decrypt roundtrip using 32 bytes of random data.
+
+```
+lango security kms test
+```
+
+**Example:**
+
+```bash
+$ lango security kms test
+Testing KMS roundtrip with key "arn:aws:kms:us-east-1:123456789012:key/example-key"...
+  Encrypt: OK (32 bytes → 64 bytes)
+  Decrypt: OK (32 bytes)
+  Roundtrip: PASS
+```
+
+---
+
+### lango security kms keys
+
+List KMS keys registered in the KeyRegistry.
+
+```
+lango security kms keys [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output as JSON |
+
+**Example:**
+
+```bash
+$ lango security kms keys
+ID                                    NAME                  TYPE          REMOTE KEY ID
+550e8400-e29b-41d4-a716-446655440000  primary-signing       signing       arn:aws:kms:us-east-1:...
+6ba7b810-9dad-11d1-80b4-00c04fd430c8  default-encryption    encryption    arn:aws:kms:us-east-1:...
+```
+
+---
+
 ## Secret Management
 
 Manage encrypted secrets stored in the database. Secret values are never displayed -- only metadata is shown when listing.
@@ -114,26 +359,39 @@ openai-api-key     default  2026-02-01 09:00  2026-02-01 09:00  3
 
 ### lango security secrets set
 
-Store a new encrypted secret or update an existing one. Prompts for the secret value interactively (input is hidden).
+Store a new encrypted secret or update an existing one. In interactive mode, prompts for the secret value (input is hidden). In non-interactive mode, use `--value-hex` to provide a hex-encoded value.
 
 ```
-lango security secrets set <name>
+lango security secrets set <name> [--value-hex <hex>]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `name` | Yes | Name identifier for the secret |
 
-!!! note
-    This command requires an interactive terminal. The secret value is read securely without echoing to the screen.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--value-hex` | string | - | Hex-encoded value to store (optional `0x` prefix). Enables non-interactive mode. |
 
-**Example:**
+**Examples:**
 
 ```bash
+# Interactive (prompts for value)
 $ lango security secrets set my-api-key
 Enter secret value:
 Secret 'my-api-key' stored successfully.
+
+# Non-interactive with hex value (e.g., wallet private key in Docker/CI)
+$ lango security secrets set wallet.privatekey --value-hex 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+Secret 'wallet.privatekey' stored successfully.
+
+# Without 0x prefix
+$ lango security secrets set wallet.privatekey --value-hex ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+Secret 'wallet.privatekey' stored successfully.
 ```
+
+!!! tip
+    Use `--value-hex` for non-interactive environments (Docker, CI/CD, scripts). Without it, the command requires an interactive terminal and will fail with an error suggesting `--value-hex`.
 
 ---
 

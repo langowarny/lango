@@ -3,6 +3,7 @@ package approval
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestGrantStore_GrantAndIsGranted(t *testing.T) {
@@ -104,4 +105,84 @@ func TestGrantStore_RevokeNonExistent(t *testing.T) {
 	// Should not panic
 	gs.Revoke("nonexistent", "tool")
 	gs.RevokeSession("nonexistent")
+}
+
+func TestGrantStore_TTLExpired(t *testing.T) {
+	now := time.Now()
+	gs := NewGrantStore()
+	gs.nowFn = func() time.Time { return now }
+	gs.SetTTL(10 * time.Minute)
+
+	gs.Grant("session-1", "echo")
+
+	// Still valid within TTL.
+	gs.nowFn = func() time.Time { return now.Add(9 * time.Minute) }
+	if !gs.IsGranted("session-1", "echo") {
+		t.Error("expected grant to be valid within TTL")
+	}
+
+	// Expired after TTL.
+	gs.nowFn = func() time.Time { return now.Add(11 * time.Minute) }
+	if gs.IsGranted("session-1", "echo") {
+		t.Error("expected grant to be expired after TTL")
+	}
+}
+
+func TestGrantStore_TTLZeroMeansNoExpiry(t *testing.T) {
+	now := time.Now()
+	gs := NewGrantStore()
+	gs.nowFn = func() time.Time { return now }
+	// TTL = 0 (default).
+
+	gs.Grant("session-1", "echo")
+
+	// 100 hours later, still valid.
+	gs.nowFn = func() time.Time { return now.Add(100 * time.Hour) }
+	if !gs.IsGranted("session-1", "echo") {
+		t.Error("expected grant to be valid indefinitely when TTL = 0")
+	}
+}
+
+func TestGrantStore_CleanExpired(t *testing.T) {
+	now := time.Now()
+	gs := NewGrantStore()
+	gs.nowFn = func() time.Time { return now }
+	gs.SetTTL(5 * time.Minute)
+
+	gs.Grant("session-1", "echo")
+	gs.Grant("session-1", "exec")
+	gs.Grant("session-2", "echo")
+
+	// Advance time past TTL for the first two, but grant session-2:echo later.
+	gs.nowFn = func() time.Time { return now.Add(3 * time.Minute) }
+	gs.Grant("session-2", "echo") // refresh
+
+	gs.nowFn = func() time.Time { return now.Add(6 * time.Minute) }
+	removed := gs.CleanExpired()
+	if removed != 2 {
+		t.Errorf("expected 2 expired grants removed, got %d", removed)
+	}
+
+	if gs.IsGranted("session-1", "echo") {
+		t.Error("session-1:echo should be cleaned")
+	}
+	if gs.IsGranted("session-1", "exec") {
+		t.Error("session-1:exec should be cleaned")
+	}
+	if !gs.IsGranted("session-2", "echo") {
+		t.Error("session-2:echo should still be valid (refreshed)")
+	}
+}
+
+func TestGrantStore_CleanExpiredNoOpWhenTTLZero(t *testing.T) {
+	gs := NewGrantStore()
+	gs.Grant("session-1", "echo")
+
+	removed := gs.CleanExpired()
+	if removed != 0 {
+		t.Errorf("expected 0 removed with TTL=0, got %d", removed)
+	}
+	if !gs.IsGranted("session-1", "echo") {
+		t.Error("grant should remain when TTL=0")
+	}
 }

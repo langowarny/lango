@@ -15,10 +15,18 @@ import (
 type SessionServiceAdapter struct {
 	store         internal.Store
 	rootAgentName string
+	tokenBudget   int // 0 = use DefaultTokenBudget
 }
 
 func NewSessionServiceAdapter(store internal.Store, rootAgentName string) *SessionServiceAdapter {
 	return &SessionServiceAdapter{store: store, rootAgentName: rootAgentName}
+}
+
+// WithTokenBudget sets the token budget for history truncation.
+// Use ModelTokenBudget(modelName) to derive an appropriate budget from the model name.
+func (s *SessionServiceAdapter) WithTokenBudget(budget int) *SessionServiceAdapter {
+	s.tokenBudget = budget
+	return s
 }
 
 func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
@@ -47,7 +55,9 @@ func (s *SessionServiceAdapter) Create(ctx context.Context, req *session.CreateR
 		return nil, err
 	}
 
-	return &session.CreateResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+	sa.tokenBudget = s.tokenBudget
+	return &session.CreateResponse{Session: sa}, nil
 }
 
 func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
@@ -57,12 +67,22 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 		if errors.Is(err, internal.ErrSessionNotFound) {
 			return s.getOrCreate(ctx, req)
 		}
+		// Auto-renew expired sessions: delete stale record, then create fresh
+		if errors.Is(err, internal.ErrSessionExpired) {
+			logger().Infow("session expired, auto-renewing", "session", req.SessionID)
+			if delErr := s.store.Delete(req.SessionID); delErr != nil {
+				return nil, fmt.Errorf("delete expired session %s: %w", req.SessionID, delErr)
+			}
+			return s.getOrCreate(ctx, req)
+		}
 		return nil, err
 	}
 	if sess == nil {
 		return s.getOrCreate(ctx, req)
 	}
-	return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+	sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+	sa.tokenBudget = s.tokenBudget
+	return &session.GetResponse{Session: sa}, nil
 }
 
 // getOrCreate attempts to create a session, and if it fails due to a
@@ -77,7 +97,9 @@ func (s *SessionServiceAdapter) getOrCreate(ctx context.Context, req *session.Ge
 			if err != nil {
 				return nil, fmt.Errorf("auto-create session %s: get after conflict: %w", req.SessionID, err)
 			}
-			return &session.GetResponse{Session: NewSessionAdapter(sess, s.store, s.rootAgentName)}, nil
+			sa := NewSessionAdapter(sess, s.store, s.rootAgentName)
+			sa.tokenBudget = s.tokenBudget
+			return &session.GetResponse{Session: sa}, nil
 		}
 		return nil, fmt.Errorf("auto-create session %s: %w", req.SessionID, createErr)
 	}
@@ -102,10 +124,10 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 		Timestamp: evt.Timestamp,
 	}
 
-	if evt.LLMResponse.Content != nil {
-		msg.Role = types.MessageRole(evt.LLMResponse.Content.Role).Normalize()
+	if evt.Content != nil {
+		msg.Role = types.MessageRole(evt.Content.Role).Normalize()
 
-		for _, p := range evt.LLMResponse.Content.Parts {
+		for _, p := range evt.Content.Parts {
 			if p.Text != "" {
 				msg.Content += p.Text
 			}

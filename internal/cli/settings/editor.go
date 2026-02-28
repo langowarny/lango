@@ -66,7 +66,7 @@ func NewEditorWithConfig(cfg *config.Config) *Editor {
 
 // Init implements tea.Model.
 func (e *Editor) Init() tea.Cmd {
-	return nil
+	return tea.ClearScreen
 }
 
 // Update implements tea.Model.
@@ -82,8 +82,15 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.String() == "esc" {
 			switch e.step {
-			case StepWelcome, StepMenu:
+			case StepWelcome:
 				return e, tea.Quit
+			case StepMenu:
+				if e.menu.IsSearching() {
+					// Let the menu handle esc to cancel search
+					break
+				}
+				e.step = StepWelcome
+				return e, nil
 			case StepProvidersList:
 				e.step = StepMenu
 				return e, nil
@@ -91,6 +98,11 @@ func (e *Editor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				e.step = StepMenu
 				return e, nil
 			case StepForm:
+				// If a search-select dropdown is open, let the form handle Esc
+				// (closes dropdown only, does not exit the form).
+				if e.activeForm != nil && e.activeForm.HasOpenDropdown() {
+					break
+				}
 				if e.activeForm != nil {
 					if e.activeAuthProviderID != "" || e.isAuthProviderForm() {
 						e.state.UpdateAuthProviderFromForm(e.activeAuthProviderID, e.activeForm)
@@ -280,6 +292,34 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 		e.activeForm = NewLibrarianForm(e.state.Current)
 		e.activeForm.Focus = true
 		e.step = StepForm
+	case "p2p":
+		e.activeForm = NewP2PForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_zkp":
+		e.activeForm = NewP2PZKPForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_pricing":
+		e.activeForm = NewP2PPricingForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_owner":
+		e.activeForm = NewP2POwnerProtectionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "p2p_sandbox":
+		e.activeForm = NewP2PSandboxForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "security_db":
+		e.activeForm = NewDBEncryptionForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
+	case "security_kms":
+		e.activeForm = NewKMSForm(e.state.Current)
+		e.activeForm.Focus = true
+		e.step = StepForm
 	case "auth":
 		e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
 		e.step = StepAuthProvidersList
@@ -301,15 +341,29 @@ func (e *Editor) handleMenuSelection(id string) tea.Cmd {
 func (e *Editor) View() string {
 	var b strings.Builder
 
-	b.WriteString(tui.TitleStyle.Render("Lango Configuration Editor"))
+	// Dynamic breadcrumb header
+	switch e.step {
+	case StepWelcome, StepMenu:
+		b.WriteString(tui.Breadcrumb("Settings"))
+	case StepForm:
+		formTitle := ""
+		if e.activeForm != nil {
+			formTitle = e.activeForm.Title
+		}
+		b.WriteString(tui.Breadcrumb("Settings", formTitle))
+	case StepProvidersList:
+		b.WriteString(tui.Breadcrumb("Settings", "Providers"))
+	case StepAuthProvidersList:
+		b.WriteString(tui.Breadcrumb("Settings", "Auth Providers"))
+	default:
+		b.WriteString(tui.Breadcrumb("Settings"))
+	}
 	b.WriteString("\n\n")
 
+	// Content
 	switch e.step {
 	case StepWelcome:
-		b.WriteString(tui.SubtitleStyle.Render("Welcome!"))
-		b.WriteString("\n\n")
-		b.WriteString("Press [Enter] to start configuring Lango.\n")
-		b.WriteString(tui.MutedStyle.Render("This editor allows you to configure Agent, Server, Tools, and more."))
+		b.WriteString(e.viewWelcome())
 
 	case StepMenu:
 		b.WriteString(e.menu.View())
@@ -325,6 +379,23 @@ func (e *Editor) View() string {
 	case StepAuthProvidersList:
 		b.WriteString(e.authProvidersList.View())
 	}
+
+	return b.String()
+}
+
+func (e *Editor) viewWelcome() string {
+	var b strings.Builder
+
+	b.WriteString(tui.BannerBox())
+	b.WriteString("\n\n")
+	b.WriteString(tui.MutedStyle.Render("Configure your agent, providers, channels, and more."))
+	b.WriteString("\n")
+	b.WriteString(tui.MutedStyle.Render("All settings are saved to an encrypted local profile."))
+	b.WriteString("\n\n")
+	b.WriteString(tui.HelpBar(
+		tui.HelpEntry("Enter", "Start"),
+		tui.HelpEntry("Esc", "Quit"),
+	))
 
 	return b.String()
 }

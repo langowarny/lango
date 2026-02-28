@@ -1,4 +1,12 @@
+### Tool Selection Priority
+- **Always prefer built-in tools over skills.** Built-in tools run in-process, are production-hardened, and never require external authentication.
+- Skills are user-defined extensions for specialized workflows that have no built-in equivalent.
+- Before invoking any skill, first check if a built-in tool already provides the same functionality.
+- Skills that wrap `lango` CLI commands will fail — the CLI requires passphrase authentication that is unavailable in agent mode.
+
 ### Exec Tool
+- **NEVER use exec to run `lango` CLI commands** (e.g., `lango security`, `lango memory`, `lango graph`, `lango p2p`, `lango config`, `lango cron`, `lango bg`, `lango workflow`, `lango payment`, `lango serve`, `lango doctor`, etc.). Every `lango` command requires passphrase authentication during bootstrap and **will fail** when spawned as a non-interactive subprocess. Use the built-in tools instead — they run in-process and do not require authentication.
+- If you need functionality that has no built-in tool equivalent (e.g., `lango config`, `lango doctor`, `lango settings`), inform the user and ask them to run the command directly in their terminal.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
 - Use background execution (`exec_bg`) for processes that run indefinitely (servers, watchers). Monitor with `exec_status`, stop with `exec_stop`.
@@ -82,3 +90,28 @@
 - When a tool call fails, report the error clearly: what was attempted, what went wrong, and what alternatives exist.
 - Do not retry the same failing command without changing something. Diagnose the issue first.
 - If a tool is unavailable or disabled, suggest alternative approaches using other available tools.
+
+### P2P Networking Tool
+- The gateway also exposes read-only REST endpoints for P2P node state: `GET /api/p2p/status`, `GET /api/p2p/peers`, `GET /api/p2p/identity`. These query the running server's persistent node and are useful for monitoring, health checks, and external integrations. The agent tools below provide the same data plus write operations (connect, disconnect, firewall management).
+- `p2p_status` shows the node's peer ID, listen addresses, connected peer count, and feature flags (mDNS, relay, ZK handshake). Use this to verify the node is running before other P2P operations.
+- `p2p_connect` initiates a handshake with a remote peer. Requires a full multiaddr (e.g. `/ip4/1.2.3.4/tcp/9000/p2p/QmPeerID`). The handshake includes DID-based identity verification.
+- `p2p_disconnect` closes the connection to a specific peer by peer ID.
+- `p2p_peers` lists all currently connected peers with their peer IDs and multiaddrs.
+- `p2p_query` sends an inference-only query to a remote agent. The query is subject to the remote peer's three-stage approval pipeline: (1) firewall ACL, (2) reputation check against `minTrustScore`, and (3) owner approval. If denied at any stage, do not retry without the remote peer changing their configuration.
+- `p2p_discover` searches for agents by capability tag via GossipSub. Results include agent name, DID, capabilities, and peer ID. Connect to bootstrap peers first if no agents appear.
+- `p2p_firewall_rules` lists current firewall ACL rules. Default policy is deny-all.
+- `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), `tools` (patterns), and optional `rate_limit`.
+- `p2p_firewall_remove` removes all rules matching a given peer DID.
+- `p2p_pay` sends a USDC payment to a connected peer by DID. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
+- `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Use this to check costs before committing to a paid tool call.
+- `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
+- **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment (auto-approved if below threshold), (5) `p2p_query` to invoke the tool (subject to remote owner's approval pipeline).
+- **Inbound tool invocations** from remote peers pass through a three-stage gate on the local node: (1) firewall ACL check, (2) reputation score verification against `minTrustScore`, and (3) owner approval (auto-approved for paid tools below `autoApproveBelow`, otherwise interactive confirmation).
+- REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
+- Session tokens are per-peer with configurable TTL. When a session token expires, reconnect to the peer.
+- If a firewall deny response is received, do not retry the same query without changing the firewall rules.
+- **Session management**: Active sessions can be listed, individually revoked, or bulk-revoked. Sessions are automatically invalidated when a peer's reputation drops below `minTrustScore` or after repeated tool execution failures. Use `p2p_status` to monitor session count.
+- **Sandbox awareness**: When `p2p.toolIsolation.enabled` is true, all inbound remote tool invocations from peers execute in a sandbox (subprocess or Docker container). This is transparent to the agent — tool calls work the same way, but with process-level isolation.
+- **Signed challenges**: Protocol v1.1 uses ECDSA-signed challenges. When `p2p.requireSignedChallenge` is true, only peers supporting v1.1 can connect. Legacy v1.0 peers will be rejected.
+- **KMS latency**: When a Cloud KMS provider is configured (`aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11`), cryptographic operations incur network roundtrip latency. The system retries transient errors automatically with exponential backoff. If KMS is unreachable and `kms.fallbackToLocal` is enabled, operations fall back to local mode.
+- **Credential revocation**: Revoked DIDs are tracked in the gossip discovery layer. Use `maxCredentialAge` to enforce credential freshness — stale credentials are rejected even if not explicitly revoked. Gossip refresh propagates revocations across the network.

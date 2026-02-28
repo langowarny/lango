@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -194,18 +195,57 @@ func TestEntStore_MaxHistoryTurns(t *testing.T) {
 }
 
 func TestEntStore_TTL(t *testing.T) {
-	store := newTestEntStore(t, WithTTL(1*time.Millisecond))
+	store := newTestEntStore(t, WithTTL(50*time.Millisecond))
 
-	session := &Session{Key: "sess-ttl"}
-	if err := store.Create(session); err != nil {
+	sess := &Session{Key: "sess-ttl"}
+	if err := store.Create(sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	_, err := store.Get("sess-ttl")
 	if err == nil {
 		t.Fatal("expected session expired error")
+	}
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("expected ErrSessionExpired, got: %v", err)
+	}
+}
+
+func TestEntStore_TTL_DeleteAndRecreate(t *testing.T) {
+	store := newTestEntStore(t, WithTTL(50*time.Millisecond))
+
+	sess := &Session{Key: "sess-ttl-renew", Model: "old-model"}
+	if err := store.Create(sess); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify expired
+	_, err := store.Get("sess-ttl-renew")
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Fatalf("expected ErrSessionExpired, got: %v", err)
+	}
+
+	// Delete expired session
+	if err := store.Delete("sess-ttl-renew"); err != nil {
+		t.Fatalf("Delete expired: %v", err)
+	}
+
+	// Recreate with new data
+	newSess := &Session{Key: "sess-ttl-renew", Model: "new-model"}
+	if err := store.Create(newSess); err != nil {
+		t.Fatalf("Recreate: %v", err)
+	}
+
+	got, err := store.Get("sess-ttl-renew")
+	if err != nil {
+		t.Fatalf("Get after recreate: %v", err)
+	}
+	if got.Model != "new-model" {
+		t.Errorf("Model: want %q, got %q", "new-model", got.Model)
 	}
 }
 

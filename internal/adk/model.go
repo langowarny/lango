@@ -61,12 +61,7 @@ func (m *ModelAdapter) GenerateContent(ctx context.Context, req *model.LLMReques
 				params.MaxTokens = int(req.Config.MaxOutputTokens)
 			}
 		}
-		if params.Model == "" {
-			// Fallback if not set in request (ADK might set it in client/factory)
-			// But params must have it.
-			// We can default or error.
-			// provider usually requires it.
-		}
+		// params.Model may be empty here; the provider will use its default.
 
 		pSeq, err := m.p.Generate(ctx, params)
 		if err != nil {
@@ -201,9 +196,10 @@ func convertMessages(contents []*genai.Content) ([]provider.Message, error) {
 	var msgs []provider.Message
 	for _, c := range contents {
 		role := c.Role
-		if role == "model" {
+		switch role {
+		case "model":
 			role = "assistant"
-		} else if role == "function" {
+		case "function":
 			role = "tool"
 		}
 

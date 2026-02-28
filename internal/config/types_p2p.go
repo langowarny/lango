@@ -1,0 +1,174 @@
+package config
+
+import "time"
+
+// P2PConfig defines peer-to-peer network settings for the Sovereign Agent Network.
+type P2PConfig struct {
+	// Enable P2P networking.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// ListenAddrs are the multiaddrs to listen on (e.g. /ip4/0.0.0.0/tcp/9000).
+	ListenAddrs []string `mapstructure:"listenAddrs" json:"listenAddrs"`
+
+	// BootstrapPeers are initial peers to connect to for DHT bootstrapping.
+	BootstrapPeers []string `mapstructure:"bootstrapPeers" json:"bootstrapPeers"`
+
+	// Deprecated: KeyDir is the legacy directory for persisting node keys.
+	// Node keys are now stored in SecretsStore (encrypted) when available.
+	// This field is retained for backward compatibility and migration.
+	KeyDir string `mapstructure:"keyDir" json:"keyDir,omitempty"`
+
+	// EnableRelay allows this node to act as a relay for NAT traversal.
+	EnableRelay bool `mapstructure:"enableRelay" json:"enableRelay"`
+
+	// EnableMDNS enables multicast DNS for local peer discovery.
+	EnableMDNS bool `mapstructure:"enableMdns" json:"enableMdns"`
+
+	// MaxPeers is the maximum number of connected peers.
+	MaxPeers int `mapstructure:"maxPeers" json:"maxPeers"`
+
+	// HandshakeTimeout is the maximum duration for peer handshake.
+	HandshakeTimeout time.Duration `mapstructure:"handshakeTimeout" json:"handshakeTimeout"`
+
+	// SessionTokenTTL is the lifetime of session tokens after handshake.
+	SessionTokenTTL time.Duration `mapstructure:"sessionTokenTtl" json:"sessionTokenTtl"`
+
+	// AutoApproveKnownPeers skips HITL approval for previously authenticated peers.
+	AutoApproveKnownPeers bool `mapstructure:"autoApproveKnownPeers" json:"autoApproveKnownPeers"`
+
+	// FirewallRules defines static ACL rules for the knowledge firewall.
+	FirewallRules []FirewallRule `mapstructure:"firewallRules" json:"firewallRules"`
+
+	// GossipInterval is the interval for gossip-based agent card propagation.
+	GossipInterval time.Duration `mapstructure:"gossipInterval" json:"gossipInterval"`
+
+	// ZKHandshake enables ZK-enhanced handshake instead of plain signature mode.
+	ZKHandshake bool `mapstructure:"zkHandshake" json:"zkHandshake"`
+
+	// ZKAttestation enables ZK attestation proofs on responses to peers.
+	ZKAttestation bool `mapstructure:"zkAttestation" json:"zkAttestation"`
+
+	// ZKP holds zero-knowledge proof settings.
+	ZKP ZKPConfig `mapstructure:"zkp" json:"zkp"`
+
+	// Pricing for paid P2P tool invocations.
+	Pricing P2PPricingConfig `mapstructure:"pricing" json:"pricing"`
+
+	// OwnerProtection prevents owner PII from leaking via P2P.
+	OwnerProtection OwnerProtectionConfig `mapstructure:"ownerProtection" json:"ownerProtection"`
+
+	// MinTrustScore is the minimum reputation to accept requests (0.0 to 1.0, default 0.3).
+	MinTrustScore float64 `mapstructure:"minTrustScore" json:"minTrustScore"`
+
+	// ToolIsolation configures process isolation for remote tool invocations.
+	ToolIsolation ToolIsolationConfig `mapstructure:"toolIsolation" json:"toolIsolation"`
+
+	// RequireSignedChallenge rejects unsigned challenges from peers when true.
+	// When false (default), unsigned legacy challenges are accepted for backward compatibility.
+	RequireSignedChallenge bool `mapstructure:"requireSignedChallenge" json:"requireSignedChallenge"`
+}
+
+// ToolIsolationConfig configures subprocess isolation for P2P tool execution.
+type ToolIsolationConfig struct {
+	// Enabled turns on subprocess isolation for remote peer tool invocations.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// TimeoutPerTool is the maximum duration for a single tool execution (default: 30s).
+	TimeoutPerTool time.Duration `mapstructure:"timeoutPerTool" json:"timeoutPerTool"`
+
+	// MaxMemoryMB is a soft memory limit per subprocess in megabytes (Phase 2).
+	MaxMemoryMB int `mapstructure:"maxMemoryMB" json:"maxMemoryMB"`
+
+	// Container configures container-based tool execution sandbox (Phase 2).
+	Container ContainerSandboxConfig `mapstructure:"container" json:"container"`
+}
+
+// ContainerSandboxConfig configures container-based tool execution isolation.
+type ContainerSandboxConfig struct {
+	// Enabled activates container-based sandbox instead of subprocess isolation.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// Runtime selects the container runtime: "auto", "docker", "gvisor", or "native" (default: "auto").
+	Runtime string `mapstructure:"runtime" json:"runtime"`
+
+	// Image is the Docker image for the sandbox container (default: "lango-sandbox:latest").
+	Image string `mapstructure:"image" json:"image"`
+
+	// NetworkMode is the Docker network mode for sandbox containers (default: "none").
+	NetworkMode string `mapstructure:"networkMode" json:"networkMode"`
+
+	// ReadOnlyRootfs mounts the container root filesystem as read-only (default: true).
+	ReadOnlyRootfs *bool `mapstructure:"readOnlyRootfs" json:"readOnlyRootfs"`
+
+	// CPUQuotaUS is the Docker CPU quota in microseconds (0 = unlimited).
+	CPUQuotaUS int64 `mapstructure:"cpuQuotaUs" json:"cpuQuotaUs"`
+
+	// PoolSize is the number of pre-warmed containers in the pool (0 = disabled).
+	PoolSize int `mapstructure:"poolSize" json:"poolSize"`
+
+	// PoolIdleTimeout is the idle timeout before pool containers are recycled (default: 5m).
+	PoolIdleTimeout time.Duration `mapstructure:"poolIdleTimeout" json:"poolIdleTimeout"`
+}
+
+// P2PPricingConfig defines pricing for P2P tool invocations.
+type P2PPricingConfig struct {
+	// Enable paid tool invocations.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// PerQuery is the default price per query in USDC (e.g. "0.50").
+	PerQuery string `mapstructure:"perQuery" json:"perQuery"`
+
+	// ToolPrices maps tool names to their specific prices in USDC.
+	ToolPrices map[string]string `mapstructure:"toolPrices" json:"toolPrices,omitempty"`
+}
+
+// OwnerProtectionConfig configures owner data protection for P2P responses.
+type OwnerProtectionConfig struct {
+	// OwnerName is the owner's name to block from P2P responses.
+	OwnerName string `mapstructure:"ownerName" json:"ownerName"`
+
+	// OwnerEmail is the owner's email to block from P2P responses.
+	OwnerEmail string `mapstructure:"ownerEmail" json:"ownerEmail"`
+
+	// OwnerPhone is the owner's phone number to block from P2P responses.
+	OwnerPhone string `mapstructure:"ownerPhone" json:"ownerPhone"`
+
+	// ExtraTerms are additional terms to block from P2P responses.
+	ExtraTerms []string `mapstructure:"extraTerms" json:"extraTerms,omitempty"`
+
+	// BlockConversations blocks all conversation-related fields from P2P responses (default: true).
+	BlockConversations *bool `mapstructure:"blockConversations" json:"blockConversations"`
+}
+
+// ZKPConfig defines zero-knowledge proof settings.
+type ZKPConfig struct {
+	// ProofCacheDir is the directory for caching compiled circuits and proving keys.
+	ProofCacheDir string `mapstructure:"proofCacheDir" json:"proofCacheDir"`
+
+	// ProvingScheme selects the ZKP proving scheme: "plonk" or "groth16".
+	ProvingScheme string `mapstructure:"provingScheme" json:"provingScheme"`
+
+	// SRSMode selects the SRS generation mode: "unsafe" (default) or "file".
+	SRSMode string `mapstructure:"srsMode" json:"srsMode"`
+
+	// SRSPath is the path to the SRS file (used when SRSMode == "file").
+	SRSPath string `mapstructure:"srsPath" json:"srsPath"`
+
+	// MaxCredentialAge is the maximum age for ZK credentials (e.g. "24h").
+	MaxCredentialAge string `mapstructure:"maxCredentialAge" json:"maxCredentialAge"`
+}
+
+// FirewallRule defines an ACL rule for the knowledge firewall.
+type FirewallRule struct {
+	// PeerDID is the DID of the peer this rule applies to ("*" for all).
+	PeerDID string `mapstructure:"peerDid" json:"peerDid"`
+
+	// Action is "allow" or "deny".
+	Action string `mapstructure:"action" json:"action"`
+
+	// Tools lists tool name patterns this rule applies to.
+	Tools []string `mapstructure:"tools" json:"tools"`
+
+	// RateLimit is the maximum requests per minute (0 = unlimited).
+	RateLimit int `mapstructure:"rateLimit" json:"rateLimit"`
+}

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/langoai/lango/internal/ctxutil"
+	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -74,7 +74,7 @@ func (e *Engine) Run(ctx context.Context, w *Workflow) (*RunResult, error) {
 	}
 
 	// Detach from parent context to prevent cascading cancellation.
-	detached := ctxutil.Detach(ctx)
+	detached := types.DetachContext(ctx)
 
 	runID, err := e.state.CreateRun(detached, w)
 	if err != nil {
@@ -98,7 +98,7 @@ func (e *Engine) RunAsync(ctx context.Context, w *Workflow) (string, error) {
 	}
 
 	// Detach from parent context to prevent cascading cancellation.
-	detached := ctxutil.Detach(ctx)
+	detached := types.DetachContext(ctx)
 
 	runID, err := e.state.CreateRun(detached, w)
 	if err != nil {
@@ -404,9 +404,9 @@ func (e *Engine) Shutdown() {
 // buildSummary formats a human-readable summary of workflow results.
 func (e *Engine) buildSummary(workflowName string, results map[string]string) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Workflow '%s' completed.\n\n", workflowName))
+	fmt.Fprintf(&b, "Workflow '%s' completed.\n\n", workflowName)
 	for stepID, result := range results {
-		b.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", stepID, result))
+		fmt.Fprintf(&b, "--- %s ---\n%s\n\n", stepID, result)
 	}
 	return b.String()
 }

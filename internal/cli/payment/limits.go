@@ -54,15 +54,15 @@ func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 					"maxDaily":       wallet.FormatUSDC(maxDaily),
 					"dailySpent":     wallet.FormatUSDC(spent),
 					"dailyRemaining": wallet.FormatUSDC(remaining),
-					"currency":       "USDC",
+					"currency":       wallet.CurrencyUSDC,
 				})
 			}
 
 			fmt.Println("Spending Limits")
-			fmt.Printf("  Max Per Transaction:  %s USDC\n", wallet.FormatUSDC(maxPerTx))
-			fmt.Printf("  Max Daily:            %s USDC\n", wallet.FormatUSDC(maxDaily))
-			fmt.Printf("  Spent Today:          %s USDC\n", wallet.FormatUSDC(spent))
-			fmt.Printf("  Remaining Today:      %s USDC\n", wallet.FormatUSDC(remaining))
+			fmt.Printf("  Max Per Transaction:  %s %s\n", wallet.FormatUSDC(maxPerTx), wallet.CurrencyUSDC)
+			fmt.Printf("  Max Daily:            %s %s\n", wallet.FormatUSDC(maxDaily), wallet.CurrencyUSDC)
+			fmt.Printf("  Spent Today:          %s %s\n", wallet.FormatUSDC(spent), wallet.CurrencyUSDC)
+			fmt.Printf("  Remaining Today:      %s %s\n", wallet.FormatUSDC(remaining), wallet.CurrencyUSDC)
 
 			return nil
 		},

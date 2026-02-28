@@ -13,6 +13,17 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// Gas fee defaults for EIP-1559 transactions.
+const (
+	DefaultBaseFeeWei        = 1_000_000_000 // 1 gwei
+	DefaultMaxPriorityFeeWei = 1_500_000_000 // 1.5 gwei
+	BaseFeeMultiplier        = 2
+	EthAddressLength         = 42
+)
+
+// BalanceOfSelector is the function selector for balanceOf(address).
+var BalanceOfSelector = []byte{0x70, 0xa0, 0x82, 0x31}
+
 // ERC20TransferMethodID is the function selector for transfer(address,uint256).
 var ERC20TransferMethodID = crypto.Keccak256([]byte("transfer(address,uint256)"))[:4]
 
@@ -62,13 +73,12 @@ func (b *TxBuilder) BuildTransferTx(ctx context.Context, from common.Address, to
 
 	baseFee := header.BaseFee
 	if baseFee == nil {
-		baseFee = big.NewInt(1_000_000_000) // 1 gwei fallback
+		baseFee = big.NewInt(DefaultBaseFeeWei)
 	}
 
-	// maxPriorityFee = 1.5 gwei, maxFee = 2 * baseFee + maxPriorityFee
-	maxPriorityFee := big.NewInt(1_500_000_000)
+	maxPriorityFee := big.NewInt(DefaultMaxPriorityFeeWei)
 	maxFee := new(big.Int).Add(
-		new(big.Int).Mul(baseFee, big.NewInt(2)),
+		new(big.Int).Mul(baseFee, big.NewInt(BaseFeeMultiplier)),
 		maxPriorityFee,
 	)
 
@@ -103,7 +113,7 @@ func (b *TxBuilder) USDCContract() common.Address {
 
 // ValidateAddress checks if a string is a valid Ethereum address.
 func ValidateAddress(addr string) error {
-	if !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+	if !strings.HasPrefix(addr, "0x") || len(addr) != EthAddressLength {
 		return fmt.Errorf("invalid address format: %q", addr)
 	}
 	if !common.IsHexAddress(addr) {

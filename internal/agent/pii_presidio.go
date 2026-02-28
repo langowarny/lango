@@ -118,7 +118,7 @@ func (d *PresidioDetector) Detect(text string) []PIIMatch {
 		piiLogger.Debugw("presidio: request failed (graceful degradation)", "error", err)
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		piiLogger.Warnw("presidio: non-200 status", "status", resp.StatusCode)
@@ -159,7 +159,7 @@ func (d *PresidioDetector) HealthCheck(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("presidio health check: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("presidio unhealthy: status %d", resp.StatusCode)

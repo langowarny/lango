@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/session"
 )
@@ -88,11 +91,24 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		}
 	}
 
+	// 3. Check DB encryption status.
+	if cfg.Security.DBEncryption.Enabled {
+		dbPath := cfg.Session.DatabasePath
+		if strings.HasPrefix(dbPath, "~/") {
+			if h, err := os.UserHomeDir(); err == nil {
+				dbPath = filepath.Join(h, dbPath[2:])
+			}
+		}
+		if !bootstrap.IsDBEncrypted(dbPath) {
+			issues = append(issues, "DB encryption enabled in config but database is plaintext (run 'lango security db-migrate')")
+			if status < StatusWarn {
+				status = StatusWarn
+			}
+		}
+	}
+
 	message := "Security configuration verified"
 	if len(issues) > 0 {
-		message = fmt.Sprintf("Security issues found: %v", issues)
-		// Format nicer if multiple?
-		// "Security issues found:\n- Issue 1\n- Issue 2"
 		message = "Security checks returned warnings:\n"
 		for _, issue := range issues {
 			message += fmt.Sprintf("- %s\n", issue)

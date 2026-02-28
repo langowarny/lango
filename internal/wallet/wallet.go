@@ -21,7 +21,25 @@ type WalletProvider interface {
 
 	// SignMessage signs an arbitrary message and returns the signature.
 	SignMessage(ctx context.Context, message []byte) ([]byte, error)
+
+	// PublicKey returns the compressed public key bytes.
+	// Used for P2P identity derivation (DID). Private key is never exposed.
+	PublicKey(ctx context.Context) ([]byte, error)
 }
+
+// ChainID identifies a blockchain network.
+type ChainID int64
+
+const (
+	ChainEthereumMainnet ChainID = 1
+	ChainBase            ChainID = 8453
+	ChainBaseSepolia     ChainID = 84532
+	ChainSepolia         ChainID = 11155111
+)
+
+// CurrencyUSDC is the ticker symbol for the USDC stablecoin used across the
+// payment system.
+const CurrencyUSDC = "USDC"
 
 // WalletInfo holds public wallet metadata.
 type WalletInfo struct {
@@ -32,14 +50,14 @@ type WalletInfo struct {
 
 // NetworkName returns a human-readable network name for common chain IDs.
 func NetworkName(chainID int64) string {
-	switch chainID {
-	case 1:
+	switch ChainID(chainID) {
+	case ChainEthereumMainnet:
 		return "Ethereum Mainnet"
-	case 8453:
+	case ChainBase:
 		return "Base"
-	case 84532:
+	case ChainBaseSepolia:
 		return "Base Sepolia"
-	case 11155111:
+	case ChainSepolia:
 		return "Sepolia"
 	default:
 		return "Unknown"

@@ -539,6 +539,130 @@ Each remote agent entry:
 
 ---
 
+## P2P Network
+
+!!! warning "Experimental"
+    The P2P networking system is experimental. See [P2P Network](features/p2p-network.md).
+
+> **Settings:** `lango settings` → P2P Network
+
+```json
+{
+  "p2p": {
+    "enabled": false,
+    "listenAddrs": ["/ip4/0.0.0.0/tcp/9000"],
+    "bootstrapPeers": [],
+    "keyDir": "~/.lango/p2p",
+    "enableRelay": false,
+    "enableMdns": true,
+    "maxPeers": 50,
+    "handshakeTimeout": "30s",
+    "sessionTokenTtl": "1h",
+    "autoApproveKnownPeers": false,
+    "requireSignedChallenge": false,
+    "firewallRules": [],
+    "gossipInterval": "30s",
+    "zkHandshake": false,
+    "zkAttestation": false,
+    "zkp": {
+      "proofCacheDir": "~/.lango/zkp",
+      "provingScheme": "plonk",
+      "srsMode": "unsafe",
+      "srsPath": "",
+      "maxCredentialAge": "24h"
+    },
+    "toolIsolation": {
+      "enabled": false,
+      "timeoutPerTool": "30s",
+      "maxMemoryMB": 512,
+      "container": {
+        "enabled": false,
+        "runtime": "auto",
+        "image": "lango-sandbox:latest",
+        "networkMode": "none",
+        "readOnlyRootfs": true,
+        "poolSize": 0,
+        "poolIdleTimeout": "5m"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.enabled` | `bool` | `false` | Enable P2P networking |
+| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.bootstrapPeers` | `[]string` | `[]` | Initial peers for DHT bootstrapping |
+| `p2p.keyDir` | `string` | `~/.lango/p2p` | Directory for node key persistence |
+| `p2p.enableRelay` | `bool` | `false` | Act as relay for NAT traversal |
+| `p2p.enableMdns` | `bool` | `true` | Enable mDNS for LAN discovery |
+| `p2p.maxPeers` | `int` | `50` | Maximum connected peers |
+| `p2p.handshakeTimeout` | `duration` | `30s` | Maximum handshake duration |
+| `p2p.sessionTokenTtl` | `duration` | `1h` | Session token lifetime |
+| `p2p.autoApproveKnownPeers` | `bool` | `false` | Skip approval for known peers |
+| `p2p.firewallRules` | `[]object` | `[]` | Static firewall ACL rules |
+| `p2p.gossipInterval` | `duration` | `30s` | Agent card gossip interval |
+| `p2p.zkHandshake` | `bool` | `false` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | `bool` | `false` | Enable ZK attestation on responses |
+| `p2p.requireSignedChallenge` | `bool` | `false` | Reject unsigned (v1.0) challenges; require v1.1 signed challenges |
+| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/zkp` | ZKP circuit cache directory |
+| `p2p.zkp.provingScheme` | `string` | `plonk` | ZKP proving scheme: `plonk` or `groth16` |
+| `p2p.zkp.srsMode` | `string` | `unsafe` | SRS generation mode: `unsafe` (deterministic) or `file` (trusted ceremony) |
+| `p2p.zkp.srsPath` | `string` | | Path to SRS file (when `srsMode = "file"`) |
+| `p2p.zkp.maxCredentialAge` | `string` | `24h` | Maximum age for ZK credentials before rejection |
+
+Each firewall rule entry:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `firewallRules[].peerDid` | `string` | Peer DID (`"*"` for all peers) |
+| `firewallRules[].action` | `string` | `"allow"` or `"deny"` |
+| `firewallRules[].tools` | `[]string` | Tool name patterns (empty = all) |
+| `firewallRules[].rateLimit` | `int` | Max requests/min (0 = unlimited) |
+
+### P2P Pricing
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.pricing.enabled` | `bool` | `false` | Enable paid P2P tool invocations |
+| `p2p.pricing.perQuery` | `string` | | Default price per query in USDC (e.g., `"0.10"`) |
+| `p2p.pricing.toolPrices` | `map[string]string` | | Map of tool names to specific prices in USDC |
+
+### P2P Owner Protection
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.ownerProtection.ownerName` | `string` | | Owner name to block from P2P responses |
+| `p2p.ownerProtection.ownerEmail` | `string` | | Owner email to block from P2P responses |
+| `p2p.ownerProtection.ownerPhone` | `string` | | Owner phone to block from P2P responses |
+| `p2p.ownerProtection.extraTerms` | `[]string` | | Additional terms to block from P2P responses |
+| `p2p.ownerProtection.blockConversations` | `bool` | `true` | Block conversation data in P2P responses |
+
+### P2P Reputation
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.minTrustScore` | `float64` | `0.3` | Minimum trust score to accept P2P requests (0.0 - 1.0) |
+
+### P2P Tool Isolation
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `p2p.toolIsolation.enabled` | `bool` | `false` | Enable subprocess isolation for remote peer tool invocations |
+| `p2p.toolIsolation.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single tool execution |
+| `p2p.toolIsolation.maxMemoryMB` | `int` | `512` | Soft memory limit per subprocess in megabytes |
+| `p2p.toolIsolation.container.enabled` | `bool` | `false` | Use container-based sandbox instead of subprocess |
+| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.image` | `string` | `lango-sandbox:latest` | Docker image for sandbox container |
+| `p2p.toolIsolation.container.networkMode` | `string` | `none` | Docker network mode for sandbox containers |
+| `p2p.toolIsolation.container.readOnlyRootfs` | `bool` | `true` | Mount container root filesystem as read-only |
+| `p2p.toolIsolation.container.cpuQuotaUs` | `int` | `0` | Docker CPU quota in microseconds (0 = unlimited) |
+| `p2p.toolIsolation.container.poolSize` | `int` | `0` | Pre-warmed containers in pool (0 = disabled) |
+| `p2p.toolIsolation.container.poolIdleTimeout` | `duration` | `5m` | Idle timeout before pool containers are recycled |
+
+---
+
 ## Cron
 
 See [Cron Scheduling](automation/cron.md) for usage details and [CLI reference](cli/automation.md#cron-commands).

@@ -483,7 +483,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // handleHealth returns health status
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
 	})
@@ -496,7 +496,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	s.clientsMu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "running",
 		"clients":     clientCount,
 		"wsEnabled":   s.config.WebSocketEnabled,
@@ -651,7 +651,7 @@ func (c *Client) writePump() {
 		select {
 		case message, ok := <-c.Send:
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {

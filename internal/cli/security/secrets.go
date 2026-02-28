@@ -2,9 +2,11 @@ package security
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -81,16 +83,14 @@ func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 }
 
 func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	return &cobra.Command{
+	var valueHex string
+
+	cmd := &cobra.Command{
 		Use:   "set <name>",
 		Short: "Store an encrypted secret",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-
-			if !prompt.IsInteractive() {
-				return fmt.Errorf("this command requires an interactive terminal")
-			}
 
 			boot, err := bootLoader()
 			if err != nil {
@@ -103,13 +103,27 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				return err
 			}
 
-			value, err := prompt.Passphrase("Enter secret value: ")
-			if err != nil {
-				return fmt.Errorf("read secret value: %w", err)
+			var raw []byte
+			if valueHex != "" {
+				// Non-interactive: decode hex value (with optional 0x prefix).
+				decoded, err := hex.DecodeString(strings.TrimPrefix(valueHex, "0x"))
+				if err != nil {
+					return fmt.Errorf("decode hex value: %w", err)
+				}
+				raw = decoded
+			} else {
+				if !prompt.IsInteractive() {
+					return fmt.Errorf("this command requires an interactive terminal (use --value-hex for non-interactive)")
+				}
+				value, err := prompt.Passphrase("Enter secret value: ")
+				if err != nil {
+					return fmt.Errorf("read secret value: %w", err)
+				}
+				raw = []byte(value)
 			}
 
 			ctx := context.Background()
-			if err := secretsStore.Store(ctx, name, []byte(value)); err != nil {
+			if err := secretsStore.Store(ctx, name, raw); err != nil {
 				return fmt.Errorf("store secret: %w", err)
 			}
 
@@ -117,6 +131,9 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&valueHex, "value-hex", "", "Hex-encoded value to store (non-interactive, optional 0x prefix)")
+	return cmd
 }
 
 func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -146,7 +163,7 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 				}
 				fmt.Printf("Delete secret '%s'? [y/N] ", name)
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" && answer != "yes" {
 					fmt.Println("Aborted.")
 					return nil

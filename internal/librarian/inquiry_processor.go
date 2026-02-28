@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/types"
@@ -102,18 +101,24 @@ func (p *InquiryProcessor) ProcessAnswers(ctx context.Context, sessionKey string
 
 		var knowledgeKey string
 		if match.Knowledge != nil && match.Knowledge.Key != "" {
-			entry := knowledge.KnowledgeEntry{
-				Key:      match.Knowledge.Key,
-				Category: entknowledge.Category(match.Knowledge.Category),
-				Content:  match.Knowledge.Content,
-				Source:   "proactive_librarian",
-			}
-			if err := p.knowledgeStore.SaveKnowledge(ctx, sessionKey, entry); err != nil {
-				p.logger.Warnw("save matched knowledge", "key", entry.Key, "error", err)
+			cat, err := mapCategory(match.Knowledge.Category)
+			if err != nil {
+				p.logger.Warnw("skip knowledge: invalid category",
+					"key", match.Knowledge.Key, "category", match.Knowledge.Category, "error", err)
 			} else {
-				knowledgeKey = entry.Key
-				p.logger.Infow("knowledge saved from inquiry answer",
-					"key", entry.Key, "inquiryID", match.InquiryID)
+				entry := knowledge.KnowledgeEntry{
+					Key:      match.Knowledge.Key,
+					Category: cat,
+					Content:  match.Knowledge.Content,
+					Source:   "proactive_librarian",
+				}
+				if err := p.knowledgeStore.SaveKnowledge(ctx, sessionKey, entry); err != nil {
+					p.logger.Warnw("save matched knowledge", "key", entry.Key, "error", err)
+				} else {
+					knowledgeKey = entry.Key
+					p.logger.Infow("knowledge saved from inquiry answer",
+						"key", entry.Key, "inquiryID", match.InquiryID)
+				}
 			}
 		}
 
@@ -130,12 +135,12 @@ func (p *InquiryProcessor) buildMatchPrompt(pending []Inquiry, messages []sessio
 
 	b.WriteString("## Pending Inquiries\n")
 	for _, inq := range pending {
-		b.WriteString(fmt.Sprintf("- ID: %s | Topic: %s | Question: %s\n", inq.ID.String(), inq.Topic, inq.Question))
+		fmt.Fprintf(&b, "- ID: %s | Topic: %s | Question: %s\n", inq.ID.String(), inq.Topic, inq.Question)
 	}
 
 	b.WriteString("\n## Recent Messages\n")
 	for _, msg := range messages {
-		b.WriteString(fmt.Sprintf("[%s]: %s\n", msg.Role, msg.Content))
+		fmt.Fprintf(&b, "[%s]: %s\n", msg.Role, msg.Content)
 	}
 
 	return b.String()

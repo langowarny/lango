@@ -17,6 +17,11 @@ import (
 	"github.com/langoai/lango/internal/wallet"
 )
 
+// DefaultHistoryLimit is the default number of transactions returned by History.
+const DefaultHistoryLimit = 20
+
+const purposeX402AutoPayment = "X402 auto-payment"
+
 // Service orchestrates blockchain payment operations.
 type Service struct {
 	wallet    wallet.WalletProvider
@@ -126,9 +131,8 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 		SaveX(ctx)
 
 	// Record spending
-	if err := s.limiter.Record(ctx, amount); err != nil {
-		// Non-fatal: tx already submitted
-	}
+	// Non-fatal: tx already submitted, ignore spending record error.
+	_ = s.limiter.Record(ctx, amount)
 
 	return &PaymentReceipt{
 		TxHash:    txHashHex,
@@ -150,9 +154,8 @@ func (s *Service) Balance(ctx context.Context) (string, error) {
 	}
 
 	contract := s.builder.USDCContract()
-	balanceOfSelector := []byte{0x70, 0xa0, 0x82, 0x31} // balanceOf(address)
 	data := make([]byte, 4+32)
-	copy(data[:4], balanceOfSelector)
+	copy(data[:4], BalanceOfSelector)
 	addrBytes := common.HexToAddress(addr)
 	copy(data[4+12:4+32], addrBytes.Bytes())
 
@@ -171,7 +174,7 @@ func (s *Service) Balance(ctx context.Context) (string, error) {
 // History returns recent payment transactions.
 func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, error) {
 	if limit <= 0 {
-		limit = 20
+		limit = DefaultHistoryLimit
 	}
 
 	txs, err := s.client.PaymentTx.Query().
@@ -212,7 +215,7 @@ func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecor
 		SetAmount(record.Amount).
 		SetChainID(record.ChainID).
 		SetStatus(paymenttx.StatusSubmitted).
-		SetPurpose("X402 auto-payment").
+		SetPurpose(purposeX402AutoPayment).
 		SetX402URL(record.URL).
 		SetPaymentMethod(paymenttx.PaymentMethodX402V2).
 		Save(ctx)

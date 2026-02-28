@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/asyncbuf"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -15,25 +16,28 @@ type MessageProvider func(sessionKey string) ([]session.Message, error)
 // MessageCompactor replaces observed messages with a summary to reduce session size.
 type MessageCompactor func(sessionKey string, upToIndex int, summary string) error
 
+// defaultReflectionConsolidationThreshold is the minimum number of reflections
+// that must accumulate before meta-reflection (consolidation) is triggered.
+const defaultReflectionConsolidationThreshold = 5
+
 // Buffer manages background observation and reflection processing.
 type Buffer struct {
 	observer  *Observer
 	reflector *Reflector
 	store     *Store
 
-	messageTokenThreshold     int
-	observationTokenThreshold int
-	getMessages               MessageProvider
-	compactor                 MessageCompactor // optional: compact observed messages
+	messageTokenThreshold              int
+	observationTokenThreshold          int
+	reflectionConsolidationThreshold   int // min reflections before meta-reflection; 0 = default (5)
+	getMessages                        MessageProvider
+	compactor                          MessageCompactor // optional: compact observed messages
 
 	// lastObserved tracks the last observed message index per session.
 	mu           sync.Mutex
 	lastObserved map[string]int
 
-	triggerCh chan string
-	stopCh    chan struct{}
-	done      chan struct{}
-	logger    *zap.SugaredLogger
+	inner  *asyncbuf.TriggerBuffer[string]
+	logger *zap.SugaredLogger
 }
 
 // NewBuffer creates a new asynchronous observation buffer.
@@ -45,7 +49,7 @@ func NewBuffer(
 	getMessages MessageProvider,
 	logger *zap.SugaredLogger,
 ) *Buffer {
-	return &Buffer{
+	b := &Buffer{
 		observer:                  observer,
 		reflector:                 reflector,
 		store:                     store,
@@ -53,31 +57,23 @@ func NewBuffer(
 		observationTokenThreshold: obsThreshold,
 		getMessages:               getMessages,
 		lastObserved:              make(map[string]int),
-		triggerCh:                 make(chan string, 16),
-		stopCh:                    make(chan struct{}),
-		done:                      make(chan struct{}),
 		logger:                    logger,
 	}
+	b.inner = asyncbuf.NewTriggerBuffer[string](asyncbuf.TriggerConfig{
+		QueueSize: 16,
+	}, b.process, logger)
+	return b
 }
 
 // Start launches the background goroutine. The WaitGroup is incremented so
 // callers can wait for graceful shutdown.
 func (b *Buffer) Start(wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(b.done)
-		b.run()
-	}()
+	b.inner.Start(wg)
 }
 
 // Trigger sends a non-blocking signal to process the given session.
 func (b *Buffer) Trigger(sessionKey string) {
-	select {
-	case b.triggerCh <- sessionKey:
-	default:
-		b.logger.Debugw("buffer trigger dropped (channel full)", "sessionKey", sessionKey)
-	}
+	b.inner.Enqueue(sessionKey)
 }
 
 // SetCompactor enables message compaction after observation. When set,
@@ -87,29 +83,15 @@ func (b *Buffer) SetCompactor(c MessageCompactor) {
 	b.compactor = c
 }
 
-// Stop signals the background goroutine to stop and waits for completion.
-func (b *Buffer) Stop() {
-	close(b.stopCh)
-	<-b.done
+// SetReflectionConsolidationThreshold overrides the default number of reflections
+// that must accumulate before meta-reflection (consolidation) is triggered.
+func (b *Buffer) SetReflectionConsolidationThreshold(n int) {
+	b.reflectionConsolidationThreshold = n
 }
 
-func (b *Buffer) run() {
-	for {
-		select {
-		case sessionKey := <-b.triggerCh:
-			b.process(sessionKey)
-		case <-b.stopCh:
-			// Drain remaining triggers before exiting.
-			for {
-				select {
-				case sessionKey := <-b.triggerCh:
-					b.process(sessionKey)
-				default:
-					return
-				}
-			}
-		}
-	}
+// Stop signals the background goroutine to stop and waits for completion.
+func (b *Buffer) Stop() {
+	b.inner.Stop()
 }
 
 func (b *Buffer) process(sessionKey string) {
@@ -169,6 +151,29 @@ func (b *Buffer) process(sessionKey string) {
 		_, err := b.reflector.Reflect(ctx, sessionKey)
 		if err != nil {
 			b.logger.Errorw("reflector failed", "sessionKey", sessionKey, "error", err)
+		}
+	}
+
+	// Auto-trigger meta-reflection when reflections accumulate past the threshold.
+	// This prevents unbounded reflection growth in long-running sessions.
+	threshold := b.reflectionConsolidationThreshold
+	if threshold <= 0 {
+		threshold = defaultReflectionConsolidationThreshold
+	}
+
+	reflections, err := b.store.ListReflections(ctx, sessionKey)
+	if err != nil {
+		b.logger.Errorw("list reflections for meta-reflection check", "sessionKey", sessionKey, "error", err)
+		return
+	}
+	if len(reflections) >= threshold {
+		_, err := b.reflector.ReflectOnReflections(ctx, sessionKey)
+		if err != nil {
+			b.logger.Errorw("meta-reflector failed", "sessionKey", sessionKey, "error", err)
+		} else {
+			b.logger.Debugw("meta-reflection triggered",
+				"sessionKey", sessionKey,
+				"condensedReflections", len(reflections))
 		}
 	}
 }

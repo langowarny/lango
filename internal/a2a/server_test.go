@@ -12,17 +12,6 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
-// fakeAgent implements agent.Agent for testing.
-type fakeAgent struct {
-	name        string
-	description string
-	subAgents   []fakeAgent
-}
-
-func (a fakeAgent) Name() string           { return a.name }
-func (a fakeAgent) Description() string    { return a.description }
-func (a fakeAgent) SubAgents() []fakeAgent { return a.subAgents }
-
 func TestAgentCard(t *testing.T) {
 	cfg := config.A2AConfig{
 		Enabled:          true,
@@ -50,7 +39,7 @@ func TestAgentCard(t *testing.T) {
 		router := chi.NewRouter()
 		s.RegisterRoutes(router)
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/agent.json", nil)
+		req := httptest.NewRequest(http.MethodGet, AgentCardRoute, nil)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -60,7 +49,7 @@ func TestAgentCard(t *testing.T) {
 		}
 
 		ct := rec.Header().Get("Content-Type")
-		if ct != "application/json" {
+		if ct != ContentTypeJSON {
 			t.Fatalf("want application/json, got %s", ct)
 		}
 
@@ -108,7 +97,7 @@ func TestAgentCardEmpty(t *testing.T) {
 	router := chi.NewRouter()
 	s.RegisterRoutes(router)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/agent.json", nil)
+	req := httptest.NewRequest(http.MethodGet, AgentCardRoute, nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

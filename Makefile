@@ -58,6 +58,10 @@ test:
 test-short:
 	$(GOTEST) -v -short ./...
 
+## test-p2p: Run P2P and wallet spending tests
+test-p2p:
+	$(GOTEST) -v -race ./internal/p2p/... ./internal/wallet/...
+
 ## bench: Run benchmarks
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
@@ -102,6 +106,20 @@ deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
+# ─── Code Signing ────────────────────────────────────────────────────────────
+
+## codesign: (Optional) Sign macOS binary with Apple Developer ID for enhanced Keychain protection
+codesign:
+	@test -n "$(APPLE_IDENTITY)" || (echo "APPLE_IDENTITY not set. Usage: make codesign APPLE_IDENTITY='Developer ID Application: ...'"; exit 1)
+	codesign --sign "$(APPLE_IDENTITY)" --entitlements build/entitlements.plist --force --options runtime bin/$(BINARY_NAME)
+	@echo "Signed with enhanced Keychain protection (Data Protection Keychain)."
+
+# ─── Sandbox ──────────────────────────────────────────────────────────────────
+
+## sandbox-image: Build sandbox Docker image for P2P tool isolation
+sandbox-image:
+	docker build -t lango-sandbox:latest -f build/sandbox/Dockerfile bin/
+
 # ─── Docker Build ────────────────────────────────────────────────────────────
 
 ## docker-build: Build Docker image
@@ -139,7 +157,17 @@ health:
 ## clean: Remove build artifacts and coverage reports
 clean:
 	$(GOCLEAN)
-	rm -rf bin/ $(COVERAGE_DIR)/
+	rm -rf bin/ dist/ $(COVERAGE_DIR)/
+
+# ─── Release ────────────────────────────────────────────────────────────────
+
+## release-dry: Test GoReleaser build locally (current platform only)
+release-dry:
+	goreleaser build --single-target --snapshot --clean
+
+## release-check: Validate .goreleaser.yaml configuration
+release-check:
+	goreleaser check
 
 ## help: Show available targets
 help:
@@ -147,9 +175,13 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short bench coverage \
+        test test-short test-p2p bench coverage \
         fmt fmt-check vet lint generate ci \
         deps \
+        codesign \
+        sandbox-image \
         docker-build docker-push \
         docker-up docker-down docker-logs \
-        health clean help
+        health clean \
+        release-dry release-check \
+        help

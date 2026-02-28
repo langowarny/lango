@@ -69,7 +69,6 @@ type Channel struct {
 	ctx      context.Context
 	botID    string
 	stopChan chan struct{}
-	wg       sync.WaitGroup
 }
 
 // New creates a new Discord channel
@@ -366,7 +365,7 @@ func (c *Channel) isGuildAllowed(guildID string) bool {
 
 // sendError sends an error message
 func (c *Channel) sendError(channelID string, err error) {
-	c.session.ChannelMessageSend(channelID, fmt.Sprintf("❌ Error: %s", err.Error()))
+	_, _ = c.session.ChannelMessageSend(channelID, fmt.Sprintf("❌ Error: %s", err.Error()))
 }
 
 // splitMessage splits a message into chunks

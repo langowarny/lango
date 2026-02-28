@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 )
@@ -24,22 +25,27 @@ func NewCommand() *cobra.Command {
 		Long: `The settings command opens an interactive menu-based editor for all Lango configuration.
 
 Unlike "lango onboard" (which is a guided wizard for first-time setup), this editor
-gives you free navigation across every configuration section:
-  - Providers:  Manage multiple provider configurations
-  - Agent:      Provider, Model, Tokens, Fallback settings
-  - Server:     Host, Port, HTTP/WebSocket toggles
-  - Channels:   Telegram, Discord, Slack tokens
-  - Tools:      Exec timeouts, Browser, Filesystem limits
-  - Auth:       OIDC providers, JWT settings
-  - Security:   PII interceptor, Signer
-  - Session:    Session DB, TTL
-  - Knowledge:  Learning limits, Context per layer
-  - Skill:      File-based skill system, Skills directory
-  - Embedding:  Provider, Model, RAG settings
-  - Graph:      Knowledge graph and GraphRAG
-  - Payment:    Blockchain wallet, spending limits, X402
+gives you free navigation across every configuration section. Categories are organized
+into groups:
 
-All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).`,
+  Core:           Providers, Agent, Server, Session
+  Communication:  Channels, Tools, Multi-Agent, A2A Protocol
+  AI & Knowledge: Knowledge, Skill, Observational Memory, Embedding & RAG,
+                  Graph Store, Librarian
+  Infrastructure: Payment, Cron Scheduler, Background Tasks, Workflow Engine
+  P2P Network:    P2P Network, P2P ZKP, P2P Pricing, P2P Owner Protection,
+                  P2P Sandbox
+  Security:       Security, Auth, Security DB Encryption,
+                  Security KMS
+
+Press "/" to search across all categories by keyword.
+
+All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
+
+See Also:
+  lango config   - View/manage configuration profiles
+  lango onboard  - Guided setup wizard
+  lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSettings(profileName)
 		},
@@ -63,6 +69,8 @@ func runSettings(profileName string) error {
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
+
+	tui.SetProfile(profileName)
 
 	p := tea.NewProgram(NewEditorWithConfig(initialCfg))
 	model, err := p.Run()

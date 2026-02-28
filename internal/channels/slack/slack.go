@@ -277,7 +277,7 @@ func (c *Channel) handleMessage(ctx context.Context, eventType, channelID, userI
 			c.sendError(channelID, threadTS, err)
 			// Clean up placeholder on error
 			if placeholderErr == nil {
-				c.updateThinking(channelID, placeholderTS, fmt.Sprintf("Error: %s", err.Error()))
+				_ = c.updateThinking(channelID, placeholderTS, fmt.Sprintf("Error: %s", err.Error()))
 			}
 			return
 		}
@@ -390,7 +390,7 @@ func (c *Channel) cleanText(text string) string {
 
 // sendError sends an error message
 func (c *Channel) sendError(channelID, threadTS string, err error) {
-	c.Send(channelID, &OutgoingMessage{
+	_ = c.Send(channelID, &OutgoingMessage{
 		Text:     fmt.Sprintf("❌ Error: %s", err.Error()),
 		ThreadTS: threadTS,
 	})

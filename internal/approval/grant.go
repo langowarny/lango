@@ -3,39 +3,62 @@ package approval
 import (
 	"strings"
 	"sync"
+	"time"
 )
+
+// grantEntry tracks when a grant was created for TTL expiration.
+type grantEntry struct {
+	grantedAt time.Time
+}
 
 // GrantStore tracks per-session, per-tool "always allow" grants in memory.
 // Grants are cleared on application restart (no persistence).
+// An optional TTL causes grants to expire automatically.
 type GrantStore struct {
 	mu     sync.RWMutex
-	grants map[string]struct{} // key = "sessionKey:toolName"
+	grants map[string]grantEntry // key = "sessionKey\x00toolName"
+	ttl    time.Duration         // 0 = no expiry (backward compatible default)
+	nowFn  func() time.Time      // for testing; defaults to time.Now
 }
 
-// NewGrantStore creates an empty GrantStore.
+// NewGrantStore creates an empty GrantStore with no TTL.
 func NewGrantStore() *GrantStore {
 	return &GrantStore{
-		grants: make(map[string]struct{}),
+		grants: make(map[string]grantEntry),
+		nowFn:  time.Now,
 	}
+}
+
+// SetTTL sets the time-to-live for grants. Zero disables expiry.
+func (s *GrantStore) SetTTL(ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ttl = ttl
 }
 
 func grantKey(sessionKey, toolName string) string {
 	return sessionKey + "\x00" + toolName
 }
 
-// Grant records a persistent approval for the given session and tool.
+// Grant records an approval for the given session and tool.
 func (s *GrantStore) Grant(sessionKey, toolName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.grants[grantKey(sessionKey, toolName)] = struct{}{}
+	s.grants[grantKey(sessionKey, toolName)] = grantEntry{grantedAt: s.nowFn()}
 }
 
-// IsGranted reports whether the tool has been permanently approved for this session.
+// IsGranted reports whether the tool has a valid (non-expired) grant.
 func (s *GrantStore) IsGranted(sessionKey, toolName string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.grants[grantKey(sessionKey, toolName)]
-	return ok
+	entry, ok := s.grants[grantKey(sessionKey, toolName)]
+	if !ok {
+		return false
+	}
+	if s.ttl > 0 && s.nowFn().Sub(entry.grantedAt) > s.ttl {
+		return false
+	}
+	return true
 }
 
 // Revoke removes a single tool grant for the given session.
@@ -55,4 +78,25 @@ func (s *GrantStore) RevokeSession(sessionKey string) {
 			delete(s.grants, k)
 		}
 	}
+}
+
+// CleanExpired removes all grants that have exceeded the TTL.
+// Returns the number of entries removed. No-op when TTL is zero.
+func (s *GrantStore) CleanExpired() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ttl == 0 {
+		return 0
+	}
+
+	now := s.nowFn()
+	removed := 0
+	for k, entry := range s.grants {
+		if now.Sub(entry.grantedAt) > s.ttl {
+			delete(s.grants, k)
+			removed++
+		}
+	}
+	return removed
 }

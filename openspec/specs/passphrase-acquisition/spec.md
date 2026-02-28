@@ -1,7 +1,7 @@
 ## Requirements
 
 ### Requirement: Passphrase acquisition priority chain
-The system SHALL acquire a passphrase using the following priority: (1) keyfile at `~/.lango/keyfile`, (2) interactive terminal prompt, (3) stdin pipe. The system SHALL return an error if no source is available.
+The system SHALL acquire a passphrase using the following priority: (1) hardware keyring (Touch ID / TPM), (2) keyfile at `~/.lango/keyfile`, (3) interactive terminal prompt, (4) stdin pipe. The system SHALL return an error if no source is available.
 
 #### Scenario: Keyfile exists with correct permissions
 - **WHEN** a keyfile exists at the configured path with 0600 permissions
@@ -26,6 +26,30 @@ The system SHALL acquire a passphrase using the following priority: (1) keyfile 
 #### Scenario: No source available
 - **WHEN** no keyfile exists, stdin is not a terminal, and stdin pipe is empty
 - **THEN** the system returns an error
+
+### Requirement: Log keyring read errors to stderr
+When `passphrase.Acquire()` attempts to read from the OS keyring and receives an error other than `ErrNotFound`, it SHALL write a warning to stderr in the format: `warning: keyring read failed: <error>`. The function SHALL still fall through to the next passphrase source (keyfile, interactive, stdin).
+
+#### Scenario: Keyring returns non-NotFound error
+- **WHEN** `KeyringProvider.Get()` returns an error that is not `ErrNotFound`
+- **THEN** stderr SHALL contain `warning: keyring read failed: <error detail>`
+- **AND** acquisition SHALL continue to the next source
+
+#### Scenario: Keyring returns ErrNotFound
+- **WHEN** `KeyringProvider.Get()` returns `ErrNotFound`
+- **THEN** no warning SHALL be written to stderr
+- **AND** acquisition SHALL continue to the next source
+
+### Requirement: Keyring provider is nil when no secure hardware is available
+The passphrase acquisition flow SHALL receive a nil `KeyringProvider` when the bootstrap determines no secure hardware backend is available (`TierNone`). This effectively disables keyring auto-read, forcing keyfile or interactive/stdin acquisition.
+
+#### Scenario: Nil keyring provider skips keyring step
+- **WHEN** `Acquire()` is called with `KeyringProvider` set to nil
+- **THEN** the keyring step SHALL be skipped entirely, and acquisition SHALL proceed to keyfile or interactive prompt
+
+#### Scenario: Secure keyring provider attempts read
+- **WHEN** `Acquire()` is called with a non-nil `KeyringProvider` (biometric or TPM)
+- **THEN** it SHALL attempt to read the passphrase from the secure provider first
 
 ### Requirement: Keyfile management
 The system SHALL read, write, and securely shred keyfiles with strict 0600 permission enforcement.

@@ -86,6 +86,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	limiter, err := wallet.NewEntSpendingLimiter(client,
 		cfg.Payment.Limits.MaxPerTx,
 		cfg.Payment.Limits.MaxDaily,
+		cfg.Payment.Limits.AutoApproveBelow,
 	)
 	if err != nil {
 		rpcClient.Close()

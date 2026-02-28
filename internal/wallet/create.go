@@ -10,7 +10,8 @@ import (
 	"github.com/langoai/lango/internal/security"
 )
 
-const walletKeyName = "wallet.privatekey"
+// WalletKeyName is the secrets store key for the wallet private key.
+const WalletKeyName = "wallet.privatekey"
 
 // ErrWalletExists is returned when attempting to create a wallet that already exists.
 var ErrWalletExists = errors.New("wallet already exists")
@@ -20,7 +21,7 @@ var ErrWalletExists = errors.New("wallet already exists")
 // exists, it returns ErrWalletExists along with the existing address.
 func CreateWallet(ctx context.Context, secrets *security.SecretsStore) (string, error) {
 	// Check if wallet already exists
-	existing, err := secrets.Get(ctx, walletKeyName)
+	existing, err := secrets.Get(ctx, WalletKeyName)
 	if err == nil {
 		defer zeroBytes(existing)
 
@@ -42,7 +43,7 @@ func CreateWallet(ctx context.Context, secrets *security.SecretsStore) (string, 
 	defer zeroBytes(keyBytes)
 
 	// Store encrypted in SecretsStore
-	if err := secrets.Store(ctx, walletKeyName, keyBytes); err != nil {
+	if err := secrets.Store(ctx, WalletKeyName, keyBytes); err != nil {
 		return "", fmt.Errorf("store wallet key: %w", err)
 	}
 

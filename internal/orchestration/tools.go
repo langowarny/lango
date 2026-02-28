@@ -100,8 +100,8 @@ Return operation results: encrypted/decrypted data, confirmation of secret stora
 - Handle sensitive data carefully — never log secrets or private keys in plain text.
 - If a task does not match your capabilities, REJECT it by responding:
   "[REJECT] This task requires <correct_agent>. I handle: encryption, secret management, blockchain payments."`,
-		Prefixes: []string{"crypto_", "secrets_", "payment_"},
-		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC"},
+		Prefixes: []string{"crypto_", "secrets_", "payment_", "p2p_"},
+		Keywords: []string{"encrypt", "decrypt", "sign", "hash", "secret", "password", "payment", "wallet", "USDC", "peer", "p2p", "connect", "handshake", "firewall", "zkp"},
 		Accepts:  "A security operation (crypto, secret, or payment) with parameters",
 		Returns:  "Encrypted/decrypted data, secret confirmation, or payment transaction status",
 		CannotDo: []string{"shell commands", "file operations", "web browsing", "knowledge search", "memory management"},
@@ -394,13 +394,13 @@ You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropr
 ## Routing Table (use EXACTLY these agent names)
 `)
 	for _, e := range entries {
-		b.WriteString(fmt.Sprintf("\n### %s\n", e.Name))
-		b.WriteString(fmt.Sprintf("- **Role**: %s\n", e.Description))
-		b.WriteString(fmt.Sprintf("- **Keywords**: [%s]\n", strings.Join(e.Keywords, ", ")))
-		b.WriteString(fmt.Sprintf("- **Accepts**: %s\n", e.Accepts))
-		b.WriteString(fmt.Sprintf("- **Returns**: %s\n", e.Returns))
+		fmt.Fprintf(&b, "\n### %s\n", e.Name)
+		fmt.Fprintf(&b, "- **Role**: %s\n", e.Description)
+		fmt.Fprintf(&b, "- **Keywords**: [%s]\n", strings.Join(e.Keywords, ", "))
+		fmt.Fprintf(&b, "- **Accepts**: %s\n", e.Accepts)
+		fmt.Fprintf(&b, "- **Returns**: %s\n", e.Returns)
 		if len(e.CannotDo) > 0 {
-			b.WriteString(fmt.Sprintf("- **Cannot**: %s\n", strings.Join(e.CannotDo, "; ")))
+			fmt.Fprintf(&b, "- **Cannot**: %s\n", strings.Join(e.CannotDo, "; "))
 		}
 	}
 
@@ -410,10 +410,10 @@ You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropr
 		for i, t := range unmatched {
 			names[i] = t.Name
 		}
-		b.WriteString(fmt.Sprintf("The following tools are available but not assigned to a specific agent: %s. Handle requests for these tools directly or choose the closest matching agent.\n", strings.Join(names, ", ")))
+		fmt.Fprintf(&b, "The following tools are available but not assigned to a specific agent: %s. Handle requests for these tools directly or choose the closest matching agent.\n", strings.Join(names, ", "))
 	}
 
-	b.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&b, `
 ## Decision Protocol
 Before delegating, follow these steps:
 1. CLASSIFY: Identify the domain of the request.
@@ -425,15 +425,27 @@ Before delegating, follow these steps:
 ## Rejection Handling
 If a sub-agent rejects a task with [REJECT], try the next most relevant agent or handle the request directly.
 
+## Round Budget Management
+You have a maximum of %d delegation rounds per user turn. Use them efficiently:
+- Simple tasks (greetings, lookups): 1-2 rounds
+- Medium tasks (file operations, searches): 3-5 rounds
+- Complex multi-step tasks: 6-10 rounds
+
+After each delegation, evaluate:
+1. Did the sub-agent complete the assigned step?
+2. Is the accumulated result sufficient to answer the user?
+3. If yes, respond directly. If no, delegate the next step.
+
+If running low on rounds, consolidate partial results and provide the best possible answer.
+
 ## Delegation Rules
 1. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
 2. For simple conversational messages (greetings, opinions, general knowledge): respond directly without delegation.
-3. Maximum %d delegation rounds per user turn.
 
 ## CRITICAL
 - You MUST use the EXACT agent name from the routing table (e.g. "operator", NOT "exec", "browser", or any abbreviation).
 - NEVER invent or abbreviate agent names.
-`, maxRounds))
+`, maxRounds)
 
 	return b.String()
 }

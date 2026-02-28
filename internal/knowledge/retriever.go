@@ -153,42 +153,43 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 	if items, ok := result.Items[LayerRuntimeContext]; ok && len(items) > 0 {
 		b.WriteString("\n\n## Runtime Context\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- %s\n", item.Content))
+			fmt.Fprintf(&b, "- %s\n", item.Content)
 		}
 	}
 
 	if items, ok := result.Items[LayerToolRegistry]; ok && len(items) > 0 {
 		b.WriteString("\n\n## Available Tools\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- **%s**: %s\n", item.Key, item.Content))
+			fmt.Fprintf(&b, "- **%s**: %s\n", item.Key, item.Content)
 		}
 	}
 
 	if items, ok := result.Items[LayerUserKnowledge]; ok && len(items) > 0 {
 		b.WriteString("\n\n## User Knowledge\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- [%s] %s: %s\n", item.Category, item.Key, item.Content))
+			fmt.Fprintf(&b, "- [%s] %s: %s\n", item.Category, item.Key, item.Content)
 		}
 	}
 
 	if items, ok := result.Items[LayerAgentLearnings]; ok && len(items) > 0 {
 		b.WriteString("\n\n## Known Solutions\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- %s\n", item.Content))
+			fmt.Fprintf(&b, "- %s\n", item.Content)
 		}
 	}
 
 	if items, ok := result.Items[LayerSkillPatterns]; ok && len(items) > 0 {
 		b.WriteString("\n\n## Available Skills\n")
+		b.WriteString("**Note:** Prefer built-in tools over skills. Use skills only when no built-in tool provides the needed functionality.\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- %s: %s\n", item.Key, item.Content))
+			fmt.Fprintf(&b, "- %s: %s\n", item.Key, item.Content)
 		}
 	}
 
 	if items, ok := result.Items[LayerExternalKnowledge]; ok && len(items) > 0 {
 		b.WriteString("\n\n## External References\n")
 		for _, item := range items {
-			b.WriteString(fmt.Sprintf("- %s (%s): %s\n", item.Key, item.Source, item.Content))
+			fmt.Fprintf(&b, "- %s (%s): %s\n", item.Key, item.Source, item.Content)
 		}
 	}
 
@@ -197,9 +198,9 @@ func (r *ContextRetriever) AssemblePrompt(basePrompt string, result *RetrievalRe
 		b.WriteString("Consider weaving ONE of these questions naturally into your response:\n")
 		for _, item := range items {
 			if item.Source != "" {
-				b.WriteString(fmt.Sprintf("- [%s] %s (context: %s)\n", item.Key, item.Content, item.Source))
+				fmt.Fprintf(&b, "- [%s] %s (context: %s)\n", item.Key, item.Content, item.Source)
 			} else {
-				b.WriteString(fmt.Sprintf("- [%s] %s\n", item.Key, item.Content))
+				fmt.Fprintf(&b, "- [%s] %s\n", item.Key, item.Content)
 			}
 		}
 	}

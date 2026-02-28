@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"fmt"
 	"iter"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -45,14 +46,15 @@ func (p *AnthropicProvider) Generate(ctx context.Context, params provider.Genera
 
 			switch evt.Type {
 			case "content_block_delta":
-				if evt.Delta.Type == "text_delta" {
+				switch evt.Delta.Type {
+				case "text_delta":
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventPlainText,
 						Text: evt.Delta.Text,
 					}, nil) {
 						return
 					}
-				} else if evt.Delta.Type == "input_json_delta" {
+				case "input_json_delta":
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventToolCall,
 						ToolCall: &provider.ToolCall{
@@ -89,11 +91,25 @@ func (p *AnthropicProvider) Generate(ctx context.Context, params provider.Genera
 }
 
 func (p *AnthropicProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{
-		{ID: "claude-3-5-sonnet-latest", Name: "Claude 3.5 Sonnet"},
-		{ID: "claude-3-opus-latest", Name: "Claude 3 Opus"},
-		{ID: "claude-3-haiku-20240307", Name: "Claude 3 Haiku"},
-	}, nil
+	pager := p.client.Models.ListAutoPaging(ctx, anthropic.ModelListParams{
+		Limit: param.NewOpt[int64](1000),
+	})
+
+	var models []provider.ModelInfo
+	for pager.Next() {
+		m := pager.Current()
+		models = append(models, provider.ModelInfo{
+			ID:   m.ID,
+			Name: m.DisplayName,
+		})
+	}
+	if err := pager.Err(); err != nil {
+		if len(models) > 0 {
+			return models, nil
+		}
+		return nil, fmt.Errorf("list anthropic models: %w", err)
+	}
+	return models, nil
 }
 
 func (p *AnthropicProvider) convertParams(params provider.GenerateParams) (anthropic.MessageNewParams, error) {

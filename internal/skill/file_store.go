@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -83,7 +84,7 @@ func (s *FileSkillStore) ListActive(_ context.Context) ([]SkillEntry, error) {
 
 	var result []SkillEntry
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 
@@ -160,7 +161,7 @@ func (s *FileSkillStore) EnsureDefaults(defaultFS fs.FS) error {
 
 		// path is like "serve/SKILL.md" — extract skill name from parent dir.
 		skillName := filepath.Dir(path)
-		if skillName == "." {
+		if skillName == "." || strings.HasPrefix(skillName, ".") {
 			return nil
 		}
 

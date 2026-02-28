@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/langoai/lango/internal/passphrase"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {
@@ -20,8 +20,9 @@ func TestRun_ShredsKeyfileAfterCryptoInit(t *testing.T) {
 	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
 
 	result, err := Run(Options{
-		DBPath:      dbPath,
-		KeyfilePath: keyfilePath,
+		DBPath:              dbPath,
+		KeyfilePath:         keyfilePath,
+		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -41,9 +42,10 @@ func TestRun_KeepsKeyfileWhenOptedOut(t *testing.T) {
 	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
 
 	result, err := Run(Options{
-		DBPath:      dbPath,
-		KeyfilePath: keyfilePath,
-		KeepKeyfile: true,
+		DBPath:              dbPath,
+		KeyfilePath:         keyfilePath,
+		KeepKeyfile:         true,
+		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {

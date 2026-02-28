@@ -132,7 +132,7 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("marshal step %d: %w", i, err)
 			}
-			buf.WriteString(fmt.Sprintf("### Step %d\n\n", i+1))
+			fmt.Fprintf(&buf, "### Step %d\n\n", i+1)
 			buf.WriteString("```json\n")
 			buf.Write(stepJSON)
 			buf.WriteString("\n```\n\n")
@@ -146,7 +146,7 @@ func RenderSkillMD(entry *SkillEntry) ([]byte, error) {
 		}
 	}
 
-	if entry.Parameters != nil && len(entry.Parameters) > 0 {
+	if len(entry.Parameters) > 0 {
 		paramJSON, err := json.MarshalIndent(entry.Parameters, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("marshal parameters: %w", err)

@@ -163,7 +163,7 @@ func (s *GraphRAGService) AssembleSection(result *GraphRAGResult) string {
 			if r.Content == "" {
 				continue
 			}
-			b.WriteString(fmt.Sprintf("\n### [%s] %s\n", r.Collection, r.SourceID))
+			fmt.Fprintf(&b, "\n### [%s] %s\n", r.Collection, r.SourceID)
 			b.WriteString(r.Content)
 			b.WriteString("\n")
 		}
@@ -174,7 +174,7 @@ func (s *GraphRAGService) AssembleSection(result *GraphRAGResult) string {
 		b.WriteString("\n## Graph-Expanded Context\n")
 		b.WriteString("The following related items were discovered through knowledge graph traversal:\n")
 		for _, g := range result.GraphResults {
-			b.WriteString(fmt.Sprintf("- **%s** (via %s from %s)\n", g.ID, g.Predicate, g.FromNode))
+			fmt.Fprintf(&b, "- **%s** (via %s from %s)\n", g.ID, g.Predicate, g.FromNode)
 		}
 	}
 

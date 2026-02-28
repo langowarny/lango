@@ -3,41 +3,23 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"database/sql"
-
-	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/langoai/lango/internal/a2a"
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/gateway"
-	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
-	"github.com/langoai/lango/internal/learning"
-	"github.com/langoai/lango/internal/librarian"
-	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/orchestration"
-	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/prompt"
-	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/supervisor"
-	"github.com/langoai/lango/internal/wallet"
-	"github.com/langoai/lango/internal/workflow"
-	x402pkg "github.com/langoai/lango/internal/x402"
-	"github.com/langoai/lango/skills"
 	"google.golang.org/adk/model"
 	adk_tool "google.golang.org/adk/tool"
 )
@@ -174,406 +156,42 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	case "enclave":
 		return nil, nil, nil, fmt.Errorf("enclave provider not yet implemented")
 
+	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
+		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
+		}
+
+		if boot == nil || boot.DBClient == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires bootstrap")
+		}
+
+		keys := security.NewKeyRegistry(boot.DBClient)
+		ctx := context.Background()
+		if _, err := keys.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
+			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
+		}
+
+		var finalProvider = kmsProvider
+
+		// Wrap with CompositeCryptoProvider for fallback when configured.
+		if cfg.Security.KMS.FallbackToLocal && boot.Crypto != nil {
+			checker := security.NewKMSHealthChecker(kmsProvider, cfg.Security.KMS.KeyID, 0)
+			finalProvider = security.NewCompositeCryptoProvider(kmsProvider, boot.Crypto, checker)
+			logger().Infow("security initialized (KMS provider with local fallback)",
+				"provider", cfg.Security.Signer.Provider,
+				"keyID", cfg.Security.KMS.KeyID)
+		} else {
+			logger().Infow("security initialized (KMS provider)",
+				"provider", cfg.Security.Signer.Provider,
+				"keyID", cfg.Security.KMS.KeyID)
+		}
+
+		secrets := security.NewSecretsStore(boot.DBClient, keys, finalProvider)
+		return finalProvider, keys, secrets, nil
+
 	default:
 		return nil, nil, nil, fmt.Errorf("unknown security provider: %s", cfg.Security.Signer.Provider)
-	}
-}
-
-// knowledgeComponents holds optional self-learning components.
-type knowledgeComponents struct {
-	store    *knowledge.Store
-	engine   *learning.Engine
-	observer learning.ToolResultObserver
-}
-
-// initKnowledge creates the self-learning components if enabled.
-// When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents) *knowledgeComponents {
-	if !cfg.Knowledge.Enabled {
-		logger().Info("knowledge system disabled")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("knowledge system requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-	kLogger := logger()
-
-	kStore := knowledge.NewStore(client, kLogger)
-
-	engine := learning.NewEngine(kStore, kLogger)
-
-	// Select observer: GraphEngine when graph store is available, otherwise base Engine.
-	var observer learning.ToolResultObserver = engine
-	if gc != nil {
-		graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
-		graphEngine.SetGraphCallback(func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		})
-		observer = graphEngine
-		logger().Info("graph-enhanced learning engine initialized")
-	}
-
-	logger().Info("knowledge system initialized")
-	return &knowledgeComponents{
-		store:    kStore,
-		engine:   engine,
-		observer: observer,
-	}
-}
-
-// initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool) *skill.Registry {
-	if !cfg.Skill.Enabled {
-		logger().Info("skill system disabled")
-		return nil
-	}
-
-	dir := cfg.Skill.SkillsDir
-	if dir == "" {
-		dir = "~/.lango/skills"
-	}
-	// Expand ~ to home directory.
-	if len(dir) > 1 && dir[:2] == "~/" {
-		if home, err := os.UserHomeDir(); err == nil {
-			dir = filepath.Join(home, dir[2:])
-		}
-	}
-
-	sLogger := logger()
-	store := skill.NewFileSkillStore(dir, sLogger)
-
-	// Deploy embedded default skills.
-	defaultFS, err := skills.DefaultFS()
-	if err == nil {
-		if err := store.EnsureDefaults(defaultFS); err != nil {
-			sLogger.Warnw("deploy default skills error", "error", err)
-		}
-	}
-
-	registry := skill.NewRegistry(store, baseTools, sLogger)
-	ctx := context.Background()
-	if err := registry.LoadSkills(ctx); err != nil {
-		sLogger.Warnw("load skills error", "error", err)
-	}
-
-	sLogger.Infow("skill system initialized", "dir", dir)
-	return registry
-}
-
-// memoryComponents holds optional observational memory components.
-type memoryComponents struct {
-	store     *memory.Store
-	observer  *memory.Observer
-	reflector *memory.Reflector
-	buffer    *memory.Buffer
-}
-
-// providerTextGenerator adapts a supervisor.ProviderProxy to the memory.TextGenerator interface.
-type providerTextGenerator struct {
-	proxy *supervisor.ProviderProxy
-}
-
-func (g *providerTextGenerator) GenerateText(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	params := provider.GenerateParams{
-		Messages: []provider.Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	}
-
-	stream, err := g.proxy.Generate(ctx, params)
-	if err != nil {
-		return "", fmt.Errorf("generate text: %w", err)
-	}
-
-	var result strings.Builder
-	for evt, err := range stream {
-		if err != nil {
-			return "", fmt.Errorf("stream text: %w", err)
-		}
-		if evt.Type == provider.StreamEventPlainText {
-			result.WriteString(evt.Text)
-		}
-		if evt.Type == provider.StreamEventError && evt.Error != nil {
-			return "", evt.Error
-		}
-	}
-	return result.String(), nil
-}
-
-// initMemory creates the observational memory components if enabled.
-func initMemory(cfg *config.Config, store session.Store, sv *supervisor.Supervisor) *memoryComponents {
-	if !cfg.ObservationalMemory.Enabled {
-		logger().Info("observational memory disabled")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("observational memory requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-	mLogger := logger()
-	mStore := memory.NewStore(client, mLogger)
-
-	// Create provider proxy for observer/reflector LLM calls
-	provider := cfg.ObservationalMemory.Provider
-	if provider == "" {
-		provider = cfg.Agent.Provider
-	}
-	omModel := cfg.ObservationalMemory.Model
-	if omModel == "" {
-		omModel = cfg.Agent.Model
-	}
-
-	proxy := supervisor.NewProviderProxy(sv, provider, omModel)
-	generator := &providerTextGenerator{proxy: proxy}
-
-	observer := memory.NewObserver(generator, mStore, mLogger)
-	reflector := memory.NewReflector(generator, mStore, mLogger)
-
-	// Apply defaults for thresholds
-	msgThreshold := cfg.ObservationalMemory.MessageTokenThreshold
-	if msgThreshold <= 0 {
-		msgThreshold = 1000
-	}
-	obsThreshold := cfg.ObservationalMemory.ObservationTokenThreshold
-	if obsThreshold <= 0 {
-		obsThreshold = 2000
-	}
-
-	// Message provider retrieves messages for a session key
-	getMessages := func(sessionKey string) ([]session.Message, error) {
-		sess, err := store.Get(sessionKey)
-		if err != nil {
-			return nil, err
-		}
-		if sess == nil {
-			return nil, nil
-		}
-		return sess.History, nil
-	}
-
-	buffer := memory.NewBuffer(observer, reflector, mStore, msgThreshold, obsThreshold, getMessages, mLogger)
-
-	logger().Infow("observational memory initialized",
-		"provider", provider,
-		"model", omModel,
-		"messageTokenThreshold", msgThreshold,
-		"observationTokenThreshold", obsThreshold,
-	)
-
-	return &memoryComponents{
-		store:     mStore,
-		observer:  observer,
-		reflector: reflector,
-		buffer:    buffer,
-	}
-}
-
-// initConversationAnalysis creates the conversation analysis pipeline if both
-// knowledge and observational memory are enabled.
-func initConversationAnalysis(cfg *config.Config, sv *supervisor.Supervisor, store session.Store, kc *knowledgeComponents, gc *graphComponents) *learning.AnalysisBuffer {
-	if kc == nil {
-		return nil
-	}
-	if !cfg.ObservationalMemory.Enabled {
-		return nil
-	}
-
-	// Create LLM proxy reusing the observational memory provider/model.
-	omProvider := cfg.ObservationalMemory.Provider
-	if omProvider == "" {
-		omProvider = cfg.Agent.Provider
-	}
-	omModel := cfg.ObservationalMemory.Model
-	if omModel == "" {
-		omModel = cfg.Agent.Model
-	}
-
-	proxy := supervisor.NewProviderProxy(sv, omProvider, omModel)
-	generator := &providerTextGenerator{proxy: proxy}
-
-	aLogger := logger()
-
-	analyzer := learning.NewConversationAnalyzer(generator, kc.store, aLogger)
-	learner := learning.NewSessionLearner(generator, kc.store, aLogger)
-
-	// Wire graph callbacks if graph store is available.
-	if gc != nil && gc.buffer != nil {
-		graphCB := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
-		analyzer.SetGraphCallback(graphCB)
-		learner.SetGraphCallback(graphCB)
-	}
-
-	// Message provider.
-	getMessages := func(sessionKey string) ([]session.Message, error) {
-		sess, err := store.Get(sessionKey)
-		if err != nil {
-			return nil, err
-		}
-		if sess == nil {
-			return nil, nil
-		}
-		return sess.History, nil
-	}
-
-	turnThreshold := cfg.Knowledge.AnalysisTurnThreshold
-	tokenThreshold := cfg.Knowledge.AnalysisTokenThreshold
-
-	buf := learning.NewAnalysisBuffer(analyzer, learner, getMessages, turnThreshold, tokenThreshold, aLogger)
-
-	logger().Infow("conversation analysis initialized",
-		"turnThreshold", turnThreshold,
-		"tokenThreshold", tokenThreshold,
-	)
-
-	return buf
-}
-
-// graphComponents holds optional graph store components.
-type graphComponents struct {
-	store      graph.Store
-	buffer     *graph.GraphBuffer
-	ragService *graph.GraphRAGService
-}
-
-// initGraphStore creates the graph store if enabled.
-func initGraphStore(cfg *config.Config) *graphComponents {
-	if !cfg.Graph.Enabled {
-		logger().Info("graph store disabled")
-		return nil
-	}
-
-	dbPath := cfg.Graph.DatabasePath
-	if dbPath == "" {
-		// Default: graph.db next to session database.
-		if cfg.Session.DatabasePath != "" {
-			dbPath = filepath.Join(filepath.Dir(cfg.Session.DatabasePath), "graph.db")
-		} else {
-			dbPath = "graph.db"
-		}
-	}
-
-	store, err := graph.NewBoltStore(dbPath)
-	if err != nil {
-		logger().Warnw("graph store init error, skipping", "error", err)
-		return nil
-	}
-
-	buffer := graph.NewGraphBuffer(store, logger())
-
-	logger().Infow("graph store initialized", "backend", "bolt", "path", dbPath)
-	return &graphComponents{
-		store:  store,
-		buffer: buffer,
-	}
-}
-
-// embeddingComponents holds optional embedding/RAG components.
-type embeddingComponents struct {
-	buffer     *embedding.EmbeddingBuffer
-	ragService *embedding.RAGService
-}
-
-// initEmbedding creates the embedding pipeline and RAG service if configured.
-func initEmbedding(cfg *config.Config, rawDB *sql.DB, kc *knowledgeComponents, mc *memoryComponents) *embeddingComponents {
-	emb := cfg.Embedding
-	if emb.Provider == "" && emb.ProviderID == "" {
-		logger().Info("embedding system disabled (no provider configured)")
-		return nil
-	}
-
-	backendType, apiKey := cfg.ResolveEmbeddingProvider()
-	if backendType == "" {
-		logger().Warnw("embedding provider type could not be resolved",
-			"providerID", emb.ProviderID, "provider", emb.Provider)
-		return nil
-	}
-
-	providerCfg := embedding.ProviderConfig{
-		Provider:   backendType,
-		Model:      emb.Model,
-		Dimensions: emb.Dimensions,
-		APIKey:     apiKey,
-		BaseURL:    emb.Local.BaseURL,
-	}
-	if backendType == "local" && emb.Local.Model != "" {
-		providerCfg.Model = emb.Local.Model
-	}
-
-	registry, err := embedding.NewRegistry(providerCfg, nil, logger())
-	if err != nil {
-		logger().Warnw("embedding provider init failed, skipping", "error", err)
-		return nil
-	}
-
-	provider := registry.Provider()
-	dimensions := provider.Dimensions()
-
-	// Create vector store using the shared database.
-	if rawDB == nil {
-		logger().Warn("embedding requires raw DB handle, skipping")
-		return nil
-	}
-	vecStore, err := embedding.NewSQLiteVecStore(rawDB, dimensions)
-	if err != nil {
-		logger().Warnw("sqlite-vec store init failed, skipping", "error", err)
-		return nil
-	}
-
-	embLogger := logger()
-
-	// Create buffer.
-	buffer := embedding.NewEmbeddingBuffer(provider, vecStore, embLogger)
-
-	// Create resolver and RAG service.
-	var ks *knowledge.Store
-	var ms *memory.Store
-	if kc != nil {
-		ks = kc.store
-	}
-	if mc != nil {
-		ms = mc.store
-	}
-	resolver := embedding.NewStoreResolver(ks, ms)
-	ragService := embedding.NewRAGService(provider, vecStore, resolver, embLogger)
-
-	// Wire embed callbacks into stores so saves trigger async embedding.
-	embedCB := func(id, collection, content string, metadata map[string]string) {
-		buffer.Enqueue(embedding.EmbedRequest{
-			ID:         id,
-			Collection: collection,
-			Content:    content,
-			Metadata:   metadata,
-		})
-	}
-	if kc != nil {
-		kc.store.SetEmbedCallback(embedCB)
-	}
-	if mc != nil {
-		mc.store.SetEmbedCallback(embedCB)
-	}
-
-	logger().Infow("embedding system initialized",
-		"provider", backendType,
-		"providerID", emb.ProviderID,
-		"dimensions", dimensions,
-		"ragEnabled", emb.RAG.Enabled,
-	)
-
-	return &embeddingComponents{
-		buffer:     buffer,
-		ragService: ragService,
 	}
 }
 
@@ -680,6 +298,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 				maxObs = 20
 			}
 			ctxAdapter.WithMemoryLimits(maxRef, maxObs)
+			if cfg.ObservationalMemory.MemoryTokenBudget > 0 {
+				ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
+			}
 		}
 
 		// Wire in RAG if available and enabled
@@ -716,6 +337,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			maxObs = 20
 		}
 		ctxAdapter.WithMemoryLimits(maxRef, maxObs)
+		if cfg.ObservationalMemory.MemoryTokenBudget > 0 {
+			ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
+		}
 
 		// Wire in RAG if available and enabled
 		if ec != nil && cfg.Embedding.RAG.Enabled {
@@ -776,7 +400,7 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			Model:               llm,
 			SystemPrompt:        orchestratorPrompt,
 			AdaptTool:           adk.AdaptTool,
-			MaxDelegationRounds: 5,
+			MaxDelegationRounds: cfg.Agent.MaxDelegationRounds,
 			SubAgentPrompt:      buildSubAgentPromptFunc(&cfg.Agent),
 		}
 
@@ -796,7 +420,9 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 			return nil, fmt.Errorf("build agent tree: %w", err)
 		}
 
-		adkAgent, err := adk.NewAgentFromADK(agentTree, store)
+		// Build agent options for multi-agent mode.
+		agentOpts := buildAgentOptions(cfg, kc)
+		adkAgent, err := adk.NewAgentFromADK(agentTree, store, agentOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("adk multi-agent: %w", err)
 		}
@@ -805,11 +431,36 @@ func initAgent(ctx context.Context, sv *supervisor.Supervisor, cfg *config.Confi
 
 	// Single-agent mode (default).
 	logger().Info("initializing agent runtime (ADK)...")
-	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store)
+	agentOpts := buildAgentOptions(cfg, kc)
+	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
 	}
 	return adkAgent, nil
+}
+
+// buildAgentOptions constructs AgentOption slice from config and knowledge components.
+func buildAgentOptions(cfg *config.Config, kc *knowledgeComponents) []adk.AgentOption {
+	var opts []adk.AgentOption
+
+	// Token budget derived from the configured model.
+	opts = append(opts, adk.WithAgentTokenBudget(adk.ModelTokenBudget(cfg.Agent.Model)))
+
+	// Max turns (0 = use agent default).
+	if cfg.Agent.MaxTurns > 0 {
+		opts = append(opts, adk.WithAgentMaxTurns(cfg.Agent.MaxTurns))
+	}
+
+	// Error correction: enabled by default when knowledge system is available.
+	errorCorrectionEnabled := true
+	if cfg.Agent.ErrorCorrectionEnabled != nil {
+		errorCorrectionEnabled = *cfg.Agent.ErrorCorrectionEnabled
+	}
+	if errorCorrectionEnabled && kc != nil && kc.engine != nil {
+		opts = append(opts, adk.WithAgentErrorFixProvider(kc.engine))
+	}
+
+	return opts
 }
 
 // initGateway creates the gateway server.
@@ -822,523 +473,6 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 		AllowedOrigins:   cfg.Server.AllowedOrigins,
 		RequestTimeout:   cfg.Agent.RequestTimeout,
 	}, adkAgent, nil, store, auth)
-}
-
-// wireGraphCallbacks connects graph store callbacks to knowledge and memory stores.
-// It also creates the Entity Extractor pipeline and Memory GraphHooks.
-func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config) {
-	if gc == nil || gc.buffer == nil {
-		return
-	}
-
-	// Create Entity Extractor for async triple extraction from content.
-	var extractor *graph.Extractor
-	if sv != nil {
-		provider := cfg.Agent.Provider
-		mdl := cfg.Agent.Model
-		proxy := supervisor.NewProviderProxy(sv, provider, mdl)
-		generator := &providerTextGenerator{proxy: proxy}
-		extractor = graph.NewExtractor(generator, logger())
-		logger().Info("graph entity extractor initialized")
-	}
-
-	graphCB := func(id, collection, content string, metadata map[string]string) {
-		// Basic containment triple.
-		gc.buffer.Enqueue(graph.GraphRequest{
-			Triples: []graph.Triple{
-				{
-					Subject:   collection + ":" + id,
-					Predicate: graph.Contains,
-					Object:    "collection:" + collection,
-					Metadata:  metadata,
-				},
-			},
-		})
-
-		// Async entity extraction via LLM.
-		if extractor != nil && content != "" {
-			go func() {
-				ctx := context.Background()
-				triples, err := extractor.Extract(ctx, content, id)
-				if err != nil {
-					logger().Debugw("entity extraction error", "id", id, "error", err)
-					return
-				}
-				if len(triples) > 0 {
-					gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-				}
-			}()
-		}
-	}
-
-	if kc != nil {
-		kc.store.SetGraphCallback(graphCB)
-	}
-	if mc != nil {
-		mc.store.SetGraphCallback(graphCB)
-
-		// Wire Memory GraphHooks for temporal/session triples.
-		tripleCallback := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
-		hooks := memory.NewGraphHooks(tripleCallback, logger())
-		mc.store.SetGraphHooks(hooks)
-		logger().Info("memory graph hooks wired")
-	}
-}
-
-// initGraphRAG creates the Graph RAG service if both graph store and vector RAG are available.
-func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponents) {
-	if gc == nil || ec == nil || ec.ragService == nil {
-		return
-	}
-
-	maxDepth := cfg.Graph.MaxTraversalDepth
-	if maxDepth <= 0 {
-		maxDepth = 2
-	}
-	maxExpand := cfg.Graph.MaxExpansionResults
-	if maxExpand <= 0 {
-		maxExpand = 10
-	}
-
-	// Create a VectorRetriever adapter from embedding.RAGService.
-	adapter := &ragServiceAdapter{inner: ec.ragService}
-
-	gc.ragService = graph.NewGraphRAGService(adapter, gc.store, maxDepth, maxExpand, logger())
-	logger().Info("graph RAG hybrid retrieval initialized")
-}
-
-// ragServiceAdapter adapts embedding.RAGService to graph.VectorRetriever interface.
-type ragServiceAdapter struct {
-	inner *embedding.RAGService
-}
-
-func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts graph.VectorRetrieveOptions) ([]graph.VectorResult, error) {
-	embOpts := embedding.RetrieveOptions{
-		Collections: opts.Collections,
-		Limit:       opts.Limit,
-		SessionKey:  opts.SessionKey,
-		MaxDistance: opts.MaxDistance,
-	}
-
-	results, err := a.inner.Retrieve(ctx, query, embOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	graphResults := make([]graph.VectorResult, len(results))
-	for i, r := range results {
-		graphResults[i] = graph.VectorResult{
-			Collection: r.Collection,
-			SourceID:   r.SourceID,
-			Content:    r.Content,
-			Distance:   r.Distance,
-		}
-	}
-	return graphResults, nil
-}
-
-// paymentComponents holds optional blockchain payment components.
-type paymentComponents struct {
-	wallet  wallet.WalletProvider
-	service *payment.Service
-	limiter wallet.SpendingLimiter
-	secrets *security.SecretsStore
-	chainID int64
-}
-
-// initPayment creates the payment components if enabled.
-// Follows the same graceful degradation pattern as initGraphStore.
-func initPayment(cfg *config.Config, store session.Store, secrets *security.SecretsStore) *paymentComponents {
-	if !cfg.Payment.Enabled {
-		logger().Info("payment system disabled")
-		return nil
-	}
-
-	if secrets == nil {
-		logger().Warn("payment system requires security.signer, skipping")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("payment system requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-
-	// Create RPC client for blockchain interaction
-	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)
-	if err != nil {
-		logger().Warnw("payment RPC connection failed, skipping", "error", err, "rpcUrl", cfg.Payment.Network.RPCURL)
-		return nil
-	}
-
-	// Create wallet provider based on configuration
-	var wp wallet.WalletProvider
-	switch cfg.Payment.WalletProvider {
-	case "local":
-		wp = wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
-	case "rpc":
-		wp = wallet.NewRPCWallet()
-	case "composite":
-		local := wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
-		rpc := wallet.NewRPCWallet()
-		wp = wallet.NewCompositeWallet(rpc, local, nil)
-	default:
-		logger().Warnw("unknown wallet provider, using local", "provider", cfg.Payment.WalletProvider)
-		wp = wallet.NewLocalWallet(secrets, cfg.Payment.Network.RPCURL, cfg.Payment.Network.ChainID)
-	}
-
-	// Create spending limiter
-	limiter, err := wallet.NewEntSpendingLimiter(client,
-		cfg.Payment.Limits.MaxPerTx,
-		cfg.Payment.Limits.MaxDaily,
-	)
-	if err != nil {
-		logger().Warnw("spending limiter init failed, skipping", "error", err)
-		return nil
-	}
-
-	// Create transaction builder
-	builder := payment.NewTxBuilder(rpcClient,
-		cfg.Payment.Network.ChainID,
-		cfg.Payment.Network.USDCContract,
-	)
-
-	// Create payment service
-	svc := payment.NewService(wp, limiter, builder, client, rpcClient, cfg.Payment.Network.ChainID)
-
-	logger().Infow("payment system initialized",
-		"walletProvider", cfg.Payment.WalletProvider,
-		"chainId", cfg.Payment.Network.ChainID,
-		"network", wallet.NetworkName(cfg.Payment.Network.ChainID),
-		"maxPerTx", cfg.Payment.Limits.MaxPerTx,
-		"maxDaily", cfg.Payment.Limits.MaxDaily,
-	)
-
-	return &paymentComponents{
-		wallet:  wp,
-		service: svc,
-		limiter: limiter,
-		secrets: secrets,
-		chainID: cfg.Payment.Network.ChainID,
-	}
-}
-
-// x402Components holds optional X402 interceptor components.
-type x402Components struct {
-	interceptor *x402pkg.Interceptor
-}
-
-// initX402 creates the X402 interceptor if payment is enabled.
-func initX402(cfg *config.Config, secrets *security.SecretsStore, limiter wallet.SpendingLimiter) *x402Components {
-	if !cfg.Payment.Enabled {
-		return nil
-	}
-	if secrets == nil {
-		return nil
-	}
-
-	signerProvider := x402pkg.NewLocalSignerProvider(secrets)
-
-	maxAutoPayAmt := cfg.Payment.Limits.MaxPerTx
-	if maxAutoPayAmt == "" {
-		maxAutoPayAmt = "1.00"
-	}
-
-	x402Cfg := x402pkg.Config{
-		Enabled:          true,
-		ChainID:          cfg.Payment.Network.ChainID,
-		MaxAutoPayAmount: maxAutoPayAmt,
-	}
-
-	interceptor := x402pkg.NewInterceptor(signerProvider, limiter, x402Cfg, logger())
-
-	logger().Infow("X402 interceptor configured",
-		"chainId", x402Cfg.ChainID,
-		"maxAutoPayAmount", maxAutoPayAmt,
-	)
-
-	return &x402Components{
-		interceptor: interceptor,
-	}
-}
-
-// agentRunnerAdapter adapts app.runAgent to cron.AgentRunner / background.AgentRunner / workflow.AgentRunner.
-type agentRunnerAdapter struct {
-	app *App
-}
-
-func (r *agentRunnerAdapter) Run(ctx context.Context, sessionKey, promptText string) (string, error) {
-	return r.app.runAgent(ctx, sessionKey, promptText)
-}
-
-// initCron creates the cron scheduling system if enabled.
-func initCron(cfg *config.Config, store session.Store, app *App) *cronpkg.Scheduler {
-	if !cfg.Cron.Enabled {
-		logger().Info("cron scheduling disabled")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("cron scheduling requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-	cronStore := cronpkg.NewEntStore(client)
-	sender := newChannelSender(app)
-	delivery := cronpkg.NewDelivery(sender, sender, logger())
-	runner := &agentRunnerAdapter{app: app}
-	executor := cronpkg.NewExecutor(runner, delivery, cronStore, logger())
-
-	maxJobs := cfg.Cron.MaxConcurrentJobs
-	if maxJobs <= 0 {
-		maxJobs = 5
-	}
-
-	tz := cfg.Cron.Timezone
-	if tz == "" {
-		tz = "UTC"
-	}
-
-	scheduler := cronpkg.New(cronStore, executor, tz, maxJobs, logger())
-
-	logger().Infow("cron scheduling initialized",
-		"timezone", tz,
-		"maxConcurrentJobs", maxJobs,
-	)
-
-	return scheduler
-}
-
-// initBackground creates the background task manager if enabled.
-func initBackground(cfg *config.Config, app *App) *background.Manager {
-	if !cfg.Background.Enabled {
-		logger().Info("background tasks disabled")
-		return nil
-	}
-
-	runner := &agentRunnerAdapter{app: app}
-	sender := newChannelSender(app)
-	notify := background.NewNotification(sender, sender, logger())
-
-	maxTasks := cfg.Background.MaxConcurrentTasks
-	if maxTasks <= 0 {
-		maxTasks = 3
-	}
-
-	taskTimeout := cfg.Background.TaskTimeout
-	if taskTimeout <= 0 {
-		taskTimeout = 30 * time.Minute
-	}
-
-	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
-
-	logger().Infow("background task manager initialized",
-		"maxConcurrentTasks", maxTasks,
-		"yieldMs", cfg.Background.YieldMs,
-	)
-
-	return mgr
-}
-
-// initWorkflow creates the workflow engine if enabled.
-func initWorkflow(cfg *config.Config, store session.Store, app *App) *workflow.Engine {
-	if !cfg.Workflow.Enabled {
-		logger().Info("workflow engine disabled")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("workflow engine requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-	state := workflow.NewStateStore(client, logger())
-	runner := &agentRunnerAdapter{app: app}
-	sender := newChannelSender(app)
-
-	maxConcurrent := cfg.Workflow.MaxConcurrentSteps
-	if maxConcurrent <= 0 {
-		maxConcurrent = 4
-	}
-
-	defaultTimeout := cfg.Workflow.DefaultTimeout
-	if defaultTimeout <= 0 {
-		defaultTimeout = 10 * time.Minute
-	}
-
-	engine := workflow.NewEngine(runner, state, sender, maxConcurrent, defaultTimeout, logger())
-
-	logger().Infow("workflow engine initialized",
-		"maxConcurrentSteps", maxConcurrent,
-		"defaultTimeout", defaultTimeout,
-	)
-
-	return engine
-}
-
-// librarianComponents holds optional proactive librarian components.
-type librarianComponents struct {
-	inquiryStore    *librarian.InquiryStore
-	proactiveBuffer *librarian.ProactiveBuffer
-}
-
-// initLibrarian creates the proactive librarian components if enabled.
-// Requires: librarian.enabled && knowledge.enabled && observationalMemory.enabled.
-func initLibrarian(
-	cfg *config.Config,
-	sv *supervisor.Supervisor,
-	store session.Store,
-	kc *knowledgeComponents,
-	mc *memoryComponents,
-	gc *graphComponents,
-) *librarianComponents {
-	if !cfg.Librarian.Enabled {
-		logger().Info("proactive librarian disabled")
-		return nil
-	}
-	if kc == nil {
-		logger().Warn("proactive librarian requires knowledge system, skipping")
-		return nil
-	}
-	if mc == nil {
-		logger().Warn("proactive librarian requires observational memory, skipping")
-		return nil
-	}
-
-	entStore, ok := store.(*session.EntStore)
-	if !ok {
-		logger().Warn("proactive librarian requires EntStore, skipping")
-		return nil
-	}
-
-	client := entStore.Client()
-	lLogger := logger()
-
-	inquiryStore := librarian.NewInquiryStore(client, lLogger)
-
-	// Create LLM proxy.
-	provider := cfg.Librarian.Provider
-	if provider == "" {
-		provider = cfg.Agent.Provider
-	}
-	lModel := cfg.Librarian.Model
-	if lModel == "" {
-		lModel = cfg.Agent.Model
-	}
-
-	proxy := supervisor.NewProviderProxy(sv, provider, lModel)
-	generator := &providerTextGenerator{proxy: proxy}
-
-	analyzer := librarian.NewObservationAnalyzer(generator, lLogger)
-	processor := librarian.NewInquiryProcessor(generator, inquiryStore, kc.store, lLogger)
-
-	// Message provider.
-	getMessages := func(sessionKey string) ([]session.Message, error) {
-		sess, err := store.Get(sessionKey)
-		if err != nil {
-			return nil, err
-		}
-		if sess == nil {
-			return nil, nil
-		}
-		return sess.History, nil
-	}
-
-	// Observation provider.
-	getObservations := librarian.ObservationProvider(mc.store.ListObservations)
-
-	bufCfg := librarian.ProactiveBufferConfig{
-		ObservationThreshold: cfg.Librarian.ObservationThreshold,
-		CooldownTurns:        cfg.Librarian.InquiryCooldownTurns,
-		MaxPending:           cfg.Librarian.MaxPendingInquiries,
-		AutoSaveConfidence:   cfg.Librarian.AutoSaveConfidence,
-	}
-	buffer := librarian.NewProactiveBuffer(
-		analyzer, processor, inquiryStore, kc.store,
-		getMessages, getObservations, bufCfg, lLogger,
-	)
-
-	// Wire graph callback if available.
-	if gc != nil && gc.buffer != nil {
-		buffer.SetGraphCallback(func(triples []librarian.Triple) {
-			graphTriples := make([]graph.Triple, len(triples))
-			for i, t := range triples {
-				graphTriples[i] = graph.Triple{
-					Subject:   t.Subject,
-					Predicate: t.Predicate,
-					Object:    t.Object,
-					Metadata:  t.Metadata,
-				}
-			}
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
-		})
-	}
-
-	logger().Infow("proactive librarian initialized",
-		"provider", provider,
-		"model", lModel,
-		"observationThreshold", bufCfg.ObservationThreshold,
-		"cooldownTurns", bufCfg.CooldownTurns,
-		"maxPending", bufCfg.MaxPending,
-	)
-
-	return &librarianComponents{
-		inquiryStore:    inquiryStore,
-		proactiveBuffer: buffer,
-	}
-}
-
-// inquiryProviderAdapter bridges librarian.InquiryStore → knowledge.InquiryProvider.
-type inquiryProviderAdapter struct {
-	store *librarian.InquiryStore
-}
-
-func (a *inquiryProviderAdapter) PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]knowledge.ContextItem, error) {
-	inquiries, err := a.store.ListPendingInquiries(ctx, sessionKey, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]knowledge.ContextItem, 0, len(inquiries))
-	for _, inq := range inquiries {
-		items = append(items, knowledge.ContextItem{
-			Layer:   knowledge.LayerPendingInquiries,
-			Key:     inq.Topic,
-			Content: inq.Question,
-			Source:  inq.Context,
-		})
-	}
-	return items, nil
-}
-
-// skillProviderAdapter adapts *skill.Registry to knowledge.SkillProvider.
-type skillProviderAdapter struct {
-	registry *skill.Registry
-}
-
-func (a *skillProviderAdapter) ListActiveSkillInfos(ctx context.Context) ([]knowledge.SkillInfo, error) {
-	entries, err := a.registry.ListActiveSkills(ctx)
-	if err != nil {
-		return nil, err
-	}
-	infos := make([]knowledge.SkillInfo, len(entries))
-	for i, e := range entries {
-		infos[i] = knowledge.SkillInfo{
-			Name:        e.Name,
-			Description: e.Description,
-			Type:        string(e.Type),
-		}
-	}
-	return infos, nil
 }
 
 // buildAutomationPromptSection creates a dynamic prompt section describing
@@ -1379,7 +513,8 @@ func buildAutomationPromptSection(cfg *config.Config) *prompt.StaticSection {
 	}
 
 	parts = append(parts, `### Important
-- ALWAYS use the built-in automation tools above. NEVER use exec to run "lango cron", "lango bg", or "lango workflow" commands — this will fail because spawning a new lango process requires passphrase authentication.
+- ALWAYS use the built-in tools. NEVER use exec to run ANY "lango" CLI command — this includes "lango cron", "lango bg", "lango workflow", "lango graph", "lango memory", "lango p2p", "lango security", "lango payment", "lango config", "lango doctor", or any other subcommand. Every lango CLI invocation requires passphrase authentication during bootstrap and will fail when spawned as a non-interactive subprocess.
+- If you need functionality without a built-in tool equivalent (e.g., config management, diagnostics), ask the user to run the command in their terminal.
 `)
 
 	content := strings.Join(parts, "\n")
