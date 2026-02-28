@@ -31,6 +31,7 @@ var _ KeyChecker = (*TPMProvider)(nil)
 // NewTPMProvider creates a new TPMProvider.
 // Returns ErrTPMNotAvailable if the TPM2 device is not accessible.
 func NewTPMProvider() (*TPMProvider, error) {
+	//nolint:staticcheck // deprecated but no alternative transport package available yet
 	t, err := transport.OpenTPM(tpmDevicePath)
 	if err != nil {
 		return nil, ErrTPMNotAvailable
@@ -159,6 +160,7 @@ func createPrimaryKey(t transport.TPM) (*tpm2.CreatePrimaryResponse, error) {
 // seal encrypts data under the TPM's SRK.
 // Returns a blob containing the marshaled public and private parts.
 func (p *TPMProvider) seal(data []byte) ([]byte, error) {
+	//nolint:staticcheck // deprecated but no alternative transport package available yet
 	t, err := transport.OpenTPM(tpmDevicePath)
 	if err != nil {
 		return nil, fmt.Errorf("open tpm: %w", err)
@@ -171,7 +173,7 @@ func (p *TPMProvider) seal(data []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: primary.ObjectHandle}
-		flush.Execute(t)
+		_ = flush.Execute(t)
 	}()
 
 	createCmd := tpm2.Create{
@@ -204,6 +206,7 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unmarshal blob: %w", err)
 	}
 
+	//nolint:staticcheck // deprecated but no alternative transport package available yet
 	t, err := transport.OpenTPM(tpmDevicePath)
 	if err != nil {
 		return nil, fmt.Errorf("open tpm: %w", err)
@@ -216,7 +219,7 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: primary.ObjectHandle}
-		flush.Execute(t)
+		_ = flush.Execute(t)
 	}()
 
 	loadCmd := tpm2.Load{
@@ -233,7 +236,7 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: loadRsp.ObjectHandle}
-		flush.Execute(t)
+		_ = flush.Execute(t)
 	}()
 
 	unsealCmd := tpm2.Unseal{
