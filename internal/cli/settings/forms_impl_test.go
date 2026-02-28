@@ -372,8 +372,8 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	if e.Provider != "my-openai" {
 		t.Errorf("Provider: want %q, got %q", "my-openai", e.Provider)
 	}
-	if e.ProviderID != "" {
-		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
+	if e.ProviderID != "" { //nolint:staticcheck // intentional: verify deprecated field is cleared
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID) //nolint:staticcheck // intentional
 	}
 	if e.Model != "text-embedding-3-small" {
 		t.Errorf("Model: want %q, got %q", "text-embedding-3-small", e.Model)
@@ -406,8 +406,8 @@ func TestUpdateConfigFromForm_EmbeddingProviderLocal(t *testing.T) {
 	if e.Provider != "local" {
 		t.Errorf("Provider: want %q, got %q", "local", e.Provider)
 	}
-	if e.ProviderID != "" {
-		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
+	if e.ProviderID != "" { //nolint:staticcheck // intentional: verify deprecated field is cleared
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID) //nolint:staticcheck // intentional
 	}
 }
 

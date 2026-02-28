@@ -12,17 +12,6 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
-// fakeAgent implements agent.Agent for testing.
-type fakeAgent struct {
-	name        string
-	description string
-	subAgents   []fakeAgent
-}
-
-func (a fakeAgent) Name() string           { return a.name }
-func (a fakeAgent) Description() string    { return a.description }
-func (a fakeAgent) SubAgents() []fakeAgent { return a.subAgents }
-
 func TestAgentCard(t *testing.T) {
 	cfg := config.A2AConfig{
 		Enabled:          true,

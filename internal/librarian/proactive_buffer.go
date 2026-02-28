@@ -9,7 +9,6 @@ import (
 
 	"github.com/langoai/lango/internal/asyncbuf"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
-	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/session"
@@ -257,16 +256,3 @@ func mapCategory(analysisType string) (entknowledge.Category, error) {
 	}
 }
 
-// toGraphTriples converts librarian triples to graph.Triple for callback.
-func toGraphTriples(triples []Triple) []graph.Triple {
-	result := make([]graph.Triple, len(triples))
-	for i, t := range triples {
-		result[i] = graph.Triple{
-			Subject:   t.Subject,
-			Predicate: t.Predicate,
-			Object:    t.Object,
-			Metadata:  t.Metadata,
-		}
-	}
-	return result
-}

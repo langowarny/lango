@@ -562,7 +562,7 @@ func (a *App) Stop(ctx context.Context) error {
 	logger().Info("stopping application")
 
 	// Stop all lifecycle-managed components in reverse startup order.
-	a.registry.StopAll(ctx)
+	_ = a.registry.StopAll(ctx)
 
 	// Wait for all background goroutines to finish.
 	done := make(chan struct{})

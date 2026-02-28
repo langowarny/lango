@@ -169,16 +169,14 @@ func TestSlackChannel(t *testing.T) {
 	}
 
 	// Wait for processing (async)
-	select {
-	case <-time.After(200 * time.Millisecond):
-		// With thinking indicator: expect 1 PostMessage (thinking placeholder)
-		// + 1 UpdateMessage (replace placeholder with response)
-		if len(mockClient.getPostMessages()) == 0 {
-			t.Error("expected PostMessage to be called (thinking placeholder)")
-		}
-		if len(mockClient.getUpdateMessages()) == 0 {
-			t.Error("expected UpdateMessage to be called (replace placeholder)")
-		}
+	<-time.After(200 * time.Millisecond)
+	// With thinking indicator: expect 1 PostMessage (thinking placeholder)
+	// + 1 UpdateMessage (replace placeholder with response)
+	if len(mockClient.getPostMessages()) == 0 {
+		t.Error("expected PostMessage to be called (thinking placeholder)")
+	}
+	if len(mockClient.getUpdateMessages()) == 0 {
+		t.Error("expected UpdateMessage to be called (replace placeholder)")
 	}
 }
 

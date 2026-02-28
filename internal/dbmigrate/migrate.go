@@ -82,7 +82,7 @@ func MigrateToEncrypted(dbPath, passphrase string, cipherPageSize int) error {
 	}
 	if err := os.Rename(tmpPath, dbPath); err != nil {
 		// Rollback: restore backup.
-		os.Rename(bakPath, dbPath)
+		_ = os.Rename(bakPath, dbPath)
 		return fmt.Errorf("rename encrypted to original: %w", err)
 	}
 
@@ -158,7 +158,7 @@ func DecryptToPlaintext(dbPath, passphrase string, cipherPageSize int) error {
 		return fmt.Errorf("rename original to backup: %w", err)
 	}
 	if err := os.Rename(tmpPath, dbPath); err != nil {
-		os.Rename(bakPath, dbPath)
+		_ = os.Rename(bakPath, dbPath)
 		return fmt.Errorf("rename plaintext to original: %w", err)
 	}
 

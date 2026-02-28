@@ -56,7 +56,7 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				fmt.Printf("Purpose: %s\n", purpose)
 				fmt.Print("Confirm [y/N]: ")
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" && answer != "yes" {
 					fmt.Println("Aborted.")
 					return nil

@@ -217,7 +217,7 @@ func (am *AuthManager) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Return structured JSON response (no PII exposure)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":     "authenticated",
 		"sessionKey": sessionKey,
 	})
@@ -245,7 +245,7 @@ func (am *AuthManager) handleLogout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "logged_out",
 	})
 }

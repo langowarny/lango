@@ -163,7 +163,7 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 				}
 				fmt.Printf("Delete secret '%s'? [y/N] ", name)
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" && answer != "yes" {
 					fmt.Println("Aborted.")
 					return nil

@@ -172,7 +172,7 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
 		}
 
-		var finalProvider security.CryptoProvider = kmsProvider
+		var finalProvider = kmsProvider
 
 		// Wrap with CompositeCryptoProvider for fallback when configured.
 		if cfg.Security.KMS.FallbackToLocal && boot.Crypto != nil {

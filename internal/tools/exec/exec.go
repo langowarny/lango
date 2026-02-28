@@ -174,7 +174,7 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	// Wait for completion or timeout
 	select {
 	case <-ctx.Done():
-		cmd.Process.Signal(syscall.SIGTERM)
+		_ = cmd.Process.Signal(syscall.SIGTERM)
 		return &Result{
 			Stdout:   output.String(),
 			TimedOut: true,
@@ -277,7 +277,7 @@ func (t *Tool) StopBackground(id string) error {
 
 	if !bp.Done {
 		if err := bp.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			bp.Cmd.Process.Kill()
+			_ = bp.Cmd.Process.Kill()
 		}
 	}
 
@@ -345,7 +345,7 @@ func (t *Tool) Cleanup() {
 
 	for id, bp := range t.bgProcesses {
 		if !bp.Done {
-			bp.Cmd.Process.Kill()
+			_ = bp.Cmd.Process.Kill()
 		}
 		delete(t.bgProcesses, id)
 	}

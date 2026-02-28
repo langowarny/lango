@@ -6,16 +6,13 @@ import (
 	"strings"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tools/browser"
 	"github.com/langoai/lango/internal/tools/filesystem"
 	"github.com/langoai/lango/internal/types"
-	"github.com/langoai/lango/internal/wallet"
 )
 
 // buildTools creates the set of tools available to the agent.
@@ -112,12 +109,6 @@ func wrapBrowserHandler(t *agent.Tool, sm *browser.SessionManager) *agent.Tool {
 	return toolchain.Chain(t, toolchain.WithBrowserRecovery(sm))
 }
 
-// wrapWithLearning wraps a tool's handler to call the learning observer after each execution.
-// Delegates to toolchain.WithLearning.
-func wrapWithLearning(t *agent.Tool, observer learning.ToolResultObserver) *agent.Tool {
-	return toolchain.Chain(t, toolchain.WithLearning(observer))
-}
-
 // detectChannelFromContext extracts the delivery target from the session key in context.
 // Returns "channel:targetID" (e.g. "telegram:123456789") or "" if no known channel prefix is found.
 func detectChannelFromContext(ctx context.Context) string {
@@ -152,8 +143,3 @@ func truncate(s string, maxLen int) string {
 	return toolchain.Truncate(s, maxLen)
 }
 
-// wrapWithApproval wraps a tool to require approval based on the configured policy.
-// Delegates to toolchain.WithApproval.
-func wrapWithApproval(t *agent.Tool, ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter) *agent.Tool {
-	return toolchain.Chain(t, toolchain.WithApproval(ic, ap, gs, limiter))
-}

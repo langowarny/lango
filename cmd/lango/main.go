@@ -186,7 +186,7 @@ func serveCmd() *cobra.Command {
 			}); err != nil {
 				return fmt.Errorf("init logging: %w", err)
 			}
-			defer logging.Sync()
+			defer func() { _ = logging.Sync() }()
 
 			log := logging.Sugar()
 
@@ -259,7 +259,7 @@ func healthCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("health check: %w", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("unhealthy: status %d", resp.StatusCode)
@@ -413,7 +413,7 @@ func configDeleteCmd() *cobra.Command {
 			if !force {
 				fmt.Printf("Delete profile %q? This cannot be undone. [y/N]: ", name)
 				var answer string
-				fmt.Scanln(&answer)
+				_, _ = fmt.Scanln(&answer)
 				if answer != "y" && answer != "Y" {
 					fmt.Println("Aborted.")
 					return nil

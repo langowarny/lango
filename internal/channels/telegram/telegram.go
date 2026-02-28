@@ -374,7 +374,7 @@ func (c *Channel) splitMessage(text string, maxLen int) []string {
 
 // sendError sends an error message
 func (c *Channel) sendError(chatID int64, replyTo int, err error) {
-	c.Send(chatID, &OutgoingMessage{
+	_ = c.Send(chatID, &OutgoingMessage{
 		Text:      fmt.Sprintf("❌ Error: %s", err.Error()),
 		ReplyToID: replyTo,
 	})

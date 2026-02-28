@@ -124,10 +124,10 @@ func (s *SessionServiceAdapter) AppendEvent(ctx context.Context, sess session.Se
 		Timestamp: evt.Timestamp,
 	}
 
-	if evt.LLMResponse.Content != nil {
-		msg.Role = types.MessageRole(evt.LLMResponse.Content.Role).Normalize()
+	if evt.Content != nil {
+		msg.Role = types.MessageRole(evt.Content.Role).Normalize()
 
-		for _, p := range evt.LLMResponse.Content.Parts {
+		for _, p := range evt.Content.Parts {
 			if p.Text != "" {
 				msg.Content += p.Text
 			}

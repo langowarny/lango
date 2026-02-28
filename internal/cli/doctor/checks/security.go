@@ -109,9 +109,6 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 
 	message := "Security configuration verified"
 	if len(issues) > 0 {
-		message = fmt.Sprintf("Security issues found: %v", issues)
-		// Format nicer if multiple?
-		// "Security issues found:\n- Issue 1\n- Issue 2"
 		message = "Security checks returned warnings:\n"
 		for _, issue := range issues {
 			message += fmt.Sprintf("- %s\n", issue)

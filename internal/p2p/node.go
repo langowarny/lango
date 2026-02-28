@@ -44,7 +44,7 @@ type Node struct {
 // The node key is persisted in SecretsStore (encrypted) when available, falling
 // back to cfg.KeyDir for backward compatibility.
 func NewNode(cfg config.P2PConfig, logger *zap.SugaredLogger, secrets *security.SecretsStore) (*Node, error) {
-	privKey, err := loadOrGenerateKey(cfg.KeyDir, secrets, logger)
+	privKey, err := loadOrGenerateKey(cfg.KeyDir, secrets, logger) //nolint:staticcheck // KeyDir used for backward-compatible migration
 	if err != nil {
 		return nil, fmt.Errorf("load node key: %w", err)
 	}

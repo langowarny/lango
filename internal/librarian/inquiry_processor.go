@@ -135,12 +135,12 @@ func (p *InquiryProcessor) buildMatchPrompt(pending []Inquiry, messages []sessio
 
 	b.WriteString("## Pending Inquiries\n")
 	for _, inq := range pending {
-		b.WriteString(fmt.Sprintf("- ID: %s | Topic: %s | Question: %s\n", inq.ID.String(), inq.Topic, inq.Question))
+		fmt.Fprintf(&b, "- ID: %s | Topic: %s | Question: %s\n", inq.ID.String(), inq.Topic, inq.Question)
 	}
 
 	b.WriteString("\n## Recent Messages\n")
 	for _, msg := range messages {
-		b.WriteString(fmt.Sprintf("[%s]: %s\n", msg.Role, msg.Content))
+		fmt.Fprintf(&b, "[%s]: %s\n", msg.Role, msg.Content)
 	}
 
 	return b.String()

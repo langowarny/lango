@@ -78,7 +78,7 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 
 	var wg sync.WaitGroup
 	if err := node.Start(&wg); err != nil {
-		node.Stop()
+		_ = node.Stop()
 		return nil, fmt.Errorf("start P2P node: %w", err)
 	}
 
@@ -88,7 +88,7 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	}
 	sessions, err := handshake.NewSessionStore(sessionTTL)
 	if err != nil {
-		node.Stop()
+		_ = node.Stop()
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 		sessions:   sessions,
 		keyStorage: keyStorage,
 		cleanup: func() {
-			node.Stop()
+			_ = node.Stop()
 		},
 	}, nil
 }

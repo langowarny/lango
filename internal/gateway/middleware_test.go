@@ -217,9 +217,8 @@ func TestMakeOriginChecker_TrailingSlashNormalized(t *testing.T) {
 func TestIsSecure_DirectTLS(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "https://localhost/test", nil)
 	// httptest doesn't set TLS, manually test the header path
-	if isSecure(req) {
-		// TLS is nil in httptest, that's expected
-	}
+	// isSecure returns false here: httptest doesn't set TLS, that's expected.
+	_ = isSecure(req)
 
 	// Test X-Forwarded-Proto header
 	req = httptest.NewRequest(http.MethodGet, "http://localhost/test", nil)
@@ -320,10 +319,9 @@ func TestStateCookie_PerProviderName(t *testing.T) {
 	// This should return "state cookie missing" because it looks for "oauth_state_google"
 	auth.handleCallback(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		// Provider "google" is not registered, so we get 404 first
-		// But the important thing is it doesn't use the old cookie name
-	}
+	// Provider "google" is not registered, so we get 404 first.
+	// The important thing is it doesn't use the old cookie name.
+	_ = rec.Code
 
 	// Now test with correct per-provider cookie but non-existent provider
 	req2 := httptest.NewRequest(http.MethodGet, "/auth/callback/google?state=abc&code=xyz", nil)

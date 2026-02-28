@@ -7,18 +7,16 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/adk/agent"
-	"google.golang.org/adk/server/adka2a"
 
 	"github.com/langoai/lango/internal/config"
 )
 
 // Server exposes a Lango agent as an A2A-compatible server.
 type Server struct {
-	cfg      config.A2AConfig
-	agent    agent.Agent
-	executor *adka2a.Executor
-	card     *AgentCard
-	logger   *zap.SugaredLogger
+	cfg    config.A2AConfig
+	agent  agent.Agent
+	card   *AgentCard
+	logger *zap.SugaredLogger
 }
 
 const (

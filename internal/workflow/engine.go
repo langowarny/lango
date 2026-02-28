@@ -404,9 +404,9 @@ func (e *Engine) Shutdown() {
 // buildSummary formats a human-readable summary of workflow results.
 func (e *Engine) buildSummary(workflowName string, results map[string]string) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Workflow '%s' completed.\n\n", workflowName))
+	fmt.Fprintf(&b, "Workflow '%s' completed.\n\n", workflowName)
 	for stepID, result := range results {
-		b.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", stepID, result))
+		fmt.Fprintf(&b, "--- %s ---\n%s\n\n", stepID, result)
 	}
 	return b.String()
 }
