@@ -2,6 +2,8 @@ package adk
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -350,6 +352,65 @@ func TestAppendEvent_SavesFunctionResponseMetadata(t *testing.T) {
 	// Content should also contain the response for backward compatibility
 	if msg.Content == "" {
 		t.Error("expected non-empty Content for backward compat")
+	}
+}
+
+func TestSessionServiceAdapter_Get_ExpiredSession_AutoRenews(t *testing.T) {
+	store := newMockStore()
+	// Seed an expired session
+	store.sessions["expired-sess"] = &internal.Session{
+		Key:      "expired-sess",
+		Metadata: map[string]string{"old": "data"},
+	}
+	store.expiredKeys["expired-sess"] = true
+
+	service := NewSessionServiceAdapter(store, "lango-agent")
+
+	resp, err := service.Get(context.Background(), &session.GetRequest{
+		SessionID: "expired-sess",
+	})
+	if err != nil {
+		t.Fatalf("expected auto-renew, got error: %v", err)
+	}
+	if resp.Session.ID() != "expired-sess" {
+		t.Errorf("expected session ID 'expired-sess', got %q", resp.Session.ID())
+	}
+
+	// Old session should have been deleted and replaced
+	if store.expiredKeys["expired-sess"] {
+		t.Error("expected expiredKeys entry to be cleared after delete")
+	}
+
+	// Verify session exists in store (recreated)
+	sess, err := store.Get("expired-sess")
+	if err != nil {
+		t.Fatalf("expected session in store after auto-renew, got error: %v", err)
+	}
+	if sess == nil {
+		t.Fatal("expected non-nil session after auto-renew")
+	}
+	// Old metadata should not carry over (new session is blank)
+	if sess.Metadata["old"] == "data" {
+		t.Error("expected old metadata to be cleared in renewed session")
+	}
+}
+
+func TestSessionServiceAdapter_Get_ExpiredSession_DeleteFails(t *testing.T) {
+	store := newMockStore()
+	store.sessions["fail-del"] = &internal.Session{Key: "fail-del"}
+	store.expiredKeys["fail-del"] = true
+	store.deleteErr = fmt.Errorf("disk full")
+
+	service := NewSessionServiceAdapter(store, "lango-agent")
+
+	_, err := service.Get(context.Background(), &session.GetRequest{
+		SessionID: "fail-del",
+	})
+	if err == nil {
+		t.Fatal("expected error when delete fails")
+	}
+	if !errors.Is(err, store.deleteErr) {
+		t.Errorf("expected wrapped disk full error, got: %v", err)
 	}
 }
 

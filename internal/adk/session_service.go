@@ -67,6 +67,14 @@ func (s *SessionServiceAdapter) Get(ctx context.Context, req *session.GetRequest
 		if errors.Is(err, internal.ErrSessionNotFound) {
 			return s.getOrCreate(ctx, req)
 		}
+		// Auto-renew expired sessions: delete stale record, then create fresh
+		if errors.Is(err, internal.ErrSessionExpired) {
+			logger().Infow("session expired, auto-renewing", "session", req.SessionID)
+			if delErr := s.store.Delete(req.SessionID); delErr != nil {
+				return nil, fmt.Errorf("delete expired session %s: %w", req.SessionID, delErr)
+			}
+			return s.getOrCreate(ctx, req)
+		}
 		return nil, err
 	}
 	if sess == nil {

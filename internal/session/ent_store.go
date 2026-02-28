@@ -241,7 +241,7 @@ func (s *EntStore) Get(key string) (*Session, error) {
 
 	// Check TTL
 	if s.ttl > 0 && time.Since(entSession.UpdatedAt) > s.ttl {
-		return nil, fmt.Errorf("session expired: %s", key)
+		return nil, fmt.Errorf("get session %q: %w", key, ErrSessionExpired)
 	}
 
 	return s.entToSession(entSession), nil
