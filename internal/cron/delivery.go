@@ -121,10 +121,10 @@ func (d *Delivery) StartTyping(ctx context.Context, targets []string) func() {
 // formatDeliveryMessage formats a JobResult into a human-readable message.
 func formatDeliveryMessage(result *JobResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[Cron] %s\n", result.JobName))
+	fmt.Fprintf(&sb, "[Cron] %s\n", result.JobName)
 
 	if result.Error != nil {
-		sb.WriteString(fmt.Sprintf("Error: %v", result.Error))
+		fmt.Fprintf(&sb, "Error: %v", result.Error)
 	} else {
 		sb.WriteString(result.Response)
 	}

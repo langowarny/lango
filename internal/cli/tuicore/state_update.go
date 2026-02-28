@@ -207,7 +207,7 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 		// Embedding & RAG
 		case "emb_provider_id":
 			s.Current.Embedding.Provider = val
-			s.Current.Embedding.ProviderID = "" // clear deprecated field
+			s.Current.Embedding.ProviderID = "" //nolint:staticcheck // intentional: clear deprecated field
 		case "emb_model":
 			s.Current.Embedding.Model = val
 		case "emb_dimensions":

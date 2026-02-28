@@ -418,17 +418,17 @@ Content for skill two.`
 		w.Header().Set("Content-Type", "application/json")
 
 		path := r.URL.Path
-		switch {
-		case path == "/repos/owner/repo/contents/":
+		switch path {
+		case "/repos/owner/repo/contents/":
 			// Directory listing.
 			json.NewEncoder(w).Encode([]gitHubContentsEntry{
 				{Name: "skill-one", Type: "dir"},
 				{Name: "skill-two", Type: "dir"},
 				{Name: "README.md", Type: "file"},
 			})
-		case path == "/repos/owner/repo/contents/skill-one/SKILL.md":
+		case "/repos/owner/repo/contents/skill-one/SKILL.md":
 			json.NewEncoder(w).Encode(gitHubFileResponse{Content: encoded1, Encoding: "base64"})
-		case path == "/repos/owner/repo/contents/skill-two/SKILL.md":
+		case "/repos/owner/repo/contents/skill-two/SKILL.md":
 			json.NewEncoder(w).Encode(gitHubFileResponse{Content: encoded2, Encoding: "base64"})
 		default:
 			http.NotFound(w, r)

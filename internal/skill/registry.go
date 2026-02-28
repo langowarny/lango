@@ -154,7 +154,7 @@ func (r *Registry) skillToTool(sk SkillEntry) *agent.Tool {
 				},
 			},
 		}
-		if skillEntry.Parameters != nil && len(skillEntry.Parameters) > 0 {
+		if len(skillEntry.Parameters) > 0 {
 			params = skillEntry.Parameters
 		}
 

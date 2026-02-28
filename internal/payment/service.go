@@ -131,9 +131,8 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 		SaveX(ctx)
 
 	// Record spending
-	if err := s.limiter.Record(ctx, amount); err != nil {
-		// Non-fatal: tx already submitted
-	}
+	// Non-fatal: tx already submitted, ignore spending record error.
+	_ = s.limiter.Record(ctx, amount)
 
 	return &PaymentReceipt{
 		TxHash:    txHashHex,

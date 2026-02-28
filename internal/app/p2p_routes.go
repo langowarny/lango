@@ -10,6 +10,13 @@ import (
 	"github.com/langoai/lango/internal/wallet"
 )
 
+// writeJSON encodes v as JSON into the response writer.
+func writeJSON(w http.ResponseWriter, v interface{}) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, "encode response: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
 // Endpoints are public (no auth) since they expose only node metadata.
 func registerP2PRoutes(r chi.Router, p2pc *p2pComponents) {
@@ -39,7 +46,7 @@ func p2pStatusHandler(p2pc *p2pComponents) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		writeJSON(w, resp)
 	}
 }
 
@@ -67,7 +74,7 @@ func p2pPeersHandler(p2pc *p2pComponents) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, map[string]interface{}{
 			"peers": peers,
 			"count": len(peers),
 		})
@@ -81,7 +88,7 @@ func p2pReputationHandler(p2pc *p2pComponents) http.HandlerFunc {
 		peerDID := r.URL.Query().Get("peer_did")
 		if peerDID == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{
+			writeJSON(w, map[string]string{
 				"error": "peer_did query parameter is required",
 			})
 			return
@@ -89,7 +96,7 @@ func p2pReputationHandler(p2pc *p2pComponents) http.HandlerFunc {
 
 		if p2pc.reputation == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{
+			writeJSON(w, map[string]string{
 				"error": "reputation system not available",
 			})
 			return
@@ -98,14 +105,14 @@ func p2pReputationHandler(p2pc *p2pComponents) http.HandlerFunc {
 		details, err := p2pc.reputation.GetDetails(r.Context(), peerDID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{
+			writeJSON(w, map[string]string{
 				"error": err.Error(),
 			})
 			return
 		}
 
 		if details == nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			writeJSON(w, map[string]interface{}{
 				"peerDid":    peerDID,
 				"trustScore": 0.0,
 				"message":    "no reputation record found",
@@ -113,7 +120,7 @@ func p2pReputationHandler(p2pc *p2pComponents) http.HandlerFunc {
 			return
 		}
 
-		json.NewEncoder(w).Encode(details)
+		writeJSON(w, details)
 	}
 }
 
@@ -129,7 +136,7 @@ func p2pPricingHandler(p2pc *p2pComponents) http.HandlerFunc {
 			if !ok {
 				price = pricing.PerQuery
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			writeJSON(w, map[string]interface{}{
 				"tool":     toolName,
 				"price":    price,
 				"currency": wallet.CurrencyUSDC,
@@ -137,7 +144,7 @@ func p2pPricingHandler(p2pc *p2pComponents) http.HandlerFunc {
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, map[string]interface{}{
 			"enabled":    pricing.Enabled,
 			"perQuery":   pricing.PerQuery,
 			"toolPrices": pricing.ToolPrices,
@@ -151,7 +158,7 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		if p2pc.identity == nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			writeJSON(w, map[string]interface{}{
 				"did":    nil,
 				"peerId": p2pc.node.PeerID().String(),
 			})
@@ -162,13 +169,13 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 		did, err := p2pc.identity.DID(ctx)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{
+			writeJSON(w, map[string]string{
 				"error": err.Error(),
 			})
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, map[string]interface{}{
 			"did":    did.ID,
 			"peerId": p2pc.node.PeerID().String(),
 		})

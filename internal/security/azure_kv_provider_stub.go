@@ -9,5 +9,5 @@ import (
 )
 
 func newAzureKVProvider(_ config.KMSConfig) (CryptoProvider, error) {
-	return nil, fmt.Errorf("Azure Key Vault support not compiled: rebuild with -tags kms_azure")
+	return nil, fmt.Errorf("azure Key Vault support not compiled: rebuild with -tags kms_azure")
 }

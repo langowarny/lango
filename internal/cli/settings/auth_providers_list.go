@@ -106,7 +106,7 @@ func (m AuthProvidersListModel) View() string {
 
 	// "Add New" item
 	cursor := "  "
-	itemStyle := lipgloss.NewStyle()
+	var itemStyle lipgloss.Style
 	if m.Cursor == len(m.Providers) {
 		cursor = tui.CursorStyle.Render("▸ ")
 		itemStyle = tui.ActiveItemStyle

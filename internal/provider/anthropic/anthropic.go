@@ -46,14 +46,15 @@ func (p *AnthropicProvider) Generate(ctx context.Context, params provider.Genera
 
 			switch evt.Type {
 			case "content_block_delta":
-				if evt.Delta.Type == "text_delta" {
+				switch evt.Delta.Type {
+				case "text_delta":
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventPlainText,
 						Text: evt.Delta.Text,
 					}, nil) {
 						return
 					}
-				} else if evt.Delta.Type == "input_json_delta" {
+				case "input_json_delta":
 					if !yield(provider.StreamEvent{
 						Type: provider.StreamEventToolCall,
 						ToolCall: &provider.ToolCall{

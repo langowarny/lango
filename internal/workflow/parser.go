@@ -89,9 +89,7 @@ func detectCycles(steps []Step) error {
 	// For cycle detection we traverse the depends_on edges.
 	adj := make(map[string][]string, len(steps))
 	for _, s := range steps {
-		for _, dep := range s.DependsOn {
-			adj[s.ID] = append(adj[s.ID], dep)
-		}
+		adj[s.ID] = append(adj[s.ID], s.DependsOn...)
 	}
 
 	color := make(map[string]int, len(steps))

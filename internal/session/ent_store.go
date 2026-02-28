@@ -20,12 +20,9 @@ import (
 	"github.com/langoai/lango/internal/ent/message"
 	entschema "github.com/langoai/lango/internal/ent/schema"
 	entsession "github.com/langoai/lango/internal/ent/session"
-	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3"
 )
-
-var logger = logging.SubsystemSugar("session")
 
 // StoreOption defines the functional option pattern for EntStore
 type StoreOption func(*EntStore)
@@ -670,11 +667,11 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			panic(r)
 		}
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
 

@@ -78,7 +78,7 @@ func (a *ObservationAnalyzer) Analyze(ctx context.Context, observations []memory
 	// Build observation content for LLM.
 	var content strings.Builder
 	for i, obs := range observations {
-		content.WriteString(fmt.Sprintf("--- Observation %d ---\n%s\n\n", i+1, obs.Content))
+		fmt.Fprintf(&content, "--- Observation %d ---\n%s\n\n", i+1, obs.Content)
 	}
 
 	raw, err := a.generator.GenerateText(ctx, observationAnalysisPrompt, content.String())

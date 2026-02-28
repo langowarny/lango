@@ -374,11 +374,11 @@ func TestEventsAdapter_WithToolCalls(t *testing.T) {
 	count := 0
 	for evt := range events.All() {
 		count++
-		if evt.LLMResponse.Content == nil {
+		if evt.Content == nil {
 			t.Fatal("expected non-nil content")
 		}
 		hasFunctionCall := false
-		for _, p := range evt.LLMResponse.Content.Parts {
+		for _, p := range evt.Content.Parts {
 			if p.FunctionCall != nil {
 				hasFunctionCall = true
 				if p.FunctionCall.Name != "exec" {
@@ -611,11 +611,11 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 
 		// Verify assistant event has FunctionCall with ID
 		assistantEvt := events[1]
-		if assistantEvt.LLMResponse.Content.Role != "assistant" {
-			t.Errorf("expected role 'assistant', got %q", assistantEvt.LLMResponse.Content.Role)
+		if assistantEvt.Content.Role != "assistant" {
+			t.Errorf("expected role 'assistant', got %q", assistantEvt.Content.Role)
 		}
 		var fc *genai.FunctionCall
-		for _, p := range assistantEvt.LLMResponse.Content.Parts {
+		for _, p := range assistantEvt.Content.Parts {
 			if p.FunctionCall != nil {
 				fc = p.FunctionCall
 			}
@@ -632,11 +632,11 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 
 		// Verify tool event has FunctionResponse
 		toolEvt := events[2]
-		if toolEvt.LLMResponse.Content.Role != "function" {
-			t.Errorf("expected role 'function', got %q", toolEvt.LLMResponse.Content.Role)
+		if toolEvt.Content.Role != "function" {
+			t.Errorf("expected role 'function', got %q", toolEvt.Content.Role)
 		}
 		var fr *genai.FunctionResponse
-		for _, p := range toolEvt.LLMResponse.Content.Parts {
+		for _, p := range toolEvt.Content.Parts {
 			if p.FunctionResponse != nil {
 				fr = p.FunctionResponse
 			}
@@ -687,11 +687,11 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 
 		// Verify tool event has FunctionResponse reconstructed from legacy
 		toolEvt := events[2]
-		if toolEvt.LLMResponse.Content.Role != "function" {
-			t.Errorf("expected role 'function', got %q", toolEvt.LLMResponse.Content.Role)
+		if toolEvt.Content.Role != "function" {
+			t.Errorf("expected role 'function', got %q", toolEvt.Content.Role)
 		}
 		var fr *genai.FunctionResponse
-		for _, p := range toolEvt.LLMResponse.Content.Parts {
+		for _, p := range toolEvt.Content.Parts {
 			if p.FunctionResponse != nil {
 				fr = p.FunctionResponse
 			}
@@ -733,7 +733,7 @@ func TestEventsAdapter_FunctionResponseReconstruction(t *testing.T) {
 		toolEvt := events[1]
 		// Should fall back to text since no context to reconstruct FunctionResponse
 		hasText := false
-		for _, p := range toolEvt.LLMResponse.Content.Parts {
+		for _, p := range toolEvt.Content.Parts {
 			if p.Text != "" {
 				hasText = true
 			}

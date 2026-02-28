@@ -318,7 +318,7 @@ func (m *ContextAwareModelAdapter) assembleRAGSection(ctx context.Context, query
 		if r.Content == "" {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("\n### [%s] %s\n", r.Collection, r.SourceID))
+		fmt.Fprintf(&b, "\n### [%s] %s\n", r.Collection, r.SourceID)
 		b.WriteString(r.Content)
 		b.WriteString("\n")
 	}

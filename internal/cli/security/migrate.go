@@ -10,12 +10,9 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/prompt"
-	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
-
-var logger = logging.SubsystemSugar("cli-security")
 
 // NewSecurityCmd creates the security command with lazy bootstrap loading.
 func NewSecurityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
