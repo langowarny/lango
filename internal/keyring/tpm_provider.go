@@ -173,7 +173,7 @@ func (p *TPMProvider) seal(data []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: primary.ObjectHandle}
-		_ = flush.Execute(t)
+		_, _ = flush.Execute(t)
 	}()
 
 	createCmd := tpm2.Create{
@@ -219,7 +219,7 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: primary.ObjectHandle}
-		_ = flush.Execute(t)
+		_, _ = flush.Execute(t)
 	}()
 
 	loadCmd := tpm2.Load{
@@ -236,7 +236,7 @@ func (p *TPMProvider) unseal(blob []byte) ([]byte, error) {
 	}
 	defer func() {
 		flush := tpm2.FlushContext{FlushHandle: loadRsp.ObjectHandle}
-		_ = flush.Execute(t)
+		_, _ = flush.Execute(t)
 	}()
 
 	unsealCmd := tpm2.Unseal{
