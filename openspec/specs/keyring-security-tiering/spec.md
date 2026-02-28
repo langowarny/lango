@@ -33,15 +33,27 @@ The system SHALL provide a `DetectSecureProvider()` function that returns the hi
 - **THEN** it SHALL return `(nil, TierNone)`
 
 ### Requirement: BiometricProvider uses macOS Keychain with Touch ID ACL
-The system SHALL provide a `BiometricProvider` that stores secrets in macOS Keychain using `kSecAccessControlBiometryAny` access control. This provider SHALL require Touch ID authentication for every read operation.
+The system SHALL provide a `BiometricProvider` that stores secrets in the macOS login Keychain (NOT the Data Protection Keychain) using `kSecAccessControlBiometryCurrentSet` access control with `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` protection. All Keychain queries SHALL set `kSecUseDataProtectionKeychain = kCFBooleanFalse` to explicitly target the login Keychain. This provider SHALL require Touch ID authentication for every read operation, and SHALL invalidate stored items when biometric enrollment changes.
 
 #### Scenario: Store and retrieve with biometric
 - **WHEN** a secret is stored via `BiometricProvider.Set()` and later retrieved via `BiometricProvider.Get()`
-- **THEN** the Set SHALL create a Keychain item with biometric ACL, and Get SHALL trigger Touch ID before returning the value
+- **THEN** the Set SHALL create a login Keychain item with `BiometryCurrentSet` ACL and `kSecUseDataProtectionKeychain = false`, and Get SHALL trigger Touch ID before returning the value
 
 #### Scenario: Biometric not available on non-Darwin platform
 - **WHEN** `NewBiometricProvider()` is called on a non-Darwin or non-CGO platform
 - **THEN** it SHALL return `ErrBiometricNotAvailable`
+
+#### Scenario: Ad-hoc signed binary works without entitlement
+- **WHEN** a `go build` ad-hoc signed binary calls `BiometricProvider.Set()` or `BiometricProvider.Get()`
+- **THEN** the operation SHALL succeed without requiring `keychain-access-groups` entitlement
+
+#### Scenario: Fingerprint enrollment change invalidates stored items
+- **WHEN** a user changes their biometric enrollment (adds or removes fingerprints) after storing a secret
+- **THEN** attempts to retrieve the secret SHALL fail because `BiometryCurrentSet` invalidates the access control
+
+#### Scenario: Device passcode not set
+- **WHEN** the device does not have a passcode configured
+- **THEN** `NewBiometricProvider()` SHALL return `ErrBiometricNotAvailable` because the Keychain probe will fail
 
 ### Requirement: TPMProvider seals secrets with TPM 2.0
 The system SHALL provide a `TPMProvider` that seals secrets under the TPM's Storage Root Key and stores the sealed blob at `~/.lango/tpm/<service>_<key>.sealed`.
@@ -71,3 +83,66 @@ The system SHALL provide stub implementations with build tags (`!darwin || !cgo`
 #### Scenario: Stub methods satisfy Provider interface
 - **WHEN** stub types are used on unsupported platforms
 - **THEN** all `Get`, `Set`, `Delete` methods SHALL return the platform-specific sentinel error
+
+### Requirement: BiometricProvider SHALL zero C heap buffers before freeing
+The `BiometricProvider` SHALL zero all C heap buffers containing plaintext secrets before calling `free()`. Zeroing MUST use a volatile pointer pattern to prevent compiler optimization from eliding the memory wipe.
+
+#### Scenario: Get zeroes C buffer via secure_free
+- **WHEN** `BiometricProvider.Get()` retrieves a secret from the Keychain
+- **THEN** the C heap buffer SHALL be zeroed via `secure_free()` (volatile pointer loop + free) before control returns to Go
+
+#### Scenario: Set zeroes CString buffer before freeing
+- **WHEN** `BiometricProvider.Set()` stores a secret in the Keychain
+- **THEN** the `C.CString` buffer containing the plaintext value SHALL be zeroed with `memset` before `free` is called
+
+### Requirement: BiometricProvider SHALL zero intermediate Go byte slices
+The `BiometricProvider.Get()` method SHALL copy Keychain data into a Go `[]byte` via `C.GoBytes`, extract the string, and then zero every byte of the `[]byte` slice before it becomes unreachable.
+
+#### Scenario: Get zeroes Go byte slice after string extraction
+- **WHEN** `BiometricProvider.Get()` copies data from C heap to Go heap
+- **THEN** it SHALL use `C.GoBytes` (not `C.GoStringN`), extract the string via `string(data)`, and zero the `[]byte` with a range loop
+
+### Requirement: secure_free C helper prevents compiler optimization
+The C `secure_free` helper function SHALL cast the pointer to `volatile char *` before zeroing to prevent the compiler from optimizing away the memset as a dead store.
+
+#### Scenario: Volatile pointer prevents optimization
+- **WHEN** `secure_free(ptr, len)` is called
+- **THEN** it SHALL iterate through the buffer using a `volatile char *` pointer, set each byte to zero, and then call `free(ptr)`
+
+#### Scenario: Null pointer safety
+- **WHEN** `secure_free(NULL, 0)` is called
+- **THEN** it SHALL return without error (NULL guard)
+
+### Requirement: BiometricProvider availability probe uses real Keychain write
+The `keychain_biometric_available` function SHALL verify biometric support by performing a real `SecItemAdd` probe to the login Keychain with biometric ACL, rather than only checking `SecAccessControlCreateWithFlags`. The probe item SHALL be cleaned up immediately after the test.
+
+#### Scenario: Probe succeeds on capable hardware
+- **WHEN** `keychain_biometric_available()` is called on a macOS device with Touch ID and device passcode set
+- **THEN** it SHALL add a probe item to the login Keychain, delete it, and return 1
+
+#### Scenario: Probe fails without passcode
+- **WHEN** `keychain_biometric_available()` is called on a macOS device without a passcode
+- **THEN** the `SecItemAdd` SHALL fail and the function SHALL return 0
+
+#### Scenario: Probe does not trigger Touch ID
+- **WHEN** the probe item is added via `SecItemAdd`
+- **THEN** it SHALL NOT trigger a Touch ID prompt because Keychain writes bypass ACL evaluation
+
+### Requirement: All Keychain queries target login Keychain explicitly
+Every Keychain query dictionary (set, get, has, delete) SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse` to ensure operations target the login Keychain and never fall through to the Data Protection Keychain.
+
+#### Scenario: Set targets login Keychain
+- **WHEN** `keychain_set_biometric()` builds its query dictionaries
+- **THEN** both the delete-existing and add-new dictionaries SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse`
+
+#### Scenario: Get targets login Keychain
+- **WHEN** `keychain_get_biometric()` builds its query dictionary
+- **THEN** it SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse`
+
+#### Scenario: Has targets login Keychain
+- **WHEN** `keychain_has_biometric()` builds its query dictionary
+- **THEN** it SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse`
+
+#### Scenario: Delete targets login Keychain
+- **WHEN** `keychain_delete_biometric()` builds its query dictionary
+- **THEN** it SHALL include `kSecUseDataProtectionKeychain = kCFBooleanFalse`

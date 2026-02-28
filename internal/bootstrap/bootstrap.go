@@ -20,8 +20,8 @@ import (
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/keyring"
-	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 // Result holds everything produced by the bootstrap process.
@@ -124,7 +124,15 @@ func Run(opts Options) (*Result, error) {
 		msg := fmt.Sprintf("Secure storage available (%s). Store passphrase?", tierLabel)
 		if ok, promptErr := prompt.Confirm(msg); promptErr == nil && ok {
 			if storeErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
-				fmt.Fprintf(os.Stderr, "warning: store passphrase: %v\n", storeErr)
+				if errors.Is(storeErr, keyring.ErrEntitlement) {
+					fmt.Fprintf(os.Stderr, "warning: biometric storage unavailable (binary not codesigned)\n")
+					fmt.Fprintf(os.Stderr, "  Tip: codesign the binary for Touch ID support: make codesign\n")
+					fmt.Fprintf(os.Stderr, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: store passphrase failed: %v\n", storeErr)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Passphrase saved. Next launch will load it automatically.\n")
 			}
 		}
 	}

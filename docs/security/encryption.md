@@ -202,47 +202,34 @@ Scanned output: "Connected using key [SECRET:api_key]"
 
 This prevents accidental secret leakage through chat messages, logs, or tool output.
 
-## OS Keyring Integration
+## Hardware Keyring Integration
 
-Lango can store the master passphrase in the operating system's native keyring, eliminating the need for keyfiles or interactive prompts on every startup.
+Lango can store the master passphrase using hardware-backed security, eliminating the need for keyfiles or interactive prompts on every startup. Only hardware-backed backends are supported to prevent same-UID attacks.
 
 **Passphrase Source Priority:**
 
-1. **OS Keyring** (when `security.keyring.enabled` is true and a passphrase is stored)
-2. **Keyfile** (`~/.lango/passphrase` or `LANGO_KEYFILE` path)
+1. **Hardware keyring** (Touch ID / TPM when available and a passphrase is stored)
+2. **Keyfile** (`~/.lango/keyfile` or `LANGO_KEYFILE` path)
 3. **Interactive prompt** (terminal input)
 4. **Stdin** (piped input for CI/CD)
 
-**Supported Platforms:**
+**Supported Hardware Backends:**
 
-| Platform | Backend |
-|----------|---------|
-| macOS | Keychain |
-| Linux | secret-service (GNOME Keyring, KDE Wallet) |
-| Windows | Credential Manager (DPAPI) |
-
-Configure:
-
-```json
-{
-  "security": {
-    "keyring": {
-      "enabled": true
-    }
-  }
-}
-```
+| Platform | Backend | Security Level |
+|----------|---------|----------------|
+| macOS | Touch ID (Secure Enclave) | Biometric |
+| Linux | TPM 2.0 sealed storage | Hardware |
 
 Manage via CLI:
 
 ```bash
-lango security keyring store    # Store passphrase (interactive)
-lango security keyring status   # Check keyring availability
+lango security keyring store    # Store passphrase in hardware backend
+lango security keyring status   # Check hardware keyring availability
 lango security keyring clear    # Remove stored passphrase
 ```
 
-!!! note "Linux CI/CD"
-    In headless Linux environments without a display server, the keyring daemon may be unavailable. Lango falls back gracefully to keyfile or environment variable methods.
+!!! note "No Hardware Backend"
+    On systems without Touch ID or TPM 2.0, the keyring commands are unavailable. Use keyfile or interactive prompt instead.
 
 ## Database Encryption
 
@@ -395,9 +382,6 @@ lango security secrets delete <name>
       "provider": "local",
       "rpcUrl": "",
       "keyId": ""
-    },
-    "keyring": {
-      "enabled": false
     },
     "dbEncryption": {
       "enabled": false,

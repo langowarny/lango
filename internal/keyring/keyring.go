@@ -18,6 +18,13 @@ var ErrBiometricNotAvailable = errors.New("keyring: biometric authentication not
 // ErrTPMNotAvailable is returned when no TPM 2.0 device is accessible on the current system.
 var ErrTPMNotAvailable = errors.New("keyring: TPM device not available")
 
+// ErrEntitlement is returned when a keyring operation fails due to missing
+// code signing entitlements (macOS errSecMissingEntitlement / -34018).
+// With the login Keychain + BiometryCurrentSet approach, this error should
+// no longer occur in normal usage. Retained as a safety net for edge cases
+// (e.g., device passcode not set with kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly).
+var ErrEntitlement = errors.New("keyring: missing code signing entitlement for biometric storage")
+
 // Provider abstracts OS keyring operations for testability.
 type Provider interface {
 	// Get retrieves a secret for the given service and key.
@@ -65,10 +72,3 @@ func (t SecurityTier) String() string {
 	}
 }
 
-// Status describes the availability of the OS keyring.
-type Status struct {
-	Available    bool         `json:"available"`
-	Backend      string       `json:"backend,omitempty"`
-	SecurityTier SecurityTier `json:"securityTier"`
-	Error        string       `json:"error,omitempty"`
-}

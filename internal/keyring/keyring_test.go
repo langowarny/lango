@@ -96,7 +96,6 @@ func TestMockProvider_MultipleKeys(t *testing.T) {
 func TestProviderInterfaceCompliance(t *testing.T) {
 	// Compile-time check that mockProvider satisfies Provider.
 	var _ Provider = (*mockProvider)(nil)
-	var _ Provider = (*OSProvider)(nil)
 }
 
 func TestConstants(t *testing.T) {

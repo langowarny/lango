@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
@@ -18,7 +17,7 @@ import (
 func newKeyringCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "keyring",
-		Short: "Manage OS keyring passphrase storage",
+		Short: "Manage hardware keyring passphrase storage (Touch ID / TPM)",
 	}
 
 	cmd.AddCommand(newKeyringStoreCmd(bootLoader))
@@ -56,6 +55,15 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 			}
 			defer boot.DBClient.Close()
 
+			// Check if passphrase is already stored in the secure provider.
+			if checker, ok := secureProvider.(keyring.KeyChecker); ok {
+				if checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase) {
+					fmt.Println("Passphrase is already stored in the secure keyring.")
+					fmt.Println("  Next launch will load it automatically.")
+					return nil
+				}
+			}
+
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("this command requires an interactive terminal")
 			}
@@ -66,10 +74,16 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 			}
 
 			if err := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); err != nil {
+				if errors.Is(err, keyring.ErrEntitlement) {
+					return fmt.Errorf("biometric storage unavailable (binary not codesigned)\n"+
+						"  Tip: codesign the binary: make codesign\n"+
+						"  Note: also ensure device passcode is set (required for biometric Keychain)")
+				}
 				return fmt.Errorf("store passphrase: %w", err)
 			}
 
-			fmt.Printf("Passphrase stored (security tier: %s).\n", tier.String())
+			fmt.Printf("Passphrase stored with %s protection.\n", tier.String())
+			fmt.Println("  Next launch will load it automatically.")
 			return nil
 		},
 	}
@@ -98,33 +112,17 @@ func newKeyringClearCmd() *cobra.Command {
 
 			var cleared int
 
-			// 1. Try OS keyring (go-keyring) — covers non-biometric Keychain items.
-			if status := keyring.IsAvailable(); status.Available {
-				provider := keyring.NewOSProvider()
-				if err := provider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err == nil {
-					fmt.Println("Removed passphrase from OS keyring.")
+			// 1. Try secure hardware provider (biometric / TPM).
+			if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+				if err := secureProvider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err == nil {
+					fmt.Println("Removed passphrase from secure provider.")
 					cleared++
 				} else if !errors.Is(err, keyring.ErrNotFound) {
-					fmt.Fprintf(os.Stderr, "warning: OS keyring delete: %v\n", err)
+					fmt.Fprintf(os.Stderr, "warning: secure provider delete: %v\n", err)
 				}
 			}
 
-			// 2. Try secure provider — only for non-macOS where the secure backend
-			// is distinct from the OS keyring (e.g., TPM sealed blobs on Linux).
-			// On macOS, OSProvider.Delete already handles Keychain items (both
-			// biometric and non-biometric share the same service/account key).
-			if runtime.GOOS != "darwin" {
-				if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
-					if err := secureProvider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err == nil {
-						fmt.Println("Removed passphrase from secure provider.")
-						cleared++
-					} else if !errors.Is(err, keyring.ErrNotFound) {
-						fmt.Fprintf(os.Stderr, "warning: secure provider delete: %v\n", err)
-					}
-				}
-			}
-
-			// 3. Remove TPM sealed blob files if they exist (belt-and-suspenders).
+			// 2. Remove TPM sealed blob files if they exist (belt-and-suspenders).
 			home, err := os.UserHomeDir()
 			if err == nil {
 				tpmDir := filepath.Join(home, ".lango", "tpm")
@@ -154,42 +152,28 @@ func newKeyringStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show keyring availability, security tier, and stored passphrase status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			status := keyring.IsAvailable()
-
-			// Check for stored passphrase in OS keyring.
-			hasPassphraseOS := false
-			if status.Available {
-				provider := keyring.NewOSProvider()
-				_, err := provider.Get(keyring.Service, keyring.KeyMasterPassphrase)
-				hasPassphraseOS = err == nil
-			}
-
-			// Check for stored passphrase in secure provider using HasKey
-			// (avoids triggering Touch ID just for a status check).
-			hasPassphraseSecure := false
+			// Detect hardware-backed secure provider (biometric / TPM).
 			secureProvider, tier := keyring.DetectSecureProvider()
+			available := secureProvider != nil
+
+			// Check for stored passphrase using HasKey (avoids triggering Touch ID).
+			hasPassphrase := false
 			if secureProvider != nil {
 				if checker, ok := secureProvider.(keyring.KeyChecker); ok {
-					hasPassphraseSecure = checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase)
+					hasPassphrase = checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase)
 				}
 			}
 
 			type statusOutput struct {
-				Available           bool   `json:"available"`
-				Backend             string `json:"backend,omitempty"`
-				SecurityTier        string `json:"security_tier"`
-				Error               string `json:"error,omitempty"`
-				HasPassphraseOS     bool   `json:"has_passphrase_os"`
-				HasPassphraseSecure bool   `json:"has_passphrase_secure"`
+				Available     bool   `json:"available"`
+				SecurityTier  string `json:"security_tier"`
+				HasPassphrase bool   `json:"has_passphrase"`
 			}
 
 			out := statusOutput{
-				Available:           status.Available,
-				Backend:             status.Backend,
-				SecurityTier:        tier.String(),
-				Error:               status.Error,
-				HasPassphraseOS:     hasPassphraseOS,
-				HasPassphraseSecure: hasPassphraseSecure,
+				Available:     available,
+				SecurityTier:  tier.String(),
+				HasPassphrase: hasPassphrase,
 			}
 
 			if jsonOutput {
@@ -198,17 +182,10 @@ func newKeyringStatusCmd() *cobra.Command {
 				return enc.Encode(out)
 			}
 
-			fmt.Println("Keyring Status")
-			fmt.Printf("  Available:               %v\n", out.Available)
-			if out.Backend != "" {
-				fmt.Printf("  Backend:                 %s\n", out.Backend)
-			}
-			fmt.Printf("  Security Tier:           %s\n", out.SecurityTier)
-			if out.Error != "" {
-				fmt.Printf("  Error:                   %s\n", out.Error)
-			}
-			fmt.Printf("  Has Passphrase (OS):     %v\n", out.HasPassphraseOS)
-			fmt.Printf("  Has Passphrase (Secure): %v\n", out.HasPassphraseSecure)
+			fmt.Println("Hardware Keyring Status")
+			fmt.Printf("  Available:       %v\n", out.Available)
+			fmt.Printf("  Security Tier:   %s\n", out.SecurityTier)
+			fmt.Printf("  Has Passphrase:  %v\n", out.HasPassphrase)
 
 			return nil
 		},
