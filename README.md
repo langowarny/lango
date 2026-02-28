@@ -386,7 +386,6 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.zkp.srsPath` | string | - | Path to SRS file (when srsMode = file) |
 | `p2p.zkp.maxCredentialAge` | string | `24h` | Maximum age for ZK credentials |
 | **Security** | | | |
-| `security.keyring.enabled` | bool | `false` | Enable OS keyring for passphrase storage |
 | `security.dbEncryption.enabled` | bool | `false` | Enable SQLCipher database encryption |
 | `security.dbEncryption.cipherPageSize` | int | `4096` | SQLCipher cipher page size |
 | `security.signer.provider` | string | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` |
@@ -956,17 +955,17 @@ Lango supports optional companion apps for hardware-backed security. Companion d
 - **mDNS Discovery** — auto-discovers companion apps on the local network via `_lango-companion._tcp`
 - **Manual Config** — set a fixed companion address
 
-### OS Keyring
+### Hardware Keyring
 
-Store the master passphrase in the OS keyring for automatic unlock on startup:
+Store the master passphrase in a hardware-backed keyring for automatic unlock on startup:
 
 ```bash
-lango security keyring store    # Store passphrase (interactive)
-lango security keyring status   # Check keyring availability
+lango security keyring store    # Store passphrase in hardware backend
+lango security keyring status   # Check hardware keyring availability
 lango security keyring clear    # Remove stored passphrase
 ```
 
-Supported: macOS Keychain, Linux secret-service (GNOME Keyring), Windows Credential Manager. Configure via `security.keyring.enabled`.
+Supported: macOS Touch ID (Secure Enclave), Linux TPM 2.0. Plain OS keyring is not supported due to same-UID attack risks.
 
 ### Database Encryption
 

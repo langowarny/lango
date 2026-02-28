@@ -15,12 +15,13 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/keyring"
-	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 // Result holds everything produced by the bootstrap process.
@@ -52,6 +53,10 @@ type Options struct {
 	KeepKeyfile bool
 	// DBEncryption configures SQLCipher transparent database encryption.
 	DBEncryption config.DBEncryptionConfig
+	// SkipSecureDetection disables secure hardware provider detection (biometric/TPM).
+	// When true, the bootstrap falls back to keyfile or interactive prompt only.
+	// Useful for testing and headless environments.
+	SkipSecureDetection bool
 }
 
 // Run executes the full bootstrap sequence:
@@ -88,9 +93,15 @@ func Run(opts Options) (*Result, error) {
 	// 3. Acquire passphrase.
 	// If the DB is encrypted or encryption is enabled, we need the passphrase
 	// BEFORE opening the database so we can derive the DB encryption key.
-	var krProvider keyring.Provider
-	if status := keyring.IsAvailable(); status.Available {
-		krProvider = keyring.NewOSProvider()
+	//
+	// DetectSecureProvider returns the highest-tier hardware-backed provider:
+	//   TierBiometric (macOS Touch ID) > TierTPM (Linux) > TierNone.
+	// When TierNone, secureProvider is nil and keyring auto-read is disabled,
+	// preventing same-UID attacks on plain OS keyring storage.
+	var secureProvider keyring.Provider
+	var tier keyring.SecurityTier
+	if !opts.SkipSecureDetection {
+		secureProvider, tier = keyring.DetectSecureProvider()
 	}
 
 	// Determine if this is a first-run scenario: no DB file at all.
@@ -101,10 +112,29 @@ func Run(opts Options) (*Result, error) {
 	pass, source, err := passphrase.Acquire(passphrase.Options{
 		KeyfilePath:     opts.KeyfilePath,
 		AllowCreation:   firstRunGuess,
-		KeyringProvider: krProvider,
+		KeyringProvider: secureProvider, // nil on TierNone → keyring read skipped
 	})
 	if err != nil {
 		return nil, fmt.Errorf("acquire passphrase: %w", err)
+	}
+
+	// 3b. Offer to store passphrase only when a secure hardware provider is available.
+	if source == passphrase.SourceInteractive && secureProvider != nil {
+		tierLabel := tier.String() // "biometric" or "tpm"
+		msg := fmt.Sprintf("Secure storage available (%s). Store passphrase?", tierLabel)
+		if ok, promptErr := prompt.Confirm(msg); promptErr == nil && ok {
+			if storeErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
+				if errors.Is(storeErr, keyring.ErrEntitlement) {
+					fmt.Fprintf(os.Stderr, "warning: biometric storage unavailable (binary not codesigned)\n")
+					fmt.Fprintf(os.Stderr, "  Tip: codesign the binary for Touch ID support: make codesign\n")
+					fmt.Fprintf(os.Stderr, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
+				} else {
+					fmt.Fprintf(os.Stderr, "warning: store passphrase failed: %v\n", storeErr)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Passphrase saved. Next launch will load it automatically.\n")
+			}
+		}
 	}
 
 	// 4. Open database with encryption key if needed.

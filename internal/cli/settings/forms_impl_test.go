@@ -334,7 +334,7 @@ func TestNewEmbeddingForm_ProviderOptionsFromProviders(t *testing.T) {
 		"gemini-1":  {Type: "gemini", APIKey: "test-key"},
 		"my-openai": {Type: "openai", APIKey: "sk-test"},
 	}
-	cfg.Embedding.ProviderID = "gemini-1"
+	cfg.Embedding.Provider = "gemini-1"
 
 	form := NewEmbeddingForm(cfg)
 	f := fieldByKey(form, "emb_provider_id")
@@ -369,11 +369,11 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	state.UpdateConfigFromForm(&form)
 
 	e := state.Current.Embedding
-	if e.ProviderID != "my-openai" {
-		t.Errorf("ProviderID: want %q, got %q", "my-openai", e.ProviderID)
+	if e.Provider != "my-openai" {
+		t.Errorf("Provider: want %q, got %q", "my-openai", e.Provider)
 	}
-	if e.Provider != "" {
-		t.Errorf("Provider: want empty (non-local), got %q", e.Provider)
+	if e.ProviderID != "" {
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
 	}
 	if e.Model != "text-embedding-3-small" {
 		t.Errorf("Model: want %q, got %q", "text-embedding-3-small", e.Model)
@@ -395,7 +395,7 @@ func TestUpdateConfigFromForm_EmbeddingFields(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
+func TestUpdateConfigFromForm_EmbeddingProviderLocal(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
 	form.AddField(&tuicore.Field{Key: "emb_provider_id", Type: tuicore.InputSelect, Value: "local"})
@@ -403,11 +403,11 @@ func TestUpdateConfigFromForm_EmbeddingProviderIDLocal(t *testing.T) {
 	state.UpdateConfigFromForm(&form)
 
 	e := state.Current.Embedding
-	if e.ProviderID != "" {
-		t.Errorf("ProviderID: want empty, got %q", e.ProviderID)
-	}
 	if e.Provider != "local" {
 		t.Errorf("Provider: want %q, got %q", "local", e.Provider)
+	}
+	if e.ProviderID != "" {
+		t.Errorf("ProviderID: want empty (deprecated), got %q", e.ProviderID)
 	}
 }
 
@@ -436,7 +436,7 @@ func TestNewMenuModel_HasEmbeddingCategory(t *testing.T) {
 	menu := NewMenuModel()
 
 	found := false
-	for _, cat := range menu.Categories {
+	for _, cat := range menu.AllCategories() {
 		if cat.ID == "embedding" {
 			found = true
 			break
@@ -451,7 +451,7 @@ func TestNewMenuModel_HasKnowledgeCategory(t *testing.T) {
 	menu := NewMenuModel()
 
 	found := false
-	for _, cat := range menu.Categories {
+	for _, cat := range menu.AllCategories() {
 		if cat.ID == "knowledge" {
 			found = true
 			break
@@ -610,19 +610,6 @@ func TestNewP2PSandboxForm_AllFields(t *testing.T) {
 	}
 }
 
-func TestNewKeyringForm_AllFields(t *testing.T) {
-	cfg := defaultTestConfig()
-	form := NewKeyringForm(cfg)
-
-	if len(form.Fields) != 1 {
-		t.Fatalf("expected 1 field, got %d", len(form.Fields))
-	}
-
-	if f := fieldByKey(form, "keyring_enabled"); f == nil {
-		t.Error("missing field keyring_enabled")
-	}
-}
-
 func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
 	form := NewDBEncryptionForm(cfg)
@@ -647,6 +634,7 @@ func TestNewKMSForm_AllFields(t *testing.T) {
 	form := NewKMSForm(cfg)
 
 	wantKeys := []string{
+		"kms_backend",
 		"kms_region", "kms_key_id", "kms_endpoint",
 		"kms_fallback_to_local", "kms_timeout", "kms_max_retries",
 		"kms_azure_vault_url", "kms_azure_key_version",
@@ -674,12 +662,12 @@ func TestNewMenuModel_HasP2PCategories(t *testing.T) {
 
 	wantIDs := []string{
 		"p2p", "p2p_zkp", "p2p_pricing", "p2p_owner", "p2p_sandbox",
-		"security_keyring", "security_db", "security_kms",
+		"security_db", "security_kms",
 	}
 
 	for _, id := range wantIDs {
 		found := false
-		for _, cat := range menu.Categories {
+		for _, cat := range menu.AllCategories() {
 			if cat.ID == id {
 				found = true
 				break

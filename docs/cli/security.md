@@ -105,34 +105,37 @@ Migration completed successfully!
 
 ---
 
-## OS Keyring
+## Hardware Keyring
 
-Manage OS keyring passphrase storage. The OS keyring (macOS Keychain, Linux secret-service, Windows Credential Manager) allows lango to unlock automatically without a keyfile or interactive prompt.
+Manage hardware-backed keyring passphrase storage. Only secure hardware backends are supported (macOS Touch ID / Linux TPM 2.0) to prevent same-UID attacks.
 
 ### lango security keyring store
 
-Store the master passphrase in the OS keyring. Requires an interactive terminal. The passphrase is verified against the existing crypto state before storing.
+Store the master passphrase using the best available secure hardware backend. Requires an interactive terminal and a hardware backend (Touch ID or TPM 2.0).
 
 ```
 lango security keyring store
 ```
 
-!!! warning "Interactive Only"
-    This command requires an interactive terminal and cannot be used in CI/CD pipelines.
+!!! warning "Requirements"
+    - An interactive terminal (cannot be used in CI/CD)
+    - A secure hardware backend (Touch ID on macOS or TPM 2.0 on Linux)
+    - On macOS: binary must be codesigned for biometric protection
 
 **Example:**
 
 ```bash
 $ lango security keyring store
-Enter passphrase to store in keyring: ********
-Passphrase stored in OS keyring (macOS Keychain).
+Enter passphrase to store: ********
+Passphrase stored with biometric protection.
+  Next launch will load it automatically.
 ```
 
 ---
 
 ### lango security keyring clear
 
-Remove the master passphrase from the OS keyring.
+Remove the master passphrase from all hardware keyring backends.
 
 ```
 lango security keyring clear [--force]
@@ -147,19 +150,19 @@ lango security keyring clear [--force]
 ```bash
 # Interactive
 $ lango security keyring clear
-Remove passphrase from OS keyring? [y/N] y
-Passphrase removed from OS keyring.
+Remove passphrase from all keyring backends? [y/N] y
+Removed passphrase from secure provider.
 
 # Non-interactive
 $ lango security keyring clear --force
-Passphrase removed from OS keyring.
+Removed passphrase from secure provider.
 ```
 
 ---
 
 ### lango security keyring status
 
-Show OS keyring availability and stored passphrase status.
+Show hardware keyring availability and stored passphrase status.
 
 ```
 lango security keyring status [--json]
@@ -173,19 +176,18 @@ lango security keyring status [--json]
 
 ```bash
 $ lango security keyring status
-OS Keyring Status
-  Available:      true
-  Backend:        macOS Keychain
-  Has Passphrase: true
+Hardware Keyring Status
+  Available:       true
+  Security Tier:   biometric
+  Has Passphrase:  true
 ```
 
 **JSON output fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `available` | bool | Whether OS keyring is available |
-| `backend` | string | Keyring backend name |
-| `error` | string | Error message if unavailable |
+| `available` | bool | Whether a hardware keyring is available |
+| `security_tier` | string | Security tier (`biometric`, `tpm`, or `none`) |
 | `has_passphrase` | bool | Whether passphrase is stored |
 
 ---

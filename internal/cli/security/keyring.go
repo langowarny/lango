@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -16,7 +17,7 @@ import (
 func newKeyringCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "keyring",
-		Short: "Manage OS keyring passphrase storage",
+		Short: "Manage hardware keyring passphrase storage (Touch ID / TPM)",
 	}
 
 	cmd.AddCommand(newKeyringStoreCmd(bootLoader))
@@ -29,16 +30,22 @@ func newKeyringCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 func newKeyringStoreCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "store",
-		Short: "Store the master passphrase in the OS keyring",
-		Long: `Store the master passphrase in the OS keyring (macOS Keychain,
-Linux secret-service, or Windows Credential Manager).
+		Short: "Store the master passphrase in a secure hardware backend",
+		Long: `Store the master passphrase using the best available secure hardware backend:
 
-This allows lango to unlock automatically without a keyfile or interactive prompt.
-The passphrase is verified against the existing crypto state before storing.`,
+  - macOS with Touch ID:  Keychain with biometric access control
+  - Linux with TPM 2.0:   TPM-sealed blob (~/.lango/tpm/)
+
+If no secure hardware backend is available, this command will refuse to store
+the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			status := keyring.IsAvailable()
-			if !status.Available {
-				return fmt.Errorf("OS keyring not available: %s", status.Error)
+			secureProvider, tier := keyring.DetectSecureProvider()
+			if secureProvider == nil {
+				return fmt.Errorf(
+					"no secure hardware backend available (security tier: %s)\n"+
+						"Use a keyfile (LANGO_PASSPHRASE_FILE) or interactive prompt instead",
+					tier.String(),
+				)
 			}
 
 			// Bootstrap to verify the passphrase is correct.
@@ -48,21 +55,35 @@ The passphrase is verified against the existing crypto state before storing.`,
 			}
 			defer boot.DBClient.Close()
 
+			// Check if passphrase is already stored in the secure provider.
+			if checker, ok := secureProvider.(keyring.KeyChecker); ok {
+				if checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase) {
+					fmt.Println("Passphrase is already stored in the secure keyring.")
+					fmt.Println("  Next launch will load it automatically.")
+					return nil
+				}
+			}
+
 			if !prompt.IsInteractive() {
 				return fmt.Errorf("this command requires an interactive terminal")
 			}
 
-			pass, err := prompt.Passphrase("Enter passphrase to store in keyring: ")
+			pass, err := prompt.Passphrase("Enter passphrase to store: ")
 			if err != nil {
 				return fmt.Errorf("read passphrase: %w", err)
 			}
 
-			provider := keyring.NewOSProvider()
-			if err := provider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); err != nil {
-				return fmt.Errorf("store passphrase in keyring: %w", err)
+			if err := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); err != nil {
+				if errors.Is(err, keyring.ErrEntitlement) {
+					return fmt.Errorf("biometric storage unavailable (binary not codesigned)\n"+
+						"  Tip: codesign the binary: make codesign\n"+
+						"  Note: also ensure device passcode is set (required for biometric Keychain)")
+				}
+				return fmt.Errorf("store passphrase: %w", err)
 			}
 
-			fmt.Printf("Passphrase stored in OS keyring (%s).\n", status.Backend)
+			fmt.Printf("Passphrase stored with %s protection.\n", tier.String())
+			fmt.Println("  Next launch will load it automatically.")
 			return nil
 		},
 	}
@@ -73,36 +94,49 @@ func newKeyringClearCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "clear",
-		Short: "Remove the master passphrase from the OS keyring",
+		Short: "Remove the master passphrase from all storage backends",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			status := keyring.IsAvailable()
-			if !status.Available {
-				return fmt.Errorf("OS keyring not available: %s", status.Error)
-			}
-
 			if !force {
 				if !prompt.IsInteractive() {
 					return fmt.Errorf("use --force for non-interactive deletion")
 				}
-				fmt.Print("Remove passphrase from OS keyring? [y/N] ")
-				var answer string
-				fmt.Scanln(&answer)
-				if answer != "y" && answer != "Y" && answer != "yes" {
+				ok, err := prompt.Confirm("Remove passphrase from all keyring backends?")
+				if err != nil {
+					return err
+				}
+				if !ok {
 					fmt.Println("Aborted.")
 					return nil
 				}
 			}
 
-			provider := keyring.NewOSProvider()
-			if err := provider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err != nil {
-				if errors.Is(err, keyring.ErrNotFound) {
-					fmt.Println("No passphrase stored in keyring.")
-					return nil
+			var cleared int
+
+			// 1. Try secure hardware provider (biometric / TPM).
+			if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+				if err := secureProvider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err == nil {
+					fmt.Println("Removed passphrase from secure provider.")
+					cleared++
+				} else if !errors.Is(err, keyring.ErrNotFound) {
+					fmt.Fprintf(os.Stderr, "warning: secure provider delete: %v\n", err)
 				}
-				return fmt.Errorf("remove passphrase from keyring: %w", err)
 			}
 
-			fmt.Println("Passphrase removed from OS keyring.")
+			// 2. Remove TPM sealed blob files if they exist (belt-and-suspenders).
+			home, err := os.UserHomeDir()
+			if err == nil {
+				tpmDir := filepath.Join(home, ".lango", "tpm")
+				blobPath := filepath.Join(tpmDir, keyring.Service+"_"+keyring.KeyMasterPassphrase+".sealed")
+				if err := os.Remove(blobPath); err == nil {
+					fmt.Println("Removed TPM sealed blob file.")
+					cleared++
+				}
+			}
+
+			if cleared == 0 {
+				fmt.Println("No stored passphrase found in any backend.")
+			}
+
 			return nil
 		},
 	}
@@ -116,28 +150,29 @@ func newKeyringStatusCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show OS keyring availability and stored passphrase status",
+		Short: "Show keyring availability, security tier, and stored passphrase status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			status := keyring.IsAvailable()
+			// Detect hardware-backed secure provider (biometric / TPM).
+			secureProvider, tier := keyring.DetectSecureProvider()
+			available := secureProvider != nil
 
+			// Check for stored passphrase using HasKey (avoids triggering Touch ID).
 			hasPassphrase := false
-			if status.Available {
-				provider := keyring.NewOSProvider()
-				_, err := provider.Get(keyring.Service, keyring.KeyMasterPassphrase)
-				hasPassphrase = err == nil
+			if secureProvider != nil {
+				if checker, ok := secureProvider.(keyring.KeyChecker); ok {
+					hasPassphrase = checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase)
+				}
 			}
 
 			type statusOutput struct {
 				Available     bool   `json:"available"`
-				Backend       string `json:"backend,omitempty"`
-				Error         string `json:"error,omitempty"`
+				SecurityTier  string `json:"security_tier"`
 				HasPassphrase bool   `json:"has_passphrase"`
 			}
 
 			out := statusOutput{
-				Available:     status.Available,
-				Backend:       status.Backend,
-				Error:         status.Error,
+				Available:     available,
+				SecurityTier:  tier.String(),
 				HasPassphrase: hasPassphrase,
 			}
 
@@ -147,15 +182,10 @@ func newKeyringStatusCmd() *cobra.Command {
 				return enc.Encode(out)
 			}
 
-			fmt.Println("OS Keyring Status")
-			fmt.Printf("  Available:      %v\n", out.Available)
-			if out.Backend != "" {
-				fmt.Printf("  Backend:        %s\n", out.Backend)
-			}
-			if out.Error != "" {
-				fmt.Printf("  Error:          %s\n", out.Error)
-			}
-			fmt.Printf("  Has Passphrase: %v\n", out.HasPassphrase)
+			fmt.Println("Hardware Keyring Status")
+			fmt.Printf("  Available:       %v\n", out.Available)
+			fmt.Printf("  Security Tier:   %s\n", out.SecurityTier)
+			fmt.Printf("  Has Passphrase:  %v\n", out.HasPassphrase)
 
 			return nil
 		},

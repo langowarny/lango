@@ -19,14 +19,14 @@ const (
 	SourceKeyfile     Source = iota // from ~/.lango/keyfile
 	SourceInteractive               // from interactive terminal prompt
 	SourceStdin                     // from piped stdin
-	SourceKeyring                   // from OS keyring (macOS Keychain / Linux secret-service / Windows DPAPI)
+	SourceKeyring                   // from hardware keyring (Touch ID / TPM)
 )
 
 // Options configures passphrase acquisition behavior.
 type Options struct {
 	KeyfilePath     string           // default: ~/.lango/keyfile
 	AllowCreation   bool             // if true, prompt for confirmation on new passphrase
-	KeyringProvider keyring.Provider // if non-nil, try OS keyring first
+	KeyringProvider keyring.Provider // if non-nil, try secure keyring first (biometric/TPM)
 }
 
 // defaultKeyfilePath returns the default keyfile path (~/.lango/keyfile).
@@ -50,15 +50,15 @@ func Acquire(opts Options) (string, Source, error) {
 		}
 	}
 
-	// 1. Try OS keyring (highest priority).
+	// 1. Try secure keyring (highest priority — biometric/TPM).
 	if opts.KeyringProvider != nil {
 		pass, err := opts.KeyringProvider.Get(keyring.Service, keyring.KeyMasterPassphrase)
 		if err == nil && pass != "" {
 			return pass, SourceKeyring, nil
 		}
-		// Silently fall through on ErrNotFound or any other keyring error.
+		// Fall through on ErrNotFound or any other keyring error.
 		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			// Log-worthy but not fatal — continue to next source.
+			fmt.Fprintf(os.Stderr, "warning: keyring read failed: %v\n", err)
 		}
 	}
 

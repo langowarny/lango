@@ -48,6 +48,44 @@ The system SHALL ensure `~/.lango/` exists with 0700 permissions during bootstra
 - **WHEN** `~/.lango/` does not exist
 - **THEN** the directory is created with 0700 permissions
 
+### Requirement: Bootstrap uses secure hardware provider for passphrase storage
+The bootstrap process SHALL use `DetectSecureProvider()` to determine the keyring provider for passphrase acquisition. When no secure hardware is available (`TierNone`), the keyring provider SHALL be nil, disabling automatic keyring reads.
+
+#### Scenario: Biometric available during bootstrap
+- **WHEN** bootstrap runs on macOS with Touch ID
+- **THEN** the passphrase acquisition SHALL use `BiometricProvider` as the keyring provider
+
+#### Scenario: No secure hardware during bootstrap
+- **WHEN** bootstrap runs on a system without biometric or TPM
+- **THEN** the keyring provider SHALL be nil, and passphrase SHALL be acquired from keyfile or interactive prompt only
+
+#### Scenario: Interactive passphrase with secure storage offer
+- **WHEN** the passphrase source is interactive and a secure provider is available
+- **THEN** the system SHALL offer to store the passphrase in the secure backend with a confirmation prompt showing the tier label
+
+### Requirement: Report biometric passphrase store outcome
+When the bootstrap flow stores a passphrase in the secure keyring provider, it SHALL report the outcome to stderr. On entitlement error (`ErrEntitlement`), the system SHALL warn the user and suggest codesigning. On other failures, the message SHALL be `warning: store passphrase failed: <error>`. On success, the message SHALL be `Passphrase saved. Next launch will load it automatically.`.
+
+#### Scenario: Biometric store succeeds
+- **WHEN** `secureProvider.Set()` returns nil
+- **THEN** stderr SHALL contain `Passphrase saved. Next launch will load it automatically.`
+
+#### Scenario: Biometric store fails with entitlement error
+- **WHEN** `secureProvider.Set()` returns an error satisfying `errors.Is(err, keyring.ErrEntitlement)`
+- **THEN** stderr SHALL contain `warning: biometric storage unavailable (binary not codesigned)`
+- **AND** stderr SHALL contain a codesign tip
+
+#### Scenario: Biometric store fails with non-entitlement error
+- **WHEN** `secureProvider.Set()` returns an error NOT satisfying `errors.Is(err, keyring.ErrEntitlement)`
+- **THEN** stderr SHALL contain `warning: store passphrase failed: <error detail>`
+
+### Requirement: SkipSecureDetection option for testing
+The `Options` struct SHALL include a `SkipSecureDetection` boolean. When true, secure hardware detection SHALL be skipped and the keyring provider SHALL be nil regardless of available hardware.
+
+#### Scenario: SkipSecureDetection in test
+- **WHEN** `Run()` is called with `SkipSecureDetection: true`
+- **THEN** the bootstrap SHALL not probe for biometric or TPM hardware
+
 ### Requirement: Ephemeral keyfile shredding after crypto initialization
 The system SHALL shred the passphrase keyfile after successful crypto initialization and checksum verification when the passphrase source is keyfile and `KeepKeyfile` is false (default). Shred failure SHALL emit a warning to stderr but SHALL NOT prevent bootstrap from completing.
 

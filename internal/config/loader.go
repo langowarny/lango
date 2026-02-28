@@ -58,9 +58,6 @@ func DefaultConfig() *Config {
 				Enabled:        true,
 				ApprovalPolicy: ApprovalPolicyDangerous,
 			},
-			Keyring: KeyringConfig{
-				Enabled: true,
-			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
 				CipherPageSize: 4096,
@@ -126,6 +123,16 @@ func DefaultConfig() *Config {
 			MaxConcurrentSteps: 4,
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
+		},
+		ObservationalMemory: ObservationalMemoryConfig{
+			Enabled:                          false,
+			MessageTokenThreshold:            1000,
+			ObservationTokenThreshold:        2000,
+			MaxMessageTokenBudget:            8000,
+			MaxReflectionsInContext:          5,
+			MaxObservationsInContext:         20,
+			MemoryTokenBudget:               4000,
+			ReflectionConsolidationThreshold: 5,
 		},
 		Librarian: LibrarianConfig{
 			Enabled:              false,
@@ -207,7 +214,6 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tools.browser.sessionTimeout", defaults.Tools.Browser.SessionTimeout)
 	v.SetDefault("security.interceptor.enabled", defaults.Security.Interceptor.Enabled)
 	v.SetDefault("security.interceptor.approvalPolicy", string(defaults.Security.Interceptor.ApprovalPolicy))
-	v.SetDefault("security.keyring.enabled", defaults.Security.Keyring.Enabled)
 	v.SetDefault("security.dbEncryption.enabled", defaults.Security.DBEncryption.Enabled)
 	v.SetDefault("security.dbEncryption.cipherPageSize", defaults.Security.DBEncryption.CipherPageSize)
 	v.SetDefault("security.kms.fallbackToLocal", defaults.Security.KMS.FallbackToLocal)
@@ -247,6 +253,14 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("librarian.inquiryCooldownTurns", defaults.Librarian.InquiryCooldownTurns)
 	v.SetDefault("librarian.maxPendingInquiries", defaults.Librarian.MaxPendingInquiries)
 	v.SetDefault("librarian.autoSaveConfidence", defaults.Librarian.AutoSaveConfidence)
+	v.SetDefault("observationalMemory.enabled", defaults.ObservationalMemory.Enabled)
+	v.SetDefault("observationalMemory.messageTokenThreshold", defaults.ObservationalMemory.MessageTokenThreshold)
+	v.SetDefault("observationalMemory.observationTokenThreshold", defaults.ObservationalMemory.ObservationTokenThreshold)
+	v.SetDefault("observationalMemory.maxMessageTokenBudget", defaults.ObservationalMemory.MaxMessageTokenBudget)
+	v.SetDefault("observationalMemory.maxReflectionsInContext", defaults.ObservationalMemory.MaxReflectionsInContext)
+	v.SetDefault("observationalMemory.maxObservationsInContext", defaults.ObservationalMemory.MaxObservationsInContext)
+	v.SetDefault("observationalMemory.memoryTokenBudget", defaults.ObservationalMemory.MemoryTokenBudget)
+	v.SetDefault("observationalMemory.reflectionConsolidationThreshold", defaults.ObservationalMemory.ReflectionConsolidationThreshold)
 	v.SetDefault("security.interceptor.presidio.url", "http://localhost:5002")
 	v.SetDefault("security.interceptor.presidio.scoreThreshold", 0.7)
 	v.SetDefault("security.interceptor.presidio.language", "en")
@@ -302,6 +316,9 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+
+	// Migrate legacy fields.
+	cfg.MigrateEmbeddingProvider()
 
 	// Apply environment variable substitution
 	substituteEnvVars(cfg)

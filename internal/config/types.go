@@ -397,14 +397,14 @@ type ObservationalMemoryConfig struct {
 
 // EmbeddingConfig defines embedding and RAG settings.
 type EmbeddingConfig struct {
-	// ProviderID references a key in the providers map (e.g., "gemini-1", "my-openai").
-	// The embedding backend type and API key are resolved from this provider.
-	// For local (Ollama) embeddings, leave ProviderID empty and set Provider to "local".
-	ProviderID string `mapstructure:"providerID" json:"providerID"`
-
-	// Provider is used only for local (Ollama) embeddings where no entry in the
-	// providers map is needed. Set to "local" to enable local embeddings.
+	// Provider selects the embedding provider. Set to "local" for Ollama-based
+	// local embeddings, or use a key from the providers map (e.g., "my-openai",
+	// "gemini-1") to resolve the backend type and API key automatically.
 	Provider string `mapstructure:"provider" json:"provider"`
+
+	// Deprecated: ProviderID is kept only for backwards-compatible config loading.
+	// New configs should use Provider for both local and remote providers.
+	ProviderID string `mapstructure:"providerID" json:"providerID,omitempty"`
 
 	// Model is the embedding model identifier.
 	Model string `mapstructure:"model" json:"model"`
@@ -423,8 +423,9 @@ type EmbeddingConfig struct {
 type LocalEmbeddingConfig struct {
 	// BaseURL is the Ollama endpoint (default: http://localhost:11434/v1).
 	BaseURL string `mapstructure:"baseUrl" json:"baseUrl"`
-	// Model overrides the embedding model for local provider.
-	Model string `mapstructure:"model" json:"model"`
+	// Deprecated: Model is now unified in EmbeddingConfig.Model for all providers.
+	// Retained only for backward-compatible config loading and migration.
+	Model string `mapstructure:"model" json:"model,omitempty"`
 }
 
 // RAGConfig defines retrieval-augmented generation settings.
@@ -460,8 +461,6 @@ type SecurityConfig struct {
 	Interceptor InterceptorConfig `mapstructure:"interceptor" json:"interceptor"`
 	// Signer configuration
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
-	// Keyring configuration (OS keyring for passphrase storage)
-	Keyring KeyringConfig `mapstructure:"keyring" json:"keyring"`
 	// DBEncryption configuration (SQLCipher transparent encryption)
 	DBEncryption DBEncryptionConfig `mapstructure:"dbEncryption" json:"dbEncryption"`
 	// KMS configuration (Cloud KMS / HSM backends)
@@ -525,12 +524,6 @@ type DBEncryptionConfig struct {
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 	// CipherPageSize is the SQLCipher cipher_page_size PRAGMA (default: 4096).
 	CipherPageSize int `mapstructure:"cipherPageSize" json:"cipherPageSize"`
-}
-
-// KeyringConfig defines OS keyring integration settings.
-type KeyringConfig struct {
-	// Enabled activates OS keyring as the highest-priority passphrase source.
-	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // ApprovalPolicy determines which tools require approval before execution.
@@ -898,27 +891,53 @@ type X402Config struct {
 
 // ResolveEmbeddingProvider returns the embedding backend type and API key
 // for the configured embedding provider.
-// Priority: ProviderID (from providers map) > Provider "local" (Ollama).
+// The Provider field can be "local" (Ollama) or a key in the providers map.
+// Legacy configs with ProviderID are handled via MigrateEmbeddingProvider.
 func (c *Config) ResolveEmbeddingProvider() (backendType, apiKey string) {
 	emb := c.Embedding
 
-	// Explicit provider ID — resolve type and key from providers map.
-	if emb.ProviderID != "" {
-		p, ok := c.Providers[emb.ProviderID]
-		if !ok {
-			return "", ""
-		}
-		bt := ProviderTypeToEmbeddingType[p.Type]
-		if bt == "" {
-			return "", ""
-		}
-		return bt, p.APIKey
+	provider := emb.Provider
+	// Backwards compatibility: fall back to deprecated ProviderID.
+	if provider == "" && emb.ProviderID != "" {
+		provider = emb.ProviderID
+	}
+
+	if provider == "" {
+		return "", ""
 	}
 
 	// Local (Ollama) provider — no API key needed.
-	if emb.Provider == "local" {
+	if provider == "local" {
 		return "local", ""
 	}
 
-	return "", ""
+	// Look up in providers map.
+	p, ok := c.Providers[provider]
+	if !ok {
+		return "", ""
+	}
+	bt := ProviderTypeToEmbeddingType[p.Type]
+	if bt == "" {
+		return "", ""
+	}
+	return bt, p.APIKey
+}
+
+// MigrateEmbeddingProvider migrates legacy configs that use separate ProviderID
+// and Provider fields into the unified Provider field, and consolidates
+// the deprecated Local.Model into the canonical Model field.
+func (c *Config) MigrateEmbeddingProvider() {
+	if c.Embedding.ProviderID != "" && c.Embedding.Provider == "" {
+		c.Embedding.Provider = c.Embedding.ProviderID
+		c.Embedding.ProviderID = ""
+	}
+	// If both are set, Provider takes precedence; clear deprecated ProviderID.
+	if c.Embedding.ProviderID != "" && c.Embedding.Provider != "" {
+		c.Embedding.ProviderID = ""
+	}
+	// Migrate deprecated Local.Model into unified Model field.
+	if c.Embedding.Local.Model != "" && c.Embedding.Model == "" {
+		c.Embedding.Model = c.Embedding.Local.Model
+	}
+	c.Embedding.Local.Model = ""
 }

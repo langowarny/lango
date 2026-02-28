@@ -206,13 +206,8 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 
 		// Embedding & RAG
 		case "emb_provider_id":
-			if val == "local" {
-				s.Current.Embedding.ProviderID = ""
-				s.Current.Embedding.Provider = "local"
-			} else {
-				s.Current.Embedding.ProviderID = val
-				s.Current.Embedding.Provider = ""
-			}
+			s.Current.Embedding.Provider = val
+			s.Current.Embedding.ProviderID = "" // clear deprecated field
 		case "emb_model":
 			s.Current.Embedding.Model = val
 		case "emb_dimensions":
@@ -436,10 +431,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.P2P.ToolIsolation.Container.PoolIdleTimeout = d
 			}
 
-		// Security Keyring
-		case "keyring_enabled":
-			s.Current.Security.Keyring.Enabled = f.Checked
-
 		// Security DB Encryption
 		case "db_encryption_enabled":
 			s.Current.Security.DBEncryption.Enabled = f.Checked
@@ -449,6 +440,9 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 
 		// Security KMS
+		case "kms_backend":
+			// Syncs the KMS backend selector with signer provider.
+			s.Current.Security.Signer.Provider = val
 		case "kms_region":
 			s.Current.Security.KMS.Region = val
 		case "kms_key_id":
