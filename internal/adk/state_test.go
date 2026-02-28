@@ -14,14 +14,17 @@ import (
 )
 
 type mockStore struct {
-	sessions map[string]*internal.Session
-	messages map[string][]internal.Message // DB-only message storage
+	sessions    map[string]*internal.Session
+	messages    map[string][]internal.Message // DB-only message storage
+	expiredKeys map[string]bool               // keys that simulate expired sessions
+	deleteErr   error                         // if set, Delete returns this error
 }
 
 func newMockStore() *mockStore {
 	return &mockStore{
-		sessions: make(map[string]*internal.Session),
-		messages: make(map[string][]internal.Message),
+		sessions:    make(map[string]*internal.Session),
+		messages:    make(map[string][]internal.Message),
+		expiredKeys: make(map[string]bool),
 	}
 }
 
@@ -30,6 +33,9 @@ func (m *mockStore) Create(s *internal.Session) error {
 	return nil
 }
 func (m *mockStore) Get(key string) (*internal.Session, error) {
+	if m.expiredKeys[key] {
+		return nil, fmt.Errorf("get session %q: %w", key, internal.ErrSessionExpired)
+	}
 	s, ok := m.sessions[key]
 	if !ok {
 		return nil, nil
@@ -41,7 +47,11 @@ func (m *mockStore) Update(s *internal.Session) error {
 	return nil
 }
 func (m *mockStore) Delete(key string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
 	delete(m.sessions, key)
+	delete(m.expiredKeys, key)
 	return nil
 }
 func (m *mockStore) AppendMessage(key string, msg internal.Message) error {
