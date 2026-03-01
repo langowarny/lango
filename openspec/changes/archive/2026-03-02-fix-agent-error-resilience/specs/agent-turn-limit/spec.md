@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Maximum turn limit per agent run
 The system SHALL enforce a configurable maximum number of tool-calling turns per `Agent.Run()` invocation. The default limit SHALL be 25 turns. When the limit is reached, the system SHALL grant one wrap-up turn before yielding an error. Delegation events (TransferToAgent) SHALL NOT be counted as tool-calling turns.
@@ -30,6 +30,8 @@ The system SHALL count only events that contain at least one `FunctionCall` part
 #### Scenario: Event without function calls
 - **WHEN** an event contains only text parts or no parts
 - **THEN** it SHALL NOT be counted as a tool-calling turn
+
+## ADDED Requirements
 
 ### Requirement: Delegation event exclusion from turn counting
 The system SHALL NOT count events that represent agent-to-agent delegation transfers as tool-calling turns. An event is a delegation event when its `Actions.TransferToAgent` field is non-empty.
